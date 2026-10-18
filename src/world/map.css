@@ -1,0 +1,75 @@
+/* Pixelated real map behind the radar. No gradients, no border-radius, no blur. */
+.map {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  isolation: isolate; /* Leaflet's pane z-indexes stay inside the map */
+  background: var(--paper);
+}
+/* The Leaflet box reaches under the chips row and the bottom bar by the same amount on both sides, so the map's
+   centre is exactly the stage centre where my avatar stands. */
+.map__leaflet {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: calc(-1 * var(--bottom-bar));
+  bottom: calc(-1 * var(--bottom-bar));
+  background: var(--paper);
+  font-family: var(--font-label);
+  outline: none;
+}
+.map__empty {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: calc(-1 * var(--bottom-bar));
+  bottom: calc(-1 * var(--bottom-bar));
+  background: var(--paper);
+}
+.map .leaflet-container { background: var(--paper); }
+
+/* ×2 pixel blocks, tinted down a little so sprites read on top */
+.map .leaflet-tile-pane { filter: saturate(0.6) contrast(1.15); }
+.map .leaflet-tile {
+  image-rendering: pixelated;
+}
+.map .leaflet-zoom-animated { transition: none; }
+
+/* the Los Angeles zone (the 4-px dashed outline stays 4 px at any zoom) */
+.map .map__zone {
+  stroke: var(--ink);
+  stroke-width: 4px;
+  stroke-dasharray: 8 8;
+  stroke-linecap: butt;
+  stroke-linejoin: miter;
+  fill: var(--grass);
+  fill-opacity: 0.25;
+  shape-rendering: crispEdges;
+}
+
+/* 16-px avatar while zoomed out */
+.map__marker {
+  position: absolute;
+  left: 0;
+  top: 0;
+  z-index: 700;
+  width: 16px;
+  height: 16px;
+  pointer-events: none;
+}
+
+/* our own attribution, bottom-right of the stage (the stage ends where the bottom bar starts) */
+.map__attrib {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  z-index: 3;
+  padding: 0 4px;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--font-label);
+  font-size: 12px;
+  line-height: 16px;
+  text-transform: uppercase;
+  pointer-events: none;
+}
