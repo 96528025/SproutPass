@@ -1,6 +1,6 @@
 """intents — turn an iMessage / ASI:One line into one of a dozen intents.
 
-Mirrors base44/functions/_lib/wording.ts (parseIntent / parseCondition) so the
+Mirrors base44/shared/c/wording.ts (parseIntent / parseCondition) so the
 Deno fallback and the Python agent agree. Keep the regexes in sync.
 """
 

@@ -1,8 +1,8 @@
 // C: everything src/agent needs from the backend, in one adapter over B's api.ts.
-// B's `src/app/api.ts` must export the Base44 client as `base44` (NEEDS.md).
-// Swap `import { base44 } from "../app/api"` for `../mocks/c` to develop offline.
+// `./client` picks the real SDK client or B's mock world (VITE_USE_MOCK=1).
+// Swap it for `../mocks/c` to develop fully offline with the scripted encounter.
 
-import { base44 } from "../app/api";
+import { base44 } from "./client";
 
 export type AgentTurn = {
   from: "buyer_agent" | "seller_agent";

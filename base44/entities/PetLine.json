@@ -1,0 +1,13 @@
+{
+  "name": "PetLine",
+  "type": "object",
+  "title": "PetLine",
+  "properties": {
+    "parentId": { "type": "string" },
+    "text": { "type": "string" },
+    "imageUrl": { "type": "string" },
+    "createdAt": { "type": "string", "format": "date-time" }
+  },
+  "required": ["parentId", "text"],
+  "rls": { "create": false, "read": true, "update": false, "delete": false }
+}

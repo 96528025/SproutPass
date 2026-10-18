@@ -107,7 +107,9 @@ export function handle(
       const data = await fn(req);
       return Response.json(data ?? { ok: true });
     } catch (e) {
-      const status = e instanceof HttpError ? e.status : 500;
+      // C's HttpError, or B's (shared/errors.ts, via cbridge): both carry a numeric status.
+      const s = (e as { status?: unknown } | null)?.status;
+      const status = e instanceof HttpError ? e.status : typeof s === "number" ? s : 500;
       const message = e instanceof Error ? e.message : String(e);
       console.error(`[C] ${status} ${message}`);
       return Response.json({ error: message }, { status });

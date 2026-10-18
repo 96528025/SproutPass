@@ -18,6 +18,7 @@ import {
   withinEncounter,
 } from "./geo.ts";
 import { getSetting } from "./auth.ts";
+import { callB } from "../cbridge.ts";
 
 export const FALLBACK_AFTER_MS = 8_000; // rule: no proposal after 8 s → local match
 
@@ -185,17 +186,17 @@ export async function runLocalFallback(
       if (!best) continue;
       const transcript = localTranscript(enc, buyerId, sellerId, best, nowMs);
       try {
-        // B's createProposal re-validates every rule; we only supply wording.
-        const res = await base44.functions.invoke("createProposal", {
+        // B's createProposal re-validates every rule; we only supply wording. In-process via cbridge.
+        await callB(db, "createProposal", {
           listingId: best.listingId,
           sellerId,
           buyerId,
           encounterId: enc.id,
           reason: best.reason ?? `Size ${best.size} matches a shared need.`,
+          wearWeeksLeft: best.wearWeeksLeft,
           transcript,
           source: "local",
         });
-        if (res?.data?.error) throw new Error(res.data.error);
         await db.Encounter.update(enc.id, { status: "proposed", transcript });
         proposed = true;
         break;

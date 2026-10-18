@@ -18,21 +18,18 @@
 // shared needs and the child's age in months.
 
 // deno-lint-ignore-file no-explicit-any
-import { getSetting, handle, HttpError, readJson, resolveCaller } from "../_lib/auth.ts";
-import { sendToParent } from "../_lib/imessage.ts";
-import { sweepInbox } from "../_lib/inboxFallback.ts";
-import { findMatches, predictOutgrow } from "../_lib/match.ts"; // (B) see NEEDS.md
+import { getSetting, handle, HttpError, readJson, resolveCaller } from "../../shared/c/auth.ts";
+import { sendToParent } from "../../shared/c/imessage.ts";
+import { sweepInbox } from "../../shared/c/inboxFallback.ts";
+import { suggestCondition } from "../../shared/c/condition.ts";
+import { callB, findMatches, predictOutgrow } from "../../shared/cbridge.ts"; // B handlers, C-shaped (shared/cbridge.ts)
 
 const PASS_THROUGH = new Set([
   "listItem", "resolveNudge", "decideProposal", "payProposal", "getCloset", "withdrawListing", "upsertNeed", "recordPurchase",
 ]);
 
-async function invokeB(base44: any, name: string, payload: any) {
-  const r = await base44.functions.invoke(name, payload);
-  const data = r?.data ?? r;
-  if (data?.error) throw new HttpError(400, `${name}: ${data.error}`);
-  return data;
-}
+// B's handlers run in-process via cbridge (no HTTP hop; B's createProposal would 403 an SDK call without the agent key).
+const invokeB = (db: any, name: string, payload: any): Promise<any> => callB(db, name, payload);
 
 export default handle(async (req) => {
   const { base44, db, kind } = await resolveCaller(req);
@@ -64,7 +61,7 @@ export default handle(async (req) => {
 
     case "getState": {
       if (!body.parentId) throw new HttpError(400, "parentId required");
-      const state = await invokeB(base44, "getCloset", { parentId: body.parentId });
+      const state = await invokeB(db, "getCloset", { parentId: body.parentId });
       if (!body.peerOf) return state;
       // Peer view (rule 3): shared listings + shared needs + child age only.
       const items: any[] = state.items ?? [];
@@ -109,37 +106,13 @@ export default handle(async (req) => {
       throw new HttpError(400, "fit needs {buyerId, sellerId} or {itemId, childId}");
     }
 
-    case "suggestCondition": {
-      const imageUrl = body.imageUrl;
-      if (!imageUrl) return { condition: "gently_used", note: "", via: "template" };
-      try {
-        const r = await base44.integrations.Core.InvokeLLM({
-          prompt: `This is a photo of a used piece of children's clothing${body.itemName ? ` (${body.itemName})` : ""}. ` +
-            `Classify its condition as one of: like_new, gently_used, well_loved. ` +
-            `Give a one-sentence honest note a buyer would want (stains, pilling, fading). ` +
-            `If the photo is unclear, choose gently_used.`,
-          file_urls: [imageUrl],
-          response_json_schema: {
-            type: "object",
-            properties: {
-              condition: { type: "string", enum: ["like_new", "gently_used", "well_loved"] },
-              note: { type: "string" },
-            },
-            required: ["condition", "note"],
-          },
-        });
-        const cond = ["like_new", "gently_used", "well_loved"].includes(r?.condition) ? r.condition : "gently_used";
-        return { condition: cond, note: String(r?.note ?? "").slice(0, 160), via: "llm" };
-      } catch (e) {
-        console.error("[C] InvokeLLM failed, template fallback", e);
-        return { condition: "gently_used", note: "", via: "template" };
-      }
-    }
+    case "suggestCondition":
+      return await suggestCondition(base44, body.imageUrl, body.itemName);
 
     case "createProposal": {
       const { action: _a, ...args } = body;
       args.source = args.source ?? "fetch";
-      const prop = await invokeB(base44, "createProposal", args);
+      const prop = await invokeB(db, "createProposal", args);
       if (args.encounterId) {
         await db.Encounter.update(args.encounterId, {
           status: "proposed",
@@ -209,7 +182,7 @@ export default handle(async (req) => {
     default: {
       if (PASS_THROUGH.has(action)) {
         const { action: _a, ...args } = body;
-        return await invokeB(base44, action, args);
+        return await invokeB(db, action, args);
       }
       throw new HttpError(400, `unknown action ${action}`);
     }

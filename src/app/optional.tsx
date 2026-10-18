@@ -11,6 +11,7 @@ type Loader = () => Promise<Record<string, unknown>>;
 const FILES: Record<string, Loader> = {
   ...import.meta.glob<Record<string, unknown>>("../trade/{TradeWindow,TradeWatcher,RelayLog}.tsx"),
   ...import.meta.glob<Record<string, unknown>>("../world/{TitleScreen,WorldScreen}.tsx"),
+  ...import.meta.glob<Record<string, unknown>>("../agent/AgentPet.tsx"),
 };
 
 /** Error boundary: renders `fallback` instead of blanking the whole app when a child throws. */

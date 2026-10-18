@@ -92,3 +92,12 @@
 @media (prefers-reduced-motion: reduce) {
   .c-pet, .c-cursor, .c-pet__dot { animation: none; }
 }
+
+/* Inside B's shell: stay in the 430 px handheld column (position: relative) instead of the viewport,
+   above the tab bar, and above B's nudge dock when the pet is opened on purpose. */
+.b-handheld .c-pet { position: absolute; bottom: 84px; }
+.c-pet__dock { z-index: 45; }
+/* B's shim Sprite draws 32 px × scale (128 px); the pet button is 64 px. Drop when A's kit lands. */
+.b-handheld .c-pet > div:first-child { width: 64px !important; height: 64px !important; box-sizing: border-box; }
+/* While B's NudgeDialog is up it already says the pet's line: hide the corner pet so they don't stack. */
+.b-handheld > .b-dock ~ .c-pet { display: none; }

@@ -1,6 +1,6 @@
 """wording — the pet's voice. ≤ 2 sentences, no markdown (iMessage shows it raw).
 
-Mirrors base44/functions/_lib/wording.ts. If you change a line here, change it
+Mirrors base44/shared/c/wording.ts. If you change a line here, change it
 there too, so the Deno fallback sounds like the same pet.
 """
 

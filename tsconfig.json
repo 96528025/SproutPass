@@ -13,5 +13,5 @@
     "paths": { "@/*": ["./src/*"] }
   },
   "include": ["base44/shared/**/*.ts", "src/**/*.ts", "src/**/*.tsx"],
-  "exclude": ["base44/shared/http.ts"]
+  "exclude": ["base44/shared/http.ts", "base44/shared/c/**"]
 }

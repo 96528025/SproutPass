@@ -13,8 +13,15 @@
 import { sendToParent } from "./imessage.ts";
 import { parseCondition, parseIntent, shortDate, t } from "./wording.ts";
 import { getSetting } from "./auth.ts";
+import { suggestCondition } from "./condition.ts";
+import { callB } from "../cbridge.ts";
 
 export const FALLBACK_AFTER_MS = 5_000;
+
+/** The app's ?as= takes the parent's seed key ("mina"), not its id. */
+function tradeLink(prop: any, parent: any): string {
+  return `https://${Deno.env.get("APP_HOST") ?? "app"}/trade/${prop.id}?as=${parent?.key ?? parent?.id ?? ""}`;
+}
 
 export async function sweepInbox(base44: any, db: any, parentId?: string): Promise<{ handled: number }> {
   const nowMs = Date.now();
@@ -37,11 +44,9 @@ export async function sweepInbox(base44: any, db: any, parentId?: string): Promi
   return { handled };
 }
 
+// B's handlers run in-process via cbridge. `base44` is the service-role client; its `.entities` is the db.
 async function invoke(base44: any, name: string, payload: any): Promise<any> {
-  const r = await base44.functions.invoke(name, payload);
-  const data = r?.data ?? r;
-  if (data?.error) throw new Error(`${name}: ${data.error}`);
-  return data;
+  return await callB(base44.entities, name, payload);
 }
 
 async function closet(base44: any, parentId: string) {
@@ -86,7 +91,7 @@ async function handleRow(base44: any, db: any, row: any) {
         const prop = await db.MatchProposal.get(p.proposalId).catch(() => null);
         if (!prop) return;
         if (prop.status === "both_accepted") {
-          const link = p.payLink ?? `https://${Deno.env.get("APP_HOST") ?? "app"}/trade/${prop.id}?as=${row.parentId}`;
+          const link = p.payLink ?? tradeLink(prop, parent);
           await say(prop.buyerId === row.parentId ? t.bothAccepted(link) : t.accepted("the buyer to pay"));
         } else if (prop.status === "declined") {
           await say(t.declined());
@@ -133,11 +138,10 @@ async function handleRow(base44: any, db: any, row: any) {
     const itemId = convo.itemId ?? nudge?.itemId;
     if (!itemId) return void await say(t.unknown());
     let condition = "gently_used", note = "";
-    try {
-      const r = await invoke(base44, "agentApi", { action: "suggestCondition", imageUrl: photos[0] });
-      condition = r.condition ?? condition;
-      note = r.note ?? "";
-    } catch { /* template default */ }
+    // Direct call: invoking agentApi from here would need the agent key (401 otherwise).
+    const r = await suggestCondition(base44, photos[0]);
+    condition = r.condition ?? condition;
+    note = r.note ?? "";
     await setConvo(db, parent, { step: "await_condition", itemId, condition, note, photoUrl: photos[0] });
     return void await say(t.askCondition(condition));
   }
@@ -209,7 +213,7 @@ async function handleRow(base44: any, db: any, row: any) {
       const c = await closet(base44, parent.id);
       const open = (c.proposals ?? []).find((pr: any) => pr.status === "both_accepted" && pr.buyerId === parent.id);
       if (!open) return void await say(t.noOpenProposal());
-      const link = `https://${Deno.env.get("APP_HOST") ?? "app"}/trade/${open.id}?as=${parent.id}`;
+      const link = tradeLink(open, parent);
       return void await say(t.bothAccepted(link));
     }
     default: {

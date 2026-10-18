@@ -3,8 +3,8 @@
 // Returns: { sent, skipped?, messageId? }
 
 // deno-lint-ignore-file no-explicit-any
-import { handle, HttpError, readJson, resolveCaller } from "../_lib/auth.ts";
-import { sendToParent } from "../_lib/imessage.ts";
+import { handle, HttpError, readJson, resolveCaller } from "../../shared/c/auth.ts";
+import { sendToParent } from "../../shared/c/imessage.ts";
 
 export default handle(async (req) => {
   const { db } = await resolveCaller(req);

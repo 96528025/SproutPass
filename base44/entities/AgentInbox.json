@@ -32,6 +32,16 @@
     "claimedAt": {
       "type": "string",
       "format": "date-time"
+    },
+    "claimedBy": {
+      "type": "string"
+    },
+    "doneBy": {
+      "type": "string"
+    },
+    "doneAt": {
+      "type": "string",
+      "format": "date-time"
     }
   },
   "required": [
