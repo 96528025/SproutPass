@@ -143,7 +143,7 @@ export function MapLayer({ me, zoomedOut, zone, avatar, noFix }: MapLayerProps) 
           {zoomedOut && <ZoneMarker me={me} avatar={avatar} />}
         </MapContainer>
       )}
-      <span className="map__attrib">© OPENSTREETMAP</span>
+      {!empty && <span className="map__attrib">© OPENSTREETMAP</span>}
     </div>
   );
 }

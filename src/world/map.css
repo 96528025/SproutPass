@@ -20,7 +20,10 @@
 }
 .map__empty {
   position: absolute;
-  inset: 0;
+  left: 0;
+  right: 0;
+  top: calc(-1 * var(--bottom-bar));
+  bottom: calc(-1 * var(--bottom-bar));
   background: var(--paper);
 }
 .map .leaflet-container { background: var(--paper); }

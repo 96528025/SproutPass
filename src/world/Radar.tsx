@@ -64,6 +64,11 @@ export function Radar({ mpp }: { mpp: number }) {
   return (
     <div className="radar" aria-hidden style={{ "--rh": `${half}px`, "--sweep-r": `${rings[1].r}px` } as React.CSSProperties}>
       <canvas ref={ref} className="radar__rings" style={{ width: SIZE, height: SIZE }} />
+      <div className="radar__sweep">
+        <div className="radar__sweep-arm">
+          <Sprite name="radar_dot" scale={2} />
+        </div>
+      </div>
       {rings.map(({ r, label }, i) => (
         <span
           key={label}
@@ -73,11 +78,6 @@ export function Radar({ mpp }: { mpp: number }) {
           {label}
         </span>
       ))}
-      <div className="radar__sweep">
-        <div className="radar__sweep-arm">
-          <Sprite name="radar_dot" scale={2} />
-        </div>
-      </div>
     </div>
   );
 }
