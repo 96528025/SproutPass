@@ -13,6 +13,43 @@ Parents can send clothing photos through iMessage or upload them in the app. Bas
 - [Challenge mapping](docs/submission/tracks.md)
 - [Historical testing record](docs/submission/testing.md)
 
+## Phone-view feature tour
+
+Captured from the local offline demo using the app's phone layout. These screenshots show staged inventory, simulated proximity and simulated payment—not live user validation, a real charge, or iMessage delivery. The offer, celebration and receipt belong to the same sample trade.
+
+<table>
+  <tr>
+    <th>1. Families meet</th>
+    <th>2. Companions find a fit</th>
+    <th>3. Buyer reviews an offer</th>
+  </tr>
+  <tr>
+    <td><img src="docs/screenshots/02-encounter.jpg" width="260" alt="Phone view: Olivia and Freja meet in the simulated nearby experience"></td>
+    <td><img src="docs/screenshots/03-agent-chat.jpg" width="260" alt="Phone view: offline companion dialogue checks a shared need against an available jacket"></td>
+    <td><img src="docs/screenshots/04-trade-offer.jpg" width="260" alt="Phone view: the buyer reviews a fleece bear jacket offer, with simulated payment clearly labeled"></td>
+  </tr>
+  <tr>
+    <td>Simulated nearby encounter between two demo families.</td>
+    <td>Offline companion dialogue connects a 6–9M clothing need to a listed jacket. This is not an iMessage screenshot.</td>
+    <td>Garment details and resale pricing are presented before the buyer decides.</td>
+  </tr>
+  <tr>
+    <th>4. Trade-success celebration</th>
+    <th>5. Simulated Visa receipt</th>
+    <th>iMessage delivery</th>
+  </tr>
+  <tr>
+    <td><img src="docs/screenshots/05-trade-success.jpg" width="260" alt="Phone view: flowers celebrate completion of the local sample trade"></td>
+    <td><img src="docs/screenshots/06-visa-simulation.jpg" width="260" alt="Phone view: $21.60 Visa simulation receipt explicitly states no Visa API, real charge or funds transfer"></td>
+    <td>Real-phone screenshot pending. Photon connects private iMessage threads; the offline demo cannot demonstrate message delivery. See the <a href="docs/submission/demo-script.md">phone verification instructions</a>.</td>
+  </tr>
+  <tr>
+    <td>The sample jacket finds a new home after buyer approval. No physical handoff is demonstrated.</td>
+    <td>Local simulation with amount, authorization reference and saved timestamp. No money moves.</td>
+    <td>Verify the offer, garment image and receipt on the actual receiving phones before claiming delivery.</td>
+  </tr>
+</table>
+
 ## Fast demonstration
 
 1. Open `/trial`. Choose **Prepare Sample + Need**. This adds a clearly labeled illustrated children’s garment to Freja’s inventory and a compatible need for Olivia. It preserves existing inventory and reuses the sample on repeated clicks.
