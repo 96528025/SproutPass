@@ -1,7 +1,10 @@
 // A4: /world. Lawn + radar + my avatar + other parents sliding between rings, real GPS feeding updatePresence,
 // the ?demo=1 walk, and the mount points for A5's EncounterScene / Celebration.
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { Celebration, EncounterScene, PARENTS, useEncounter } from "@/mocks/a4"; // A5 / C: swap for the real ones when they land
+import { PARENTS, useEncounter } from "@/mocks/a4"; // C: swap for the real api when it lands
+import { AgentBubbles } from "@/mocks/a5"; // C: swap for the real <AgentBubbles>
+import { Celebration } from "@/world/Celebration";
+import { EncounterScene } from "@/world/EncounterScene";
 import { Chip } from "@/pixel/components/Chip";
 import { PixelButton } from "@/pixel/components/PixelButton";
 import { Sprite } from "@/pixel/components/Sprite";
@@ -133,7 +136,7 @@ export function WorldScreen() {
           encounter={encounter}
           me={me}
           peer={PARENTS[peerId]}
-          bubbles={null /* C's <AgentBubbles> goes here */}
+          bubbles={<AgentBubbles lines={encounter.transcript} />}
           onProposed={() => setDismissedEncounter(encounter.id)}
           onClosed={() => setDismissedEncounter(encounter.id)}
         />

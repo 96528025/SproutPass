@@ -1,11 +1,11 @@
-// A4 stubs: C's api (updatePresence, listNearby, demoWalk, useEncounter) with an animated Jo walk, and A5's
-// EncounterScene / Celebration as full-screen panels. Delete each stub when its owner merges and point the
-// imports in WorldScreen / useGps / useNearby / useDemoWalk at the real files.
-import { useSyncExternalStore, type ReactNode } from "react";
-import { PixelButton } from "@/pixel/components/PixelButton";
-import { PixelPanel } from "@/pixel/components/PixelPanel";
-import type { SpriteName } from "@/pixel/sprites";
+// A4 stubs: C's api (updatePresence, listNearby, demoWalk, useEncounter) with an animated Jo walk. After the
+// encounter starts, the stub plays the whole demo on its own: 6 transcript turns → "proposed" → proposal "paid",
+// so the walk → encounter → flowers loop runs on one laptop. Delete when C's functions and B's proposals land.
+// A5's EncounterScene / Celebration are real now (imported directly in WorldScreen).
+import { useSyncExternalStore } from "react";
+import type { ItemIconName, SpriteName } from "@/pixel/sprites";
 import type { ParentId } from "@/world/query";
+import { PROPOSAL, TRANSCRIPT } from "@/mocks/a5";
 
 // ---- Contract types (A-team contract; the real ones come from packages/contracts) -----------------------------------
 export interface Parent {
@@ -50,6 +50,8 @@ export interface Encounter {
   parentBId: ParentId;
   status: "talking" | "proposed" | "no_match";
   proposalId?: string;
+  /** Not in the contract's Encounter shape exactly (real one is AgentTurn[]); enough for the bubbles stub. */
+  transcript: { speaker: string; text: string }[];
 }
 
 export interface MatchProposal {
@@ -60,7 +62,7 @@ export interface MatchProposal {
   source: "local";
   snapshot: {
     itemName: string;
-    icon: string;
+    icon: ItemIconName;
     size: string;
     originalPurchaseDate: string;
     originalPriceCents: number;
@@ -84,10 +86,42 @@ interface SimState {
   distance: number;
   lastWalkAt: number;
   encounter: Encounter | null;
+  proposal: MatchProposal | null;
 }
-let sim: SimState = { distance: START_DISTANCE_M, lastWalkAt: 0, encounter: null };
+let sim: SimState = { distance: START_DISTANCE_M, lastWalkAt: 0, encounter: null, proposal: null };
 const listeners = new Set<() => void>();
 const emit = () => listeners.forEach((l) => l());
+
+const TURN_MS = 1500;
+const PAY_MS = 3000;
+let scripted = false;
+
+/** Once the encounter exists, play the agents' talk, propose, then (stand-in for both accepts + Pay) mark it paid. */
+function runEncounterScript(aId: ParentId, bId: ParentId) {
+  if (scripted) return;
+  scripted = true;
+  // the contract fixture is Mina selling to Jo; keep that whichever phone we are on
+  const seller: ParentId = aId === "jo" ? bId : aId;
+  const buyer: ParentId = seller === aId ? bId : aId;
+  TRANSCRIPT.forEach((turn, i) => {
+    window.setTimeout(() => {
+      if (!sim.encounter) return;
+      sim = { ...sim, encounter: { ...sim.encounter, transcript: [...sim.encounter.transcript, turn] } };
+      emit();
+    }, TURN_MS * (i + 1));
+  });
+  window.setTimeout(() => {
+    if (!sim.encounter) return;
+    const proposal: MatchProposal = { ...PROPOSAL, sellerId: seller, buyerId: buyer, source: "local" };
+    sim = { ...sim, encounter: { ...sim.encounter, status: "proposed", proposalId: proposal.id }, proposal };
+    emit();
+  }, TURN_MS * (TRANSCRIPT.length + 1));
+  window.setTimeout(() => {
+    if (!sim.proposal) return;
+    sim = { ...sim, proposal: { ...sim.proposal, status: "paid", sellerDecision: "accepted", buyerDecision: "accepted" } };
+    emit();
+  }, TURN_MS * (TRANSCRIPT.length + 1) + PAY_MS);
+}
 
 const bandOf = (m: number): Band => (m < 25 ? "<25m" : m < 100 ? "25-100m" : "100-300m");
 /** Drifts 40° -> 70° as she walks in, so bearing smoothing is visible too. */
@@ -119,60 +153,20 @@ export async function demoWalk({ parentId, towardParentId }: { parentId: ParentI
   const dt = sim.lastWalkAt ? Math.min(now - sim.lastWalkAt, STEP_CAP_MS) : 1000;
   const distance = Math.max(8, sim.distance - ((START_DISTANCE_M - 8) * dt) / WALK_MS);
   const encounter =
-    sim.encounter ?? (distance < 25 ? { id: "enc_1", parentAId: parentId, parentBId: towardParentId, status: "talking" as const } : null);
-  sim = { distance, lastWalkAt: now, encounter };
+    sim.encounter ??
+    (distance < 25 ? { id: "enc_1", parentAId: parentId, parentBId: towardParentId, status: "talking" as const, transcript: [] } : null);
+  sim = { ...sim, distance, lastWalkAt: now, encounter };
   emit();
+  if (encounter) runEncounterScript(parentId, towardParentId);
 }
 
 export function useEncounter(_parentId: ParentId): { encounter: Encounter | null; proposal: MatchProposal | null } {
-  const encounter = useSyncExternalStore(
+  const state = useSyncExternalStore(
     (cb) => {
       listeners.add(cb);
       return () => listeners.delete(cb);
     },
-    () => sim.encounter,
+    () => sim,
   );
-  return { encounter, proposal: null };
-}
-
-// ---- A5 stubs: full-screen overlays with a Close button ------------------------------------------------------------
-const overlay = { position: "fixed", inset: 0, zIndex: "var(--z-overlay)" as unknown as number, background: "var(--ink)", display: "grid", placeItems: "center", padding: 16 } as const;
-
-export interface EncounterSceneProps {
-  encounter: Encounter;
-  me: Parent;
-  peer: Parent;
-  bubbles?: ReactNode;
-  onProposed: (proposalId: string) => void;
-  onClosed: () => void;
-}
-export function EncounterScene({ encounter, me, peer, bubbles, onClosed }: EncounterSceneProps) {
-  return (
-    <div style={overlay} data-stub="EncounterScene">
-      <PixelPanel title="ENCOUNTER (A5 STUB)">
-        <p style={{ margin: "0 0 12px" }}>
-          {me.name} meets {peer.name} — {encounter.status}
-        </p>
-        {bubbles}
-        <PixelButton onClick={onClosed}>Close</PixelButton>
-      </PixelPanel>
-    </div>
-  );
-}
-
-export interface CelebrationProps {
-  proposal: MatchProposal;
-  me: Parent;
-  peer: Parent;
-  onDone: () => void;
-}
-export function Celebration({ proposal, onDone }: CelebrationProps) {
-  return (
-    <div style={overlay} data-stub="Celebration">
-      <PixelPanel title="TRADED! (A5 STUB)">
-        <p style={{ margin: "0 0 12px" }}>{proposal.snapshot.itemName}</p>
-        <PixelButton onClick={onDone}>Close</PixelButton>
-      </PixelPanel>
-    </div>
-  );
+  return { encounter: state.encounter, proposal: state.proposal };
 }
