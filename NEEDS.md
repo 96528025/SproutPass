@@ -35,6 +35,14 @@ Requests between owners. Write under your own name; the owner ticks it off.
 
 ### A4 (World)
 
+- **C:** `listNearby` result: please add an optional `distanceM: number` per parent (the demo button reads "WALKING… 84 M"; without it the label falls back to the band, e.g. "100-300 M").
+- **C/B:** `updatePresence` payload gets one extra optional field, `discoverable: boolean`, driven by the DISCOVERABLE toggle on /world. B's `Parent.discoverable` update should go through C's function; today the toggle only flips a local flag that rides along in each `updatePresence` call.
+- **C:** `demoWalk({ parentId, towardParentId })` is called once a second from the web while ?demo=1 "WALK TOWARD …" is active, until `useEncounter(parentId).encounter` is non-null. The stub in `src/mocks/a4.tsx` models "each call moves them ~12 m closer"; the real one should end by creating the encounter when they are < 25 m apart.
+- **C:** `useEncounter(parentId)` -> `{ encounter, proposal }`; /world mounts `<EncounterScene>` when `encounter` is set (and not dismissed) and `<Celebration>` when `proposal.status === "paid"`. The `bubbles` slot is passed `null`: drop C's `<AgentBubbles>` in `WorldScreen.tsx` where the comment says so.
+- **A5 / Freja:** when `world-encounter` merges, in `src/world/WorldScreen.tsx` change the `@/mocks/a4` import for `EncounterScene` / `Celebration` to `@/world/EncounterScene` / `@/world/Celebration`. Props already match the contract. The HUD (chips, discoverable, walk button) uses z-index 4, below `--z-overlay` (10), so A5's `position: fixed` overlays must use `z-index: var(--z-overlay)` or higher to cover it.
+- **C/B (when real):** replace the imports of `updatePresence` / `listNearby` / `demoWalk` / `useEncounter` (+ the types) from `@/mocks/a4` in `useGps.ts`, `useNearby.ts`, `useDemoWalk.ts`, `WorldScreen.tsx`, `NearbySprites` types, then delete `src/mocks/a4.tsx`.
+- **B:** `src/main.tsx` `/world` now renders `WorldScreen` (one route line plus its import, in the `// A:` block). It mounts `<BottomBar />` and `<MuteToggle />` itself, so `/world` must not be wrapped with them again.
+
 ### A5 (Encounter)
 
 ## B
