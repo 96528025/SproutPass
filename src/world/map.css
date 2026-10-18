@@ -1,23 +1,14 @@
-/* Pixelated real map behind the radar. No gradients, no border-radius, no blur. */
+/* Pixelated real map behind the radar (MapLibre vector tiles, drawn at half resolution). No gradients, no border-radius, no blur. */
 .map {
   position: absolute;
   inset: 0;
   z-index: 0;
-  isolation: isolate; /* Leaflet's pane z-indexes stay inside the map */
+  isolation: isolate; /* the map's own stacking stays inside */
   background: var(--paper);
 }
-/* The Leaflet box reaches under the chips row and the bottom bar by the same amount on both sides, so the map's
+/* The map box reaches under the chips row and the bottom bar by the same amount on both sides, so the map's
    centre is exactly the stage centre where my avatar stands. */
-.map__leaflet {
-  position: absolute;
-  left: 0;
-  right: 0;
-  top: calc(-1 * var(--bottom-bar));
-  bottom: calc(-1 * var(--bottom-bar));
-  background: var(--paper);
-  font-family: var(--font-label);
-  outline: none;
-}
+.map__view,
 .map__empty {
   position: absolute;
   left: 0;
@@ -25,35 +16,30 @@
   top: calc(-1 * var(--bottom-bar));
   bottom: calc(-1 * var(--bottom-bar));
   background: var(--paper);
+  overflow: hidden;
 }
-.map .leaflet-container { background: var(--paper); }
-
-/* ×2 pixel blocks. Esri's light-gray canvas is near-white; sepia warms the ground to cream, saturate brings the
-   parks and water back, so the map reads as a pastel diorama under the sprites. */
-.map .leaflet-tile-pane { filter: sepia(0.32) saturate(1.5) brightness(1.03) contrast(1.06); }
-.map .leaflet-tile {
+.map__gl {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  font-family: var(--font-label);
+  outline: none;
+}
+.map__gl.maplibregl-map { position: absolute; }
+/* pixelRatio 0.5 makes the canvas half-size; pixelated scaling turns each rendered pixel into a 2×2 block */
+.map .maplibregl-canvas {
   image-rendering: pixelated;
+  outline: none;
 }
-.map .leaflet-zoom-animated { transition: none; }
 
-/* the Los Angeles zone (the 4-px dashed outline stays 4 px at any zoom) */
-.map .map__zone {
-  stroke: var(--ink);
-  stroke-width: 4px;
-  stroke-dasharray: 8 8;
-  stroke-linecap: butt;
-  stroke-linejoin: miter;
-  fill: var(--grass);
-  fill-opacity: 0.25;
-  shape-rendering: crispEdges;
-}
+/* the Los Angeles zone is drawn by the map style (4-px ink dashes, grass wash at 0.25) */
 
 /* petal trail (inside the map so it stays glued to the ground) */
 .map__petal {
   position: absolute;
   left: 0;
   top: 0;
-  z-index: 650;
+  z-index: 2;
   width: 32px;
   height: 32px;
   pointer-events: none;
@@ -68,7 +54,7 @@
   position: absolute;
   left: 0;
   top: 0;
-  z-index: 700;
+  z-index: 3;
   width: 16px;
   height: 16px;
   pointer-events: none;
