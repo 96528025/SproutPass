@@ -1,4 +1,1 @@
-{ "compilerOptions": { "target": "ES2022", "module": "ESNext", "moduleResolution": "bundler", "lib": ["ES2022", "DOM"],
-    "jsx": "react-jsx", "strict": true, "noEmit": true, "allowImportingTsExtensions": true, "skipLibCheck": true,
-    "types": ["vite/client"] },
-  "include": ["base44/shared/**/*.ts", "src/**/*.ts", "src/**/*.tsx"], "exclude": ["base44/shared/http.ts"] }
+{ "extends": "./tsconfig.json" }

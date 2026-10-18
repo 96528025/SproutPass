@@ -2,5 +2,10 @@ node_modules/
 dist/
 .env
 .env.*
+*.local
 *.log
 .DS_Store
+
+# Base44: .app.jsonc links this folder to the app; .types/ is generated
+.app.json*
+.types/

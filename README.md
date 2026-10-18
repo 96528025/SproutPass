@@ -22,7 +22,7 @@ This folder is the repo root. What's here so far:
 3. **tsconfig.** The app's tsconfig needs `"allowImportingTsExtensions": true`, `"moduleResolution": "bundler"`, `"noEmit": true`, and must include `base44/shared` (excluding `base44/shared/http.ts`).
 4. **Verify.** Run `git init && git add -A && git commit -m "contract pack"`, then `npm i && npx vitest run`. Expect 4 tests passing.
 5. **Publish and open it up.**
-   - Run `base44 deploy` once to publish.
+   - Run `base44 deploy --build -y` once to publish. Always build through the CLI (`base44 build` / `--build`); a bare `npm run build` leaves `VITE_BASE44_APP_ID` unset and every API call fails.
    - Run `npx base44 visibility public`.
    - Open `https://<slug>.base44.app` on both iPhones and add it to the Home Screen.
 6. **Start Agents 1–3.** Follow the top of `docs/B-AGENT-PROMPTS.md`: three sessions in this same folder (no worktrees), each given the shared preamble + its own section.
