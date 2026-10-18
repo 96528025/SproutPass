@@ -1,30 +1,176 @@
-# SproutPass (Hand-Me-Down Relay) — LA Hacks 2026
+# Hand-Me-Down Relay (SproutPass) · LA Hacks 2026
 
-This folder is the repo root. What's here so far:
+Kids outgrow their clothes every few months, and most of those clothes end up in a drawer or a bin while the
+family two streets away buys the same size new. **Hand-Me-Down Relay** gives every parent a pixel pet that is
+also their AI closet agent. The pet remembers what each item cost, predicts when the child will outgrow it, and
+asks "still fit? pass it on?" at the right moment. When two parents walk within 25 m of each other, their pets'
+agents (Fetch.ai uAgents) negotiate a hand-me-down trade on their own and put the same proposal on both phones.
+The pet can find and propose. **Only the parents decide**: nothing is charged until both accept, the buyer
+approves the (demo) payment, and the item moves to the buyer's closet with its ownership history. The price is
+fixed and shown up front (2nd owner pays 60% of the original price, 3rd pays 40%), and after 3 owners an item
+has reached its final home. The same pet also lives in iMessage (through Photon), so a parent can sell by
+sending a photo and accept a trade by text.
 
-| Path | What it is | Owner |
-|---|---|---|
-| `docs/TEAM-BUILD-PROMPTS.md` | Team plan v4: Part 0 (general) + Part D (pixel design system) + Parts A / B / C | everyone |
-| `docs/B-AGENT-PROMPTS.md` | Person B split into 3 parallel agents sharing this folder: shared preamble + one section each | Caesar (B) |
-| `CONTRACT-PACK.md` | What the B contract pack contains and how it fits the Base44 project | B |
-| `base44/entities/*.json` | 11 Base44 entity schemas | B1 |
-| `base44/shared/*` | Frozen types, pricing, sizes, db helpers, http wrapper, match, nudges, seed, fake DB, logic stubs | B (frozen parts) / B1–B3 |
-| `src/app/*` | Frontend contract: types re-export, `Api` interface, starter mock, real-adapter stub, pixel-kit shim | B4 |
-| `NEEDS.md` | Cross-agent / cross-person requests | everyone |
-| `docs/reference/fetch-a2a/` | Tested Fetch.ai example: chat + agent-to-agent + payment protocols (uagents 0.26.1) | C (reference only) |
+**Live app:** https://sproutpass-5c025059.base44.app  (open `/?as=mina&demo=1` on one phone and `/?as=jo&demo=1`
+on another; `sproutpass.base44.app` is *not* the address)
 
-## Setup (once, before launching agents)
+> Payments are a **demo payment · no real charge**. No card is collected or stored, and no payment network is
+> integrated. See [What is live and what is not](#what-is-live-and-what-is-not).
 
-1. **Base44 project files.** `base44 create` → React template (Node ≥ 20.19, `npm i -g base44@latest`).
-   - If it won't create into this non-empty folder, create it in `C:\sproutpass-template` and copy the template's files in here without overwriting ours: `package.json` (merge), `index.html`, `vite.config.*`, `src/main.*`, `src/api/*`, `base44/config.jsonc`, `base44/.app.jsonc`.
-   - Delete the sample `base44/entities/task.jsonc`.
-2. **Merge `package.json`.** Add our devDependencies (`vitest`, `typescript`) and the scripts `"test": "vitest run"` and `"typecheck": "tsc -p tsconfig.check.json"`.
-3. **tsconfig.** The app's tsconfig needs `"allowImportingTsExtensions": true`, `"moduleResolution": "bundler"`, `"noEmit": true`, and must include `base44/shared` (excluding `base44/shared/http.ts`).
-4. **Verify.** Run `git init && git add -A && git commit -m "contract pack"`, then `npm i && npx vitest run`. Expect 4 tests passing.
-5. **Publish and open it up.**
-   - Run `base44 deploy --build -y` once to publish. Always build through the CLI (`base44 build` / `--build`); a bare `npm run build` leaves `VITE_BASE44_APP_ID` unset and every API call fails.
-   - Run `npx base44 visibility public`.
-   - Open **https://sproutpass-5c025059.base44.app** on both iPhones (`?as=mina&demo=1` / `?as=jo&demo=1`) and add it to the Home Screen. (`sproutpass.base44.app` is *not* the address.)
-   - To update just the website later: `base44 build`, then `base44 site deploy -y`.
-   - Local dev: `npm run mock` (fake data, :5174) or `npm run real` (live data, :5176). In PowerShell, avoid `npm run x -- --flag`: it drops the `--`.
-6. **Start Agents 1–3.** Follow the top of `docs/B-AGENT-PROMPTS.md`: three sessions in this same folder (no worktrees), each given the shared preamble + its own section.
+Submission material: [Devpost write-up](docs/submission/devpost.md) · [Track mapping](docs/submission/tracks.md) ·
+[Demo script](docs/submission/demo-script.md) · [Architecture and trust design](docs/submission/architecture.md) ·
+[Testing](docs/submission/testing.md)
+
+---
+
+## Run it
+
+Requirements: Node 22 (see `.nvmrc`), and Python 3.11+ for the agents (we use 3.13). Install once with `npm i`.
+
+### Mock mode (no account, no network backend)
+
+```bash
+npx vite --mode mock --port 5174        # or: npm run mock
+```
+
+Open http://localhost:5174/ for the title screen, or go straight to a family:
+
+- http://localhost:5174/bag?as=mina&demo=1 (Mina, the seller)
+- http://localhost:5174/world?as=jo&demo=1 (Jo, the buyer), in a second tab
+
+Mock mode (`VITE_USE_MOCK=1`, set by `.env.mock`) runs the **real server handlers** from `base44/shared/**` on an
+in-browser fake database. Tabs on the same origin share one world through `BroadcastChannel` and a `localStorage`
+snapshot, so two tabs behave like two phones. The `?demo=1` panel adds a story clock (MAY 15 / SEP 20 / OCT 18),
+RESET, and, in mock mode only, TRIGGER ENCOUNTER. Fonts (Google Fonts) and map tiles (Esri) still come from the
+internet; everything else runs locally.
+
+On Windows PowerShell, `npm run x -- --flag` drops the `--`, so start Vite with `npx vite …` directly.
+
+### Real mode (local frontend, live Base44 backend)
+
+`.env.real` is gitignored. Create it with the app's public id and API base:
+
+```bash
+VITE_BASE44_APP_ID=6ad44c7f93f653025c025059
+VITE_BASE44_APP_BASE_URL=https://base44.app
+```
+
+then run `npm run real` (Vite on port 5176). Real mode calls the live Base44 functions, which share one rate
+limit for the whole team (see [testing.md](docs/submission/testing.md#rate-limit-notes)), so please don't loop
+scripts against it.
+
+### The Fetch.ai agents
+
+```bash
+cd agents
+python -m venv .venv && .venv/Scripts/python -m pip install -r requirements.txt   # bin/python on macOS/Linux
+.venv/Scripts/python local_demo.py          # the whole story offline: three uAgents in one Bureau, "LOCAL DEMO PASS"
+.venv/Scripts/python live_bureau.py         # mina + jo + sam agents against the live app (needs AGENT_KEY)
+```
+
+`local_demo.py` needs no keys and no network. It prints the agent-to-agent protocol log
+(`LookingFor → HaveListings → ProposeTrade → TradeAck` between two `agent1q…` addresses) and ends with 13 PASS
+checks. `live_bureau.py` reads `AGENT_KEY` from the environment, `agents/.env` or the repo's `.env.local`, and never
+prints it. More in [agents/agent_readme.md](agents/agent_readme.md).
+
+---
+
+## Architecture
+
+Three people built three layers against one frozen contract (`base44/shared/types.ts` and the `Api` interface in
+`src/app/api.ts`). Diagrams are in [architecture.md](docs/submission/architecture.md).
+
+| Layer | Owner | What it does | Where |
+|---|---|---|---|
+| **World and pixel kit** | A | Title screen, Leaflet map with a 25 m radar, real GPS or the `?demo=1` walk, the encounter cut-scene, the flower celebration, the pixel UI kit, original sprites and sounds generated by code | `src/world/*`, `src/pixel/*`, `tools/art/*`, `public/` |
+| **Closet, trade and backend** | B | Base44 entities, pricing (`priceFor`, the only price implementation), outgrow dates, nudges, listings, proposals, demo payment and ownership transfer, demo clock and seed, the pet's spending rules and passkey approval, snap-to-list, impact, and the bag, trade, pet-rules and impact screens | `base44/entities/*`, `base44/shared/*.ts`, `base44/shared/logic/*`, `base44/functions/*`, `src/app/*`, `src/closet/*`, `src/trade/*`, `src/trust/*`, `src/impact/*` |
+| **Agents and messages** | C | Presence and encounters, the local fallback matcher, the Fetch.ai closet agents and their RelayProtocol, the agent API, Photon iMessage (webhook, per-parent lines, the conversation), the in-app pet and speech bubbles, the Agent Console | `base44/shared/c/*`, `agents/*`, `src/agent/*`, `src/console/*` |
+
+How a request flows:
+
+- **Screens never touch Base44 directly.** Every screen calls `api` (`src/app/api.ts`), which is either
+  `api.real.ts` (Base44 functions plus realtime entity subscriptions) or `api.mock.ts` (the same handlers on an
+  in-browser fake database).
+- **Business logic is pure TypeScript** in `base44/shared/**` (no `npm:` or `base44:` imports). The same code runs in
+  the Deno functions, in the browser mock and in vitest. Only `base44/functions/*/entry.ts`, `base44/shared/http.ts`
+  and `base44/shared/c/auth.ts` touch the Base44 runtime.
+- **The browser can't write any entity.** Every entity has `create/update/delete: false` for clients; writes go
+  through the 29 functions in `base44/functions/`, which use the service role. A parent's phone number, Photon ids,
+  pet rules and passkeys are admin-only fields and are stripped by `publicParent` before anything leaves the
+  backend.
+- **Agents talk to the app over one endpoint**, `agentApi` (header `x-agent-key`), and to each other over the
+  `HandMeDownRelay 0.3.0` uAgents protocol. When the agents are offline or slow, C's local matcher proposes the same
+  trade after 8 s (25 s while agents are on duty) and labels it `fallback`.
+
+### Repo map
+
+| Path | What it is |
+|---|---|
+| `base44/entities/*.json` | 13 entity schemas with row- and field-level access rules |
+| `base44/functions/<name>/entry.ts` | 29 Deno functions (thin wrappers around `base44/shared`) |
+| `base44/shared/logic/{closet,trade,trust,snap,impact,demo}.ts` | B's handlers |
+| `base44/shared/c/*` | C's location, encounter, iMessage and Photon helpers (Deno tests live here as `*_test.ts`) |
+| `src/app/*` | Shell, routes, store, `Api` interface, mock and real adapters, demo panel |
+| `src/{world,pixel,closet,trade,trust,impact,agent,console}/*` | Screens and components |
+| `agents/*` | Python uAgents: `closet_agent.py`, `relay_protocol.py`, `live_bureau.py`, `local_demo.py`, `mock_base44.py`, tests |
+| `scripts/demo-api.mjs` | Backend smoke test that drives the whole story over HTTP (12 steps) |
+| `docs/submission/*` | Submission write-ups |
+| `NEEDS.md` | The team's running log of cross-owner requests and live-run findings |
+
+### Screens
+
+| Route | Screen |
+|---|---|
+| `/` | Title screen, location explainer, "Who's playing?" picker, links to the Agent Console and impact |
+| `/world` | Map and radar, real GPS or the `?demo=1` "WALK TOWARD …" button, encounter scene, celebration |
+| `/bag` | The closet: item slots, fit bar, nudges, needs, items passed on |
+| `/bag/add` | Snap to list: a photo of the item or its tag, the AI's guess, a check card, "Add to bag" |
+| `/bag/list/:itemId` | Listing flow: photo, condition (the pet suggests one), fixed price receipt |
+| `/bag/pet` | The pet's spending rules, passkey (Face ID) set-up, and how to text the pet on iMessage |
+| `/trade/:id` | Trade window: both decisions, receipt, pay |
+| `/agents` | Agent Console for a projector: the agents' protocol messages, the pets' lines, a privacy check, the outcome |
+| `/impact` | Impact and rewards: new homes, CO₂e, water, landfill, money saved and earned, points, sources |
+| `/log` | Relay log hub: funnel, $0 declines, ownership chains |
+
+---
+
+## Tests
+
+```bash
+npx tsc -p tsconfig.check.json                                   # typecheck (exit 0)
+npx vitest run                                                   # 21 files, 429 tests
+npx -y deno@2 test --no-lock -A base44/shared/c/                 # 59 Deno tests (iMessage, webhook, parity)
+agents/.venv/Scripts/python.exe -m pytest -q agents/tests        # 102 Python tests
+agents/.venv/Scripts/python.exe agents/local_demo.py             # offline Fetch.ai story, 13 PASS checks
+```
+
+Counts are from a run on Oct 18, 2026, on the current tree. Details per file, what each suite proves, and the live
+runs we did are in [testing.md](docs/submission/testing.md).
+
+---
+
+## What is live and what is not
+
+- **Live and verified on the deployed site (Oct 18, about 02:00):** the whole story on two tabs: Sep 20 nudge, sell,
+  condition suggested by the pet, $18.00 listing, Oct 18 demo walk, encounter scene with the pets' bubbles, trade
+  window on both tabs, accept on both, demo pay, celebration on both, romper in Jo's bag. A second run with the
+  Fetch.ai agents running in `live_bureau.py`: the agents negotiated and created the proposal themselves
+  (`source: fetch`). The backend `selfTest` passed 13 of 13 checks.
+- **In the repo, tested on the mock and in unit tests, not yet deployed:** the pet's spending rules and passkey
+  approval (`getTrust`, `setMandate`, `passkey*`, the new `payProposal`), snap-to-list (`analyzeItemPhoto`),
+  impact (`getImpact`), the Agent Console's stored protocol log (`Encounter.agentLog`), and the full iMessage
+  conversation (sell by photo, accept by text, STOP, rate limits, signed webhooks). They need one entity push and a
+  function deploy; the order is in [testing.md](docs/submission/testing.md#going-live-checklist).
+- **Needs a human:** Photon set-up (API key, webhook, one shared-pool number per demo phone, each phone texts "hi"
+  once), the Agentverse mailbox for ASI:One, and a real device for Face ID. Real Face ID approval has been
+  exercised in Deno with a software authenticator and in Chrome with a virtual authenticator, not on Base44.
+- **Demo shortcuts, stated plainly:** there is no sign-in (`?as=mina` picks the family), the payment is simulated
+  (`DEMO-XXXXXX` reference), and `?demo=1` simulates the walk for indoor judging.
+
+## Rules the code never breaks
+
+1. Nothing is charged until **both** parents accept (`payProposal` refuses anything that isn't `both_accepted`).
+2. An item with 3 owners can never be listed or sold (`priceFor` returns `null`, `listItem` and `payProposal` refuse).
+3. Agents and screens never decide for a person: agents only propose; accepting and paying are human taps.
+4. A parent's phone number never leaves the backend (`publicParent`, admin-only field rules, masking in texts).
+5. Every pay surface says "Demo payment · no real charge".

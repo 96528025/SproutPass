@@ -5,7 +5,7 @@ import type {
   MatchProposal, Need, ParentRef, PayProposalReq, PayProposalRes, RecordPurchaseReq, RelayStats,
   ResolveNudgeReq, ResolveNudgeRes, SelfTestRes, UpsertNeedReq, WithdrawListingReq, ClothingItem,
   GetPartiesReq, PublicParty, UpdatePresenceReq, UpdatePresenceRes, ListNearbyReq, ListNearbyRes, DemoWalkReq,
-  DemoWalkRes, TrustView, SetMandateReq, PetMandate, PasskeyOptionsReq, PasskeyVerifyReq, AnalyzeItemPhotoReq,
+  DemoWalkRes, TrustView, SetMandateReq, PetMandate, PasskeyOptionsReq, PasskeyVerifyReq, PasskeyRemoveReq, AnalyzeItemPhotoReq,
   ItemPhotoGuess, ImpactView,
 } from "./types";
 import { mockApi } from "./api.mock";
@@ -50,6 +50,7 @@ export interface Api {
   passkeyRegisterOptions(req: PasskeyOptionsReq): Promise<Record<string, unknown>>;
   passkeyRegisterVerify(req: PasskeyVerifyReq): Promise<{ ok: true; passkeys: TrustView["passkeys"] }>;
   passkeyAuthOptions(req: PasskeyOptionsReq): Promise<Record<string, unknown>>;
+  passkeyRemove(req: PasskeyRemoveReq): Promise<TrustView>;  // forget one saved passkey; the last one turns Face ID off
   // AI snap-to-list: a photo of the item (or its tag) → what the AI thinks it is.
   analyzeItemPhoto(req: AnalyzeItemPhotoReq): Promise<ItemPhotoGuess>;
   // Impact + rewards for everyone (and `me` when a parent is given).

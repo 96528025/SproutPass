@@ -109,6 +109,7 @@ export interface Encounter {         // C owns the logic
   transcript: AgentTurn[];
   agentLog?: AgentLogEntry[];        // the agents' protocol messages, for the Agent Console (C writes it)
   negotiatedBy?: "fetch" | "local";  // Fetch.ai agents, or C's local fallback matcher
+  noMatchReason?: string;            // no_match because the buyer's pet rules said no: trust.ts's sentence (no amounts)
 }
 
 /** One protocol message between two closet agents (Fetch.ai uAgents), shown live in the Agent Console. */
@@ -258,9 +259,13 @@ export interface TrustView {
 export interface SetMandateReq extends ParentRef { mandate: Partial<PetMandate> }
 export interface PasskeyOptionsReq extends ParentRef { proposalId?: ID }
 export interface PasskeyVerifyReq extends ParentRef { response: Record<string, unknown>; label?: string }
+export interface PasskeyRemoveReq extends ParentRef { passkeyId: string }  // TrustView.passkeys[].id
 
 // ---------------------------------------------------------------- AI snap-to-list
-export interface AnalyzeItemPhotoReq { imageUrl: string }
+export interface AnalyzeItemPhotoReq {
+  imageUrl: string;
+  hint?: string;                     // optional words about the item (e.g. the photo's file name); never required
+}
 export interface ItemPhotoGuess {
   name?: string; category?: Category; size?: SizeLabel; condition?: Condition; note?: string; icon?: string;
   estimatedRetailCents?: number; confidence?: number; via: "llm" | "template";

@@ -1,9 +1,16 @@
-/* OWNER: Agent 2 (B5). Trade window, pay button, relay log. Pixel rules: 4 px grid, hard ink shadows,
-   no blur, no gradients, no rounded corners. Palette vars come from b.css / A's tokens. */
+/* Trade window, pay button, reopen pill, relay log. Pixel rules: 4 px grid, hard ink shadows, no blur, no gradients,
+   no rounded corners. Type: sentences in the readable UI font (16 px+), pixel fonts only for short tags, names and
+   numbers. Palette and fonts come from A's tokens (B1's --font-* / --fs-* when present, with fallbacks). */
 
-.t-label { font-family: Silkscreen, monospace; font-size: 12px; text-transform: uppercase; line-height: 16px; }
-.t-p { margin: 0; line-height: 20px; }
-.t-muted { opacity: 0.7; }
+.t-label {
+  font-family: var(--font-label);
+  font-size: var(--fs-tag, 12px);
+  line-height: 16px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+.t-p { margin: 0; font-family: var(--font-ui); font-size: var(--fs-md, 16px); line-height: 22px; }
+.t-muted { color: var(--ink-soft, #4a3f5c); }
 .t-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .t-row-between { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .t-stack { display: flex; flex-direction: column; gap: 12px; }
@@ -18,28 +25,59 @@
   overscroll-behavior: contain;
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 16px;
   margin: 0 -4px;
   padding: 0 4px 8px;
+  font-family: var(--font-ui);
+  font-size: var(--fs-md, 16px);
+  line-height: 22px;
 }
+/* the promise, always in view while scrolling */
 .t-banner {
   position: sticky;
   top: 0;
   z-index: 1;
-  background: var(--pink, #FF8FAB);
-  border: 4px solid var(--ink, #2B2140);
-  box-shadow: 4px 4px 0 var(--ink, #2B2140);
-  padding: 4px 8px;
-  font-family: Silkscreen, monospace;
-  font-size: 12px;
-  line-height: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin-right: 28px; /* clears the modal's × */
+  padding: 6px 10px;
+  background: var(--pink);
+  color: var(--ink);
+  border: 4px solid var(--ink);
+  /* ink shadow, then a paper strip to the right so scrolled text never peeks out beside the modal's × */
+  box-shadow: 4px 4px 0 var(--ink), 36px -4px 0 4px var(--paper);
+  font-family: var(--font-ui);
+  font-size: var(--fs-md, 16px);
+  line-height: 20px;
+  font-weight: 700;
   text-align: center;
-  text-transform: uppercase;
+}
+.t-banner::before {
+  /* a tiny pixel lock: nothing moves until both say yes */
+  content: "";
+  flex: none;
+  width: 4px;
+  height: 4px;
+  margin: -8px 12px 0 0;
+  box-shadow:
+    4px 0 0 var(--ink), 8px 0 0 var(--ink),
+    0 4px 0 var(--ink), 12px 4px 0 var(--ink),
+    0 8px 0 var(--ink), 4px 8px 0 var(--ink), 8px 8px 0 var(--ink), 12px 8px 0 var(--ink),
+    0 12px 0 var(--ink), 4px 12px 0 var(--ink), 8px 12px 0 var(--ink), 12px 12px 0 var(--ink);
 }
 
 .t-header { display: grid; grid-template-columns: 96px minmax(0, 1fr) 96px; align-items: start; gap: 8px; }
 .t-party { display: flex; flex-direction: column; align-items: center; gap: 4px; text-align: center; min-width: 0; }
-.t-party-name { font-family: Silkscreen, monospace; font-size: 16px; text-transform: uppercase; overflow-wrap: anywhere; }
+.t-party-name {
+  font-family: var(--font-label);
+  font-size: 16px; /* Silkscreen stays on its 8-px grid: 12, 16 or 24 */
+  line-height: 20px;
+  text-transform: uppercase;
+  overflow-wrap: anywhere;
+}
+.t-party .t-label { letter-spacing: 0; white-space: nowrap; }
 .t-mid { display: flex; flex-direction: column; align-items: center; gap: 4px; min-width: 0; }
 .t-item-slot { position: relative; }
 .t-thumb {
@@ -47,124 +85,218 @@
   right: -16px;
   bottom: -12px;
   object-fit: cover;
-  background: #fff;
-  border: 4px solid var(--ink, #2B2140);
-  box-shadow: 4px 4px 0 var(--ink, #2B2140);
+  background: var(--white);
+  border: 4px solid var(--ink);
+  box-shadow: 4px 4px 0 var(--ink);
 }
-.t-swap { font-family: Silkscreen, monospace; font-size: 24px; line-height: 24px; margin-top: 12px; }
+.t-swap { font-family: var(--font-label); font-size: 24px; line-height: 24px; margin-top: 16px; }
 
-.t-details { display: flex; flex-direction: column; gap: 8px; }
-.t-item-name { margin: 0; font-family: "Pixelify Sans", monospace; font-size: 20px; line-height: 24px; }
-.t-stars { color: var(--ink, #2B2140); letter-spacing: 2px; }
+.t-details { display: flex; flex-direction: column; gap: 12px; }
+.t-item-name {
+  margin: 0;
+  font-family: var(--font-ui);
+  font-size: var(--fs-xl, 24px);
+  line-height: 28px;
+  font-weight: 700;
+}
+/* "BOUGHT MAY 15 · $30.00": a fact line, readable */
+.t-details > .t-label {
+  font-family: var(--font-ui);
+  font-size: var(--fs-md, 16px);
+  line-height: 22px;
+  letter-spacing: 0;
+  text-transform: none;
+}
+.t-details .t-p .t-label { vertical-align: 1px; }
+.t-stars { color: var(--ink); letter-spacing: 2px; }
 .t-note { font-style: normal; }
 
-.t-how { border: 4px solid var(--ink, #2B2140); background: var(--cream, #FFE8B8); padding: 4px 8px; }
-.t-how > summary { cursor: pointer; padding: 4px 0; list-style: none; }
+/* "How our pets found this" */
+.t-how { border: 4px solid var(--ink); background: var(--cream); padding: 4px 12px; }
+.t-how > summary {
+  cursor: pointer;
+  padding: 8px 0;
+  list-style: none;
+  font-family: var(--font-ui);
+  font-size: var(--fs-md, 16px);
+  line-height: 20px;
+  font-weight: 700;
+  letter-spacing: 0;
+  text-transform: none;
+}
 .t-how > summary::before { content: "▸ "; }
 .t-how[open] > summary::before { content: "▾ "; }
 .t-how > summary::-webkit-details-marker { display: none; }
-.t-transcript { list-style: none; margin: 8px 0 4px; padding: 0; display: flex; flex-direction: column; gap: 8px; }
-.t-turn { border: 4px solid var(--ink, #2B2140); padding: 4px 8px; max-width: 85%; line-height: 20px; }
-.t-turn-seller { background: var(--paper, #FFF4D6); align-self: flex-start; }
-.t-turn-buyer { background: var(--lav, #B9A3FF); align-self: flex-end; }
+.t-how > summary:focus-visible { outline: 4px solid var(--sky); outline-offset: 2px; }
+.t-transcript { list-style: none; margin: 4px 0 8px; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.t-turn {
+  border: 4px solid var(--ink);
+  padding: 6px 10px;
+  max-width: 88%;
+  font-family: var(--font-ui);
+  font-size: var(--fs-md, 16px);
+  line-height: 22px;
+}
+.t-turn > .t-label { display: block; margin-bottom: 2px; }
+.t-turn-seller { background: var(--paper); align-self: flex-start; }
+.t-turn-buyer { background: var(--lav); align-self: flex-end; }
 
+/* who has said yes */
 .t-status { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .t-side {
-  display: flex; flex-direction: column; gap: 4px; padding: 8px;
-  border: 4px solid var(--ink, #2B2140);
-  background: var(--cream, #FFE8B8);
+  display: flex; flex-direction: column; gap: 4px; padding: 8px 10px;
+  border: 4px solid var(--ink);
+  background: var(--cream);
 }
-.t-side-accepted { background: var(--mint, #8EE3C8); }
-.t-side-declined { background: var(--red, #E85D5D); }
-.t-side-text { font-family: Silkscreen, monospace; font-size: 16px; line-height: 20px; }
+.t-side-accepted { background: var(--mint); }
+.t-side-declined { background: var(--red-deep, #b03535); color: var(--paper); }
+.t-side-text { font-family: var(--font-label); font-size: 16px; line-height: 20px; letter-spacing: 0; white-space: nowrap; }
 .t-side-pending .t-side-text { animation: t-blink 1s steps(1) infinite; }
-.t-handover { margin: 0; }
+/* "HAND OVER LATER · Saturday at the park bench" */
+.t-handover {
+  margin: 0;
+  font-family: var(--font-ui);
+  font-size: var(--fs-md, 16px);
+  line-height: 22px;
+  letter-spacing: 0;
+  text-transform: none;
+}
 
 .t-actions-area { display: flex; flex-direction: column; gap: 12px; }
-.t-check { display: flex; align-items: center; gap: 8px; cursor: pointer; }
+.t-check { display: flex; align-items: center; gap: 12px; min-height: 44px; cursor: pointer; }
+.t-check .t-label {
+  font-family: var(--font-ui);
+  font-size: var(--fs-md, 16px);
+  line-height: 20px;
+  letter-spacing: 0;
+  text-transform: none;
+}
 .t-check input {
-  appearance: none; width: 20px; height: 20px; margin: 0;
-  border: 4px solid var(--ink, #2B2140); background: var(--paper, #FFF4D6); cursor: pointer;
+  appearance: none; flex: none; width: 24px; height: 24px; margin: 0;
+  border: 4px solid var(--ink); background: var(--paper); cursor: pointer;
 }
-.t-check input:checked { background: var(--ink, #2B2140); box-shadow: inset 0 0 0 4px var(--gold, #FFC83D); }
-.t-check input:focus-visible { outline: 4px solid var(--lav, #B9A3FF); }
+.t-check input:checked { background: var(--ink); box-shadow: inset 0 0 0 4px var(--gold); }
+.t-check input:focus-visible { outline: 4px solid var(--sky); outline-offset: 2px; }
 .t-input {
-  width: 100%; padding: 8px; border: 4px solid var(--ink, #2B2140); background: #fff; border-radius: 0;
-  font-family: "Pixelify Sans", monospace; font-size: 16px;
+  width: 100%; min-height: 44px; padding: 8px 10px; border: 4px solid var(--ink); background: var(--white); border-radius: 0;
+  font-family: var(--font-ui); font-size: var(--fs-md, 16px); line-height: 20px; color: var(--ink);
 }
-.t-input:focus { outline: 4px solid var(--lav, #B9A3FF); outline-offset: 0; }
-.t-wait { margin: 0; padding: 8px; border: 4px dashed var(--ink, #2B2140); text-align: center; }
+.t-input::placeholder { color: var(--ink); opacity: 0.55; }
+.t-input:focus { outline: 4px solid var(--sky); outline-offset: 0; }
+/* "waiting for the other parent" and similar status lines: sentences, so the readable font */
+.t-wait {
+  margin: 0;
+  padding: 10px 12px;
+  border: 4px dashed var(--ink);
+  background: var(--paper);
+  font-family: var(--font-ui);
+  font-size: var(--fs-md, 16px);
+  line-height: 22px;
+  font-weight: 700;
+  letter-spacing: 0;
+  text-transform: none;
+  text-align: center;
+}
 
-.t-final { display: flex; flex-direction: column; gap: 8px; align-items: stretch; text-align: center; padding: 8px;
-  border: 4px solid var(--ink, #2B2140); background: var(--paper, #FFF4D6); }
-.t-final-paid { background: var(--gold, #FFC83D); }
-.t-final-declined { background: var(--cream, #FFE8B8); }
-.t-big { margin: 0; font-family: Silkscreen, monospace; font-size: 16px; line-height: 20px; text-transform: uppercase; }
+.t-final {
+  display: flex; flex-direction: column; gap: 8px; align-items: stretch; text-align: center; padding: 12px;
+  border: 4px solid var(--ink); background: var(--paper); box-shadow: 4px 4px 0 var(--ink);
+}
+.t-final-paid { background: var(--gold); }
+.t-final-declined { background: var(--cream); }
+.t-final .t-label {
+  font-family: var(--font-ui);
+  font-size: var(--fs-md, 16px);
+  line-height: 22px;
+  letter-spacing: 0;
+  text-transform: none;
+}
+.t-big {
+  margin: 0;
+  font-family: var(--font-ui);
+  font-size: var(--fs-lg, 20px);
+  line-height: 26px;
+  font-weight: 700;
+}
 
 /* ---------------------------------------------------------------- pay button */
 .t-pay { display: flex; flex-direction: column; align-items: stretch; gap: 8px; }
-.t-pay > :first-child { font-size: 20px; }
+.t-pay > .pb:first-child { font-size: var(--fs-lg, 20px); }
+.t-pay > .chip { align-self: center; }
 .t-paying {
-  display: flex; align-items: center; justify-content: center; gap: 12px; padding: 12px;
-  background: var(--gold, #FFC83D); border: 4px solid var(--ink, #2B2140);
+  display: flex; align-items: center; justify-content: center; gap: 12px; min-height: 52px; padding: 12px;
+  background: var(--gold); border: 4px solid var(--ink); box-shadow: 4px 4px 0 var(--ink);
+}
+.t-paying .t-label {
+  font-family: var(--font-ui);
+  font-size: var(--fs-md, 16px);
+  line-height: 20px;
+  font-weight: 700;
+  letter-spacing: 0;
 }
 /* 2×2 pixel blocks lit one at a time, clockwise, in 4 steps */
 .t-spinner { display: grid; grid-template-columns: 8px 8px; grid-template-rows: 8px 8px; gap: 4px; }
-.t-spinner i { display: block; background: var(--ink, #2B2140); opacity: 0.25; animation: t-spin 0.8s steps(1) infinite; }
+.t-spinner i { display: block; background: var(--ink); opacity: 0.25; animation: t-spin 0.8s steps(1) infinite; }
 .t-spinner i:nth-child(1) { animation-delay: 0s; }
 .t-spinner i:nth-child(2) { animation-delay: 0.2s; }
 .t-spinner i:nth-child(4) { animation-delay: 0.4s; }
 .t-spinner i:nth-child(3) { animation-delay: 0.6s; }
 .t-link {
-  align-self: center; background: none; border: 0; padding: 4px; cursor: pointer; color: var(--ink, #2B2140);
-  font-family: Silkscreen, monospace; font-size: 12px; text-transform: uppercase; text-decoration: underline;
+  align-self: center; min-height: 32px; background: none; border: 0; padding: 4px 8px; cursor: pointer; color: var(--ink);
+  font-family: var(--font-label); font-size: var(--fs-tag, 12px); line-height: 16px; text-transform: uppercase; text-decoration: underline;
+  text-underline-offset: 3px;
 }
-.t-link:focus-visible { outline: 4px solid var(--lav, #B9A3FF); }
+.t-link:focus-visible { outline: 4px solid var(--sky); }
 
 /* ---------------------------------------------------------------- reopen pill (TradeWatcher) */
 .t-reopen {
-  /* fixed to A's handheld screen: above the bottom bar, left of C's corner pet, under dialogs (--z-dialog) */
-  position: fixed; left: 12px; bottom: calc(var(--bottom-bar) + 12px); z-index: 8;
-  padding: 8px 12px; cursor: pointer;
-  background: var(--pink, #FF8FAB); color: var(--ink, #2B2140);
-  border: 4px solid var(--ink, #2B2140); box-shadow: 4px 4px 0 var(--ink, #2B2140);
-  font-family: Silkscreen, monospace; font-size: 12px; text-transform: uppercase;
+  /* fixed to A's handheld screen, under dialogs (--z-dialog). On B's screens it sits in the bar's dock lane
+     (src/world/shell.css, 64px) on the left, in one row with C's 48px corner pet on the right: 10px off the bar,
+     so it stays inside the lane even mid-bob, and never wider than the space left of the pet. */
+  position: fixed; left: 12px; bottom: calc(var(--bottom-bar) + 10px); z-index: 8;
+  max-width: calc(100% - 92px);
+  min-height: 44px; padding: 8px 14px; cursor: pointer;
+  background: var(--pink); color: var(--ink);
+  border: 4px solid var(--ink); box-shadow: 4px 4px 0 var(--ink);
+  font-family: var(--font-label); font-size: var(--fs-tag, 12px); line-height: 16px; text-transform: uppercase;
   animation: t-bob 1s steps(2) infinite;
 }
-.t-reopen:active { transform: translateY(4px); box-shadow: 0 0 0 var(--ink, #2B2140); }
-.t-reopen:focus-visible { outline: 4px solid var(--lav, #B9A3FF); }
+.t-reopen:active { transform: translateY(4px); box-shadow: 0 0 0 var(--ink); }
+.t-reopen:focus-visible { outline: 4px solid var(--sky); outline-offset: 2px; }
+/* on /world the pill sits above A's walk column (the WALK button and its one-line hint plate), not on the hint */
+.b-overlays[data-route="world"] .t-reopen { bottom: calc(var(--bottom-bar) + 140px); }
 
 /* ---------------------------------------------------------------- relay log */
 .t-log { display: flex; flex-direction: column; gap: 16px; }
 .t-counter { display: flex; flex-direction: column; align-items: center; gap: 4px; text-align: center; }
-.t-counter-hero { padding: 8px 0 16px; border-bottom: 4px dashed var(--ink, #2B2140); margin-bottom: 12px; }
-.t-counter-num { font-family: Silkscreen, monospace; font-size: 32px; line-height: 36px; }
-.t-counter-hero .t-counter-num { font-size: 48px; line-height: 52px; }
-.t-counter-sm { font-size: 24px; line-height: 28px; }
-.t-unit { font-size: 16px; line-height: 20px; margin-left: 8px; }
-.t-counter-gold .t-counter-num { background: var(--gold, #FFC83D); border: 4px solid var(--ink, #2B2140); padding: 0 8px; }
+.t-counter-hero { padding: 8px 0 16px; border-bottom: 4px dashed var(--ink); margin-bottom: 12px; }
+.t-counter-num { font-family: var(--font-display, var(--font-label)); font-size: var(--fs-2xl, 32px); line-height: 40px; }
+.t-counter-hero .t-counter-num { font-size: 48px; line-height: 56px; }
+.t-counter-sm { font-size: var(--fs-xl, 24px); line-height: 28px; }
+.t-unit { font-size: var(--fs-md, 16px); line-height: 20px; margin-left: 8px; }
+.t-counter-gold .t-counter-num { background: var(--gold); border: 4px solid var(--ink); padding: 0 8px; }
 .t-funnel { display: grid; grid-template-columns: 1fr auto 1fr auto 1fr; align-items: center; gap: 4px; }
-.t-arrow { font-family: Silkscreen, monospace; font-size: 20px; }
+.t-arrow { font-family: var(--font-label); font-size: 20px; }
 .t-declined { display: flex; align-items: center; justify-content: center; gap: 8px; margin-top: 12px;
-  padding: 8px; border: 4px solid var(--ink, #2B2140); background: var(--mint, #8EE3C8); }
+  padding: 8px; border: 4px solid var(--ink); background: var(--mint); }
 
 .t-chains { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 12px; }
 .t-how .t-chains { margin-top: 8px; }
-.t-chain { display: flex; flex-direction: column; gap: 8px; padding-bottom: 12px; border-bottom: 4px dotted var(--ink, #2B2140); }
+.t-chain { display: flex; flex-direction: column; gap: 8px; padding-bottom: 12px; border-bottom: 4px dotted var(--ink); }
 .t-chain:last-child { border-bottom: 0; padding-bottom: 0; }
-.t-chain-name { flex: 1; min-width: 0; font-size: 16px; }
+.t-chain-name { flex: 1; min-width: 0; font-family: var(--font-ui); font-size: var(--fs-md, 16px); line-height: 20px; font-weight: 700; }
 .t-timeline { list-style: none; margin: 0; padding: 0 0 4px; display: flex; gap: 16px; overflow-x: auto; }
 .t-node {
-  position: relative; flex: 0 0 auto; min-width: 104px;
-  display: flex; flex-direction: column; gap: 2px; padding: 4px 8px;
-  background: var(--paper, #FFF4D6); border: 4px solid var(--ink, #2B2140); box-shadow: 4px 4px 0 var(--ink, #2B2140);
+  position: relative; flex: 0 0 auto; min-width: 112px;
+  display: flex; flex-direction: column; gap: 2px; padding: 6px 10px;
+  background: var(--paper); border: 4px solid var(--ink); box-shadow: 4px 4px 0 var(--ink);
 }
 .t-node + .t-node::before {
-  content: ""; position: absolute; left: -20px; top: 50%; width: 16px; height: 4px; background: var(--ink, #2B2140);
+  content: ""; position: absolute; left: -20px; top: 50%; width: 16px; height: 4px; background: var(--ink);
 }
-.t-node-now { background: var(--gold, #FFC83D); }
-.t-node-name { font-family: Silkscreen, monospace; font-size: 12px; text-transform: uppercase; }
-.t-node-price { opacity: 0.8; }
+.t-node-now { background: var(--gold); }
+.t-node-name { font-family: var(--font-label); font-size: var(--fs-tag, 12px); line-height: 16px; text-transform: uppercase; }
+.t-node-price { color: var(--ink-soft, #4a3f5c); }
 
 @keyframes t-blink { 50% { opacity: 0.35; } }
 @keyframes t-spin { 0% { opacity: 1; } 25%, 100% { opacity: 0.25; } }
