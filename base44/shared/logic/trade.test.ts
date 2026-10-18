@@ -81,6 +81,28 @@ describe("createProposal", () => {
       .rejects.toMatchObject({ code: "already_open", status: 409 });
   });
 
+  it("two calls at once (the agents and the local fallback) leave one live proposal and one set of messages", async () => {
+    const [a, b] = await Promise.all([propose({ source: "fetch" }), propose()]);
+    expect(b.id).toBe(a.id);
+    expect((await db.MatchProposal.list()).filter((p) => p.status === "open")).toHaveLength(1);
+    expect((await events(ids.mina)).filter((e) => e.type === "proposal:new")).toHaveLength(1);
+    expect((await events(ids.jo)).filter((e) => e.type === "proposal:new")).toHaveLength(1);
+  });
+
+  it("two buyers at once: the first-created proposal wins and the other gets 409 already_open", async () => {
+    const [samChild] = await db.Child.filter({ parentId: ids.sam });
+    await db.Child.update(samChild.id, { birthDate: "2026-03-01T00:00:00.000Z" }); // a 6-9M baby, like Jo's
+    await db.Need.create({ parentId: ids.sam, childId: samChild.id, sizes: ["6-9M"], shared: true, createdAt: DEMO_DATES.nudge });
+    const [jo, sam] = await Promise.allSettled([
+      propose(),
+      createProposal(db, { listingId: listing.id, buyerId: ids.sam, reason: "", transcript: [], source: "local" }),
+    ]);
+    expect(jo).toMatchObject({ status: "fulfilled", value: { buyerId: ids.jo } });
+    expect(sam).toMatchObject({ status: "rejected", reason: { code: "already_open", status: 409 } });
+    expect(await db.MatchProposal.list()).toHaveLength(1);
+    expect(await events(ids.sam)).toEqual([]);
+  });
+
   it("a third-owner item can't be proposed", async () => {
     const [cardigan] = await db.ClothingItem.filter({ name: "Oatmeal knit cardigan" });
     const forced = await listDirect(cardigan, { priceCents: 1600 });
