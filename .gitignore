@@ -9,3 +9,4 @@ dist/
 # Base44: .app.jsonc links this folder to the app; .types/ is generated
 .app.json*
 .types/
+!.env.mock
