@@ -5,9 +5,11 @@ import { createBrowserRouter, RouterProvider } from "react-router";
 import "@/pixel/fonts.css";
 import "@/pixel/tokens.css";
 import { KitPage } from "@/world/KitPage";
+import { ArtPage } from "@/world/ArtPage";
 
 const router = createBrowserRouter([
   // A:
+  { path: "/dev/art", element: <ArtPage /> },
   { path: "/kit", element: <KitPage /> },
   { path: "/", element: <KitPage /> },
 ]);
