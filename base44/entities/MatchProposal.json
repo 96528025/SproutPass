@@ -1,0 +1,168 @@
+{
+  "name": "MatchProposal",
+  "type": "object",
+  "title": "MatchProposal",
+  "properties": {
+    "listingId": {
+      "type": "string"
+    },
+    "itemId": {
+      "type": "string"
+    },
+    "sellerId": {
+      "type": "string"
+    },
+    "buyerId": {
+      "type": "string"
+    },
+    "encounterId": {
+      "type": "string"
+    },
+    "snapshot": {
+      "type": "object",
+      "properties": {
+        "itemName": {
+          "type": "string"
+        },
+        "icon": {
+          "type": "string"
+        },
+        "photo": {
+          "type": "string"
+        },
+        "size": {
+          "type": "string"
+        },
+        "originalPurchaseDate": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "originalPriceCents": {
+          "type": "integer"
+        },
+        "condition": {
+          "type": "string"
+        },
+        "conditionNote": {
+          "type": "string"
+        },
+        "previousOwners": {
+          "type": "integer"
+        },
+        "priceCents": {
+          "type": "integer"
+        },
+        "wearWeeksLeft": {
+          "type": "integer"
+        }
+      }
+    },
+    "reason": {
+      "type": "string"
+    },
+    "transcript": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "from": {
+            "type": "string",
+            "enum": [
+              "buyer_agent",
+              "seller_agent"
+            ]
+          },
+          "parentId": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "looking_for",
+              "have",
+              "no_fit",
+              "fit_check",
+              "propose",
+              "ack",
+              "decline"
+            ]
+          },
+          "text": {
+            "type": "string"
+          },
+          "at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      }
+    },
+    "source": {
+      "type": "string",
+      "enum": [
+        "fetch",
+        "local"
+      ]
+    },
+    "sellerDecision": {
+      "type": "string",
+      "enum": [
+        "pending",
+        "accepted",
+        "declined"
+      ]
+    },
+    "buyerDecision": {
+      "type": "string",
+      "enum": [
+        "pending",
+        "accepted",
+        "declined"
+      ]
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "open",
+        "both_accepted",
+        "paid",
+        "declined",
+        "expired",
+        "payment_failed"
+      ]
+    },
+    "handover": {
+      "type": "string",
+      "enum": [
+        "now",
+        "later"
+      ]
+    },
+    "handoverNote": {
+      "type": "string"
+    },
+    "paymentRef": {
+      "type": "string"
+    },
+    "createdAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "expiresAt": {
+      "type": "string",
+      "format": "date-time"
+    }
+  },
+  "required": [
+    "listingId",
+    "sellerId",
+    "buyerId",
+    "status"
+  ],
+  "rls": {
+    "create": false,
+    "read": true,
+    "update": false,
+    "delete": false
+  }
+}

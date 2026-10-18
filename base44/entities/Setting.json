@@ -1,0 +1,49 @@
+{
+  "name": "Setting",
+  "type": "object",
+  "title": "Setting",
+  "properties": {
+    "key": {
+      "type": "string"
+    },
+    "now": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "matchVia": {
+      "type": "string",
+      "enum": [
+        "fetch",
+        "local"
+      ]
+    },
+    "imessage": {
+      "type": "boolean",
+      "default": true
+    },
+    "lineUserId": {
+      "type": "string",
+      "rls": {
+        "read": {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        "write": {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      }
+    }
+  },
+  "required": [
+    "key"
+  ],
+  "rls": {
+    "create": false,
+    "read": true,
+    "update": false,
+    "delete": false
+  }
+}

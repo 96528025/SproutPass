@@ -1,0 +1,36 @@
+{
+  "name": "Presence",
+  "type": "object",
+  "title": "Presence",
+  "properties": {
+    "parentId": {
+      "type": "string"
+    },
+    "lat": {
+      "type": "number"
+    },
+    "lng": {
+      "type": "number"
+    },
+    "accuracyM": {
+      "type": "number"
+    },
+    "simulated": {
+      "type": "boolean",
+      "default": false
+    },
+    "updatedAt": {
+      "type": "string",
+      "format": "date-time"
+    }
+  },
+  "required": [
+    "parentId"
+  ],
+  "rls": {
+    "create": false,
+    "read": false,
+    "update": false,
+    "delete": false
+  }
+}

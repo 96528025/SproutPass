@@ -1,0 +1,66 @@
+{
+  "name": "Need",
+  "type": "object",
+  "title": "Need",
+  "properties": {
+    "parentId": {
+      "type": "string"
+    },
+    "childId": {
+      "type": "string"
+    },
+    "sizes": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": [
+          "0-3M",
+          "3-6M",
+          "6-9M",
+          "9-12M",
+          "12-18M",
+          "18-24M",
+          "2T",
+          "3T",
+          "4T"
+        ]
+      }
+    },
+    "categories": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": [
+          "top",
+          "bottom",
+          "onesie",
+          "outerwear",
+          "dress",
+          "set",
+          "other"
+        ]
+      }
+    },
+    "maxPriceCents": {
+      "type": "integer"
+    },
+    "shared": {
+      "type": "boolean",
+      "default": true
+    },
+    "createdAt": {
+      "type": "string",
+      "format": "date-time"
+    }
+  },
+  "required": [
+    "parentId",
+    "sizes"
+  ],
+  "rls": {
+    "create": false,
+    "read": true,
+    "update": false,
+    "delete": false
+  }
+}

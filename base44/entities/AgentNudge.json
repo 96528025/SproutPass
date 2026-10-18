@@ -1,0 +1,43 @@
+{
+  "name": "AgentNudge",
+  "type": "object",
+  "title": "AgentNudge",
+  "properties": {
+    "parentId": {
+      "type": "string"
+    },
+    "itemId": {
+      "type": "string"
+    },
+    "kind": {
+      "type": "string",
+      "enum": [
+        "outgrow_check",
+        "listing_reminder",
+        "new_owner_welcome"
+      ]
+    },
+    "message": {
+      "type": "string"
+    },
+    "createdAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "resolved": {
+      "type": "boolean",
+      "default": false
+    }
+  },
+  "required": [
+    "parentId",
+    "itemId",
+    "kind"
+  ],
+  "rls": {
+    "create": false,
+    "read": true,
+    "update": false,
+    "delete": false
+  }
+}

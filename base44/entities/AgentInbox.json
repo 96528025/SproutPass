@@ -1,0 +1,48 @@
+{
+  "name": "AgentInbox",
+  "type": "object",
+  "title": "AgentInbox",
+  "properties": {
+    "parentId": {
+      "type": "string"
+    },
+    "type": {
+      "type": "string",
+      "enum": [
+        "imessage",
+        "encounter",
+        "event"
+      ]
+    },
+    "payload": {
+      "type": "object"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "pending",
+        "claimed",
+        "done"
+      ]
+    },
+    "createdAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "claimedAt": {
+      "type": "string",
+      "format": "date-time"
+    }
+  },
+  "required": [
+    "parentId",
+    "type",
+    "status"
+  ],
+  "rls": {
+    "create": false,
+    "read": false,
+    "update": false,
+    "delete": false
+  }
+}

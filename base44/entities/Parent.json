@@ -1,0 +1,97 @@
+{
+  "name": "Parent",
+  "type": "object",
+  "title": "Parent",
+  "properties": {
+    "key": {
+      "type": "string"
+    },
+    "name": {
+      "type": "string"
+    },
+    "avatar": {
+      "type": "object",
+      "properties": {
+        "sprite": {
+          "type": "string"
+        },
+        "palette": {
+          "type": "string"
+        }
+      }
+    },
+    "pet": {
+      "type": "object",
+      "properties": {
+        "sprite": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        }
+      }
+    },
+    "phone": {
+      "type": "string",
+      "rls": {
+        "read": {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        "write": {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      }
+    },
+    "agentAddress": {
+      "type": "string"
+    },
+    "discoverable": {
+      "type": "boolean",
+      "default": true
+    },
+    "photonUserId": {
+      "type": "string",
+      "rls": {
+        "read": {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        "write": {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      }
+    },
+    "photonSpaceId": {
+      "type": "string",
+      "rls": {
+        "read": {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        "write": {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      }
+    }
+  },
+  "required": [
+    "key",
+    "name"
+  ],
+  "rls": {
+    "create": false,
+    "read": true,
+    "update": false,
+    "delete": false
+  }
+}
