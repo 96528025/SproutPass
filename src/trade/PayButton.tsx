@@ -1,7 +1,7 @@
 // OWNER: Agent 2 (B5). Buyer-only pay button, shown once both sides accepted. Demo payment, no real money.
 import { useState } from "react";
 import { api } from "../app/api";
-import { errorText, parentRef, useApp } from "../app/store";
+import { errorCode, errorText, parentRef, useApp } from "../app/store";
 import type { MatchProposal } from "../app/types";
 import { formatCents } from "../app/types";
 import { Chip, PixelButton } from "../app/ui";
@@ -10,7 +10,9 @@ import "./trade.css";
 
 const MIN_SPIN_MS = 1000;
 
-export function PayButton({ proposal, onDone }: { proposal: MatchProposal; onDone?: (p: MatchProposal) => void }) {
+export function PayButton({ proposal, onDone, onGone }: {
+  proposal: MatchProposal; onDone?: (p: MatchProposal) => void; /** the trade was deleted (RESET) */ onGone?: () => void;
+}) {
   const demo = useApp((s) => s.demo);
   const toast = useApp((s) => s.toast);
   const [paying, setPaying] = useState(false);
@@ -31,7 +33,8 @@ export function PayButton({ proposal, onDone }: { proposal: MatchProposal; onDon
       }
       onDone?.(res.proposal);
     } catch (e) {
-      toast(errorText(e), "red");
+      if (errorCode(e) === "not_found" && onGone) onGone();
+      else toast(errorText(e), "red");
     } finally {
       setPaying(false);
     }

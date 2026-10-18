@@ -2,15 +2,15 @@
 // route /trade/:proposalId (Agent 3's TradeRoute renders it with { proposalId, onClose }).
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "../app/api";
-import { errorText, parentRef, useApp } from "../app/store";
-import type { Decision, MatchProposal } from "../app/types";
+import { errorCode, errorText, parentRef, useApp } from "../app/store";
+import type { Decision, MatchProposal, ProposalStatus } from "../app/types";
 import { formatCents } from "../app/types";
 import { RESALE_PCT } from "../../base44/shared/pricing.ts";
 import { Chip, DialogBox, Hearts, ItemIcon, Modal, PixelButton, PriceReceipt, Sprite } from "../app/ui";
 import { PayButton } from "./PayButton";
 import { useProposals } from "./useProposals";
 import {
-  CONDITION_TEXT, DECISION_TEXT, celebrate, monthDay, newHomeText, sfx, usePublicParent, type PublicParent,
+  CONDITION_TEXT, DECISION_TEXT, celebrate, monthDay, newHomeText, sfx, usePublicParent, type Party as PartyInfo,
 } from "./tradeKit";
 import "./trade.css";
 
@@ -40,7 +40,23 @@ function TradeBody({ proposalId, close }: { proposalId: string; close: () => voi
   const { byId, me, upsert } = useProposals();
   const p = byId[proposalId];
   const refreshCloset = useApp((s) => s.refreshCloset);
+  const toast = useApp((s) => s.toast);
   const [missing, setMissing] = useState(false);
+
+  // The trade vanished under an open window: RESET deleted it (a delete event, or a closet that no longer
+  // lists it), RESET re-seeded this parent with a new id, or the server answered not_found. Close it.
+  const lastStatus = useRef<ProposalStatus | null>(null);
+  const gone = useCallback(() => {
+    if (lastStatus.current !== "paid") toast("THIS TRADE WAS CLEARED · NOTHING CHARGED", "lav");
+    close();
+  }, [toast, close]);
+  const shown = useRef(false);
+  const involved = !!(p && me && (p.buyerId === me || p.sellerId === me));
+  if (p) lastStatus.current = p.status;
+  useEffect(() => {
+    if (involved) { shown.current = true; return; }
+    if (shown.current && (!p || me)) gone();
+  }, [involved, p, me, gone]);
 
   // Opened by URL before the closet knew about it: refresh once, then give up.
   useEffect(() => {
@@ -57,7 +73,7 @@ function TradeBody({ proposalId, close }: { proposalId: string; close: () => voi
   if (!p) {
     return (
       <div className="t-center">
-        {missing ? (
+        {missing && !shown.current ? (
           <>
             <p className="t-p">We couldn't find this trade.</p>
             <PixelButton variant="ghost" onClick={close}>CLOSE</PixelButton>
@@ -66,11 +82,11 @@ function TradeBody({ proposalId, close }: { proposalId: string; close: () => voi
       </div>
     );
   }
-  return <TradeDetails p={p} me={me} upsert={upsert} close={close} />;
+  return <TradeDetails p={p} me={me} upsert={upsert} close={close} gone={gone} />;
 }
 
-function TradeDetails({ p, me, upsert, close }: {
-  p: MatchProposal; me: string | null; upsert: (p: MatchProposal) => void; close: () => void;
+function TradeDetails({ p, me, upsert, close, gone }: {
+  p: MatchProposal; me: string | null; upsert: (p: MatchProposal) => void; close: () => void; gone: () => void;
 }) {
   const toast = useApp((s) => s.toast);
   const myPet = useApp((s) => s.closet?.parent.pet ?? null);
@@ -126,7 +142,8 @@ function TradeDetails({ p, me, upsert, close }: {
       });
       upsert(next);
     } catch (e) {
-      toast(errorText(e), "red");
+      if (errorCode(e) === "not_found") gone();
+      else toast(errorText(e), "red");
     } finally {
       setBusy(null);
     }
@@ -146,7 +163,7 @@ function TradeDetails({ p, me, upsert, close }: {
       <div className="t-banner" role="note">NOTHING IS CHARGED UNTIL YOU BOTH ACCEPT.</div>
 
       <div className="t-header">
-        <Party who={seller} label="SELLER" you={role === "seller"} />
+        <PartyCard who={seller} label="SELLER" you={role === "seller"} />
         <div className="t-mid">
           <div className="t-item-slot">
             <ItemIcon icon={s.icon} size={2} />
@@ -157,7 +174,7 @@ function TradeDetails({ p, me, upsert, close }: {
           </div>
           <span className="t-swap" aria-hidden>⇄</span>
         </div>
-        <Party who={buyer} label="BUYER" you={role === "buyer"} />
+        <PartyCard who={buyer} label="BUYER" you={role === "buyer"} />
       </div>
 
       <section className="t-details">
@@ -231,7 +248,7 @@ function TradeDetails({ p, me, upsert, close }: {
         {p.status === "open" && !role && <p className="t-wait t-label">VIEWING ONLY</p>}
 
         {p.status === "both_accepted" && role === "buyer" && (
-          <PayButton proposal={p} onDone={(next) => { upsert(next); if (next.status === "paid") closeLater(CLOSE_AFTER_PAID_MS); }} />
+          <PayButton proposal={p} onGone={gone} onDone={(next) => { upsert(next); if (next.status === "paid") closeLater(CLOSE_AFTER_PAID_MS); }} />
         )}
         {p.status === "both_accepted" && role !== "buyer" && (
           <div className="t-stack">
@@ -271,12 +288,13 @@ function TradeDetails({ p, me, upsert, close }: {
   );
 }
 
-function Party({ who, label, you }: { who: PublicParent | null; label: string; you: boolean }) {
+function PartyCard({ who, label, you }: { who: PartyInfo | null; label: string; you: boolean }) {
   return (
     <div className="t-party">
       <Sprite name={who?.avatar.sprite ?? "parent_a"} anim="idle" scale={3} />
-      <span className="t-party-name">{who?.name ?? "…"}</span>
-      <span className="t-label t-muted">{you ? `${label} · YOU` : label}</span>
+      {/* Until the name loads (retried under the rate limit), the role stands in for it. */}
+      <span className="t-party-name">{who?.name ?? label}</span>
+      {(who || you) && <span className="t-label t-muted">{you ? `${label} · YOU` : label}</span>}
     </div>
   );
 }

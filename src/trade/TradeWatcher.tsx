@@ -17,7 +17,8 @@ function saveDismissed(ids: Set<string>) {
 }
 
 export function TradeWatcher() {
-  const { active, byId } = useProposals();
+  // A window whose trade disappears (RESET) closes itself from inside TradeWindow, with a toast.
+  const { active } = useProposals();
   const { pathname } = useLocation();
   const onTradeRoute = pathname.startsWith("/trade/");
   const [openId, setOpenId] = useState<string | null>(null);
@@ -30,9 +31,6 @@ export function TradeWatcher() {
     setOpenId(active.id);
     sfx("alert");
   }, [active, openId, onTradeRoute]);
-
-  // RESET deleted the proposal under an open window: just close it.
-  useEffect(() => { if (openId && !byId[openId]) setOpenId(null); }, [openId, byId]);
 
   const close = useCallback(() => {
     const id = openRef.current;
