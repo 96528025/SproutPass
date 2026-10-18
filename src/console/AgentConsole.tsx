@@ -232,7 +232,7 @@ function Timeline({
   return (
     <section className="ac-timeline" id={SECTION.messages} aria-label="Messages between the two agents">
       <header className="ac-timeline__head">
-        <span className="ac-label">Protocol · HandMeDownRelay</span>
+        <span className="ac-label">SproutPass agent conversation</span>
         <span className="ac-timeline__stats">
           {visible.length} {visible.length === 1 ? "message" : "messages"}
           {total != null && visible.length > 1 ? ` · ${(total / 1000).toFixed(1)} s` : ""}
@@ -434,8 +434,8 @@ function Outcome({
         <div className="ac-outcome__status">
           <Chip tone={status.tone}>{status.label}</Chip>
         </div>
-        <ul className="ac-decisions" aria-label="Each parent's decision">
-          <li><span>{firstName(seller)} (selling)</span><b className={`ac-dec ac-dec--${proposal.sellerDecision}`}>{decisionLabel(proposal.sellerDecision)}</b></li>
+        <ul className="ac-decisions" aria-label="Listing and buyer approval">
+          <li><span>{firstName(seller)} (selling)</span><b className={`ac-dec ac-dec--${proposal.sellerDecision}`}>Shared listing</b></li>
           <li><span>{firstName(buyer)} (buying)</span><b className={`ac-dec ac-dec--${proposal.buyerDecision}`}>{decisionLabel(proposal.buyerDecision)}</b></li>
         </ul>
         <p className="ac-muted">Proposed by: {via} · source "{proposal.source}"</p>
@@ -450,7 +450,7 @@ function Outcome({
     <section className="ac-card ac-outcome" id={SECTION.outcome} aria-label="Outcome">
       <h3 className="ac-card__title">Outcome</h3>
       {body}
-      <p className="ac-rule-line">Agents propose. Parents decide. Nothing is charged until both accept.</p>
+      <p className="ac-rule-line">Agents propose. Parents decide. Only the buyer approves. Payment is simulated.</p>
     </section>
   );
 }
@@ -522,7 +522,7 @@ function HowItWorks() {
     <section className="ac-how" aria-label="How it works">
       <div><span className="ac-how__n">1</span><p><b>Nearby.</b> Within 25 m, each agent learns only the other agent's address. No names, no location.</p></div>
       <div><span className="ac-how__n">2</span><p><b>Negotiate.</b> Looking for → Have listings → Propose trade → Trade ack, priced by the relay's rule.</p></div>
-      <div><span className="ac-how__n">3</span><p><b>Decide.</b> Both parents accept on their own phones; only then does the buyer pay (demo payment).</p></div>
+      <div><span className="ac-how__n">3</span><p><b>Decide.</b> The seller shares a listing. Only the buyer approves; simulated payment and inventory transfer follow.</p></div>
     </section>
   );
 }

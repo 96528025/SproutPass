@@ -588,3 +588,7 @@
     animation: none;
   }
 }
+
+/* One product name, sized to fit a 360px phone. */
+.ts__mark .ts__brand { font-size: clamp(24px, 7.3vw, 32px); line-height: 44px; }
+.ts__links { flex-wrap: wrap; }

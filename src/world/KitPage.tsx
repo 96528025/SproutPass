@@ -48,7 +48,7 @@ export function KitPage() {
           PIXEL KIT
         </h1>
         <p className="px-ui-16" style={{ color: "var(--paper)", marginTop: 4 }}>
-          Hand-Me-Down Relay · A1 components. Tap once to unlock sound.
+          SproutPass · A1 components. Tap once to unlock sound.
         </p>
         <Row>
           <Chip tone={unlocked ? "mint" : "red"}>{unlocked ? "AUDIO UNLOCKED" : "AUDIO LOCKED"}</Chip>
@@ -189,7 +189,7 @@ export function KitPage() {
           <PixelButton variant="ghost" onClick={() => setModal(true)}>Open modal</PixelButton>
         </Row>
         <Modal title="Trade proposal" open={modal} onClose={() => setModal(false)}>
-          <p className="px-ui-20" style={{ marginBottom: 12 }}>Nothing is charged until you both accept.</p>
+          <p className="px-ui-20" style={{ marginBottom: 12 }}>Only the buyer approves. Payment is simulated.</p>
           <Row>
             <PixelButton onClick={() => { sfx.play("accept"); setModal(false); }}>Accept</PixelButton>
             <PixelButton variant="danger" onClick={() => { sfx.play("decline"); setModal(false); }}>Decline</PixelButton>

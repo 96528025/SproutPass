@@ -4,6 +4,10 @@
 // EncounterScene with C's <AgentBubbles> when C's useEncounter fires. The scene only pops when something fits:
 // useEncounter skips a meeting where nothing on either list fits, and the walk says so in a Toast instead (or that
 // the pair met a moment ago and when their pets can meet again).
+// Tap-to-meet (?demo=1): every other demo family is drawn (the radar's entry, else useNearby's demoFamilies at its
+// demo spot, no request) and is a button while nothing else is on (canMeet: no meeting, walk or live trade). A tap
+// picks that family in WALK TO and sends ONE demoWalk({ arrive: true }) (useDemoWalk's meet): I land 10 m from them,
+// and the meeting (or the cooldown Toast) follows exactly as after a walk.
 // Only my own position is a lat/lng on the map; other parents are placed by bearing + band and never get coordinates.
 // Wired to the real backend (W2): "me" is B's closet.parent (real Base44 id; ?as= is the seed key in B's store),
 // the peer card comes from getParties (Agent 2's usePublicParent), the proposal from closet.proposals.
@@ -34,10 +38,10 @@ import { asSprite, demoFix, seedName, seedParent, walkTargets, type ScenePerson 
 import { band as bandOf } from "../../base44/shared/c/geo.ts";
 import { useCelebrationOpen } from "@/world/celebrationOpen";
 import { isParentId, useDemo, useQueryParent, useWalkTarget } from "@/world/query";
-import { useDemoWalk, walkNoteText } from "@/world/useDemoWalk";
+import { canMeet, knownParentIds, useDemoWalk, walkNoteText } from "@/world/useDemoWalk";
 import { useGps } from "@/world/useGps";
 import { geoHelp, useGeoPermission } from "@/world/useGeoPermission";
-import { BAND_LABEL, useNearby, type NearbyPin } from "@/world/useNearby";
+import { BAND_LABEL, demoFamilies, radarLift, useNearby, type FamilySprite, type NearbyPin } from "@/world/useNearby";
 import { useZone } from "@/world/useZone";
 import { latestPosition } from "./walkPosition";
 import "./world.css";
@@ -218,7 +222,12 @@ export function WorldScreen() {
   const mpp = metersPerPixel(here?.lat ?? 34.07, FOLLOW_ZOOM);
   const { zone, inside } = useZone(here);
 
-  const layout = useMemo(() => ({ mpp, halfW: centre.cx - 48, halfH: centre.cy - 56 }), [mpp, centre.cx, centre.cy]);
+  // The radar centre: the stage centre, raised over the walk controls in demo mode (useNearby's radarLift), so a
+  // family due south stays above them and tappable; the map keeps me on it (MapLayer liftPx).
+  const lift = radarLift(demo, centre.cy);
+  const cx = centre.cx;
+  const cy = centre.cy - lift;
+  const layout = useMemo(() => ({ mpp, halfW: cx - 48, halfH: cy - 56 }), [mpp, cx, cy]);
   const { raw, items } = useNearby(meId, { poll: !paused && !walk.active, pin, layout });
   nearbyRef.current = raw;
   const peer = usePeer(peerId, raw);
@@ -233,6 +242,27 @@ export function WorldScreen() {
   const distLabel = distM !== undefined && distM !== null ? `${distM} M` : target ? BAND_LABEL[target.band] : "…";
   const targetName = seedName(targetKey).toUpperCase();
   const encUp = !!encounter && !settled;
+
+  // Tap-to-meet (?demo=1). The demo families the radar doesn't list are drawn at their demo spot (not while I'm
+  // hidden: the radar is empty then, and a hidden parent never meets anyone). A tap picks the family in WALK TO, so the
+  // label and WALK AGAIN point at them too, then sends the one arrive call.
+  const sprites = useMemo<FamilySprite[]>(
+    () => (demo && discoverable ? demoFamilies(meKey, here, items, { layout, ids: knownParentIds() }) : items),
+    [demo, discoverable, meKey, here, items, layout],
+  );
+  const meetable = canMeet({ demo, meId, encounterUp: encUp, walking: walk.active, paused });
+  const { meet } = walk;
+  const meetFamily = useCallback(
+    (key: string) => {
+      if (!isParentId(key) || key === meKey) return;
+      pickTarget(key);
+      meet(key);
+    },
+    [meKey, pickTarget, meet],
+  );
+  // A family inside the 25 m ring stands right under me (a tap leaves me 10 m north of them), exactly where the idle
+  // hint sits: the hint steps aside so they stay in sight (and tappable).
+  const familyUnderMe = sprites.some((p) => !!p.key && p.band === "<25m");
 
   // Quiet HUD: a chip only when something needs saying. A good real fix shows nothing; SIMULATED GPS is required
   // by rule 5 whenever positions are simulated. Every chip fits the row's 216px on a 360px phone.
@@ -249,19 +279,20 @@ export function WorldScreen() {
     );
 
   return (
-    <div className="ws" style={{ "--cx": `${centre.cx}px`, "--cy": `${centre.cy}px` } as React.CSSProperties}>
-      <div className="ws__stage" ref={stageRef} style={{ "--cx": `${centre.cx}px`, "--cy": `${centre.cy}px` } as React.CSSProperties}>
+    <div className="ws" style={{ "--cx": `${cx}px`, "--cy": `${cy}px` } as React.CSSProperties}>
+      <div className="ws__stage" ref={stageRef} style={{ "--cx": `${cx}px`, "--cy": `${cy}px` } as React.CSSProperties}>
         <MapLayer
           me={here}
           zoomedOut={zoomedOut}
           zone={zone}
           avatar={asSprite(meCard?.avatar.sprite, "parent_a")}
           noFix={noFix}
+          liftPx={lift}
         />
         {!zoomedOut && (
           <>
             <Radar mpp={mpp} />
-            <NearbySprites items={items} />
+            <NearbySprites items={sprites} onMeet={meetable ? meetFamily : undefined} />
             {meCard && (
               <div className={`ws__me ${discoverable ? "" : "ws__me--hidden"}`} data-me={meId ?? meKey}>
                 <Sprite name={asSprite(meCard.avatar.sprite, "parent_a")} anim={moving ? "walk" : "idle"} scale={3} facing={facing} />
@@ -296,8 +327,8 @@ export function WorldScreen() {
 
       {demo && (
         <div className="ws__walk">
-          {!encounter && !walk.active && walk.phase === "idle" && (
-            <p className="ws__walk-hint">Your pets meet when you're within 25 m.</p>
+          {!encounter && !walk.active && walk.phase === "idle" && !familyUnderMe && (
+            <p className="ws__walk-hint">Tap a family to meet them, or take a walk.</p>
           )}
           {/* A walk that ended reads WALK AGAIN (a new walk continues from the current position); never while my trade is open. */}
           <PixelButton

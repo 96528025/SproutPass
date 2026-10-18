@@ -1,7 +1,13 @@
 import { expect, it } from "vitest";
-import { proposalReview } from "./c/proposalReview.ts";
+import { proposalImage, proposalReview } from "./c/proposalReview.ts";
 import { parseIntent, isTradeCommand } from "./c/wording.ts";
 import type { MatchProposal } from "./types.ts";
+
+it("keeps the receipt image consistent with offers for photos and demo illustrations", () => {
+  expect(proposalImage({ photo: "https://example.com/garment.jpg" }, "app.test")).toBe("https://example.com/garment.jpg");
+  expect(proposalImage({ icon: "item_jacket" }, "app.test")).toBe("https://app.test/sprites/item_jacket.png");
+  expect(proposalImage({}, "app.test")).toBe("https://app.test/sprites/item_romper.png");
+});
 
 it("sends the final price, product photo and review link, with no invented photo", () => {
   const snapshot = { itemName: "Bear jacket", priceCents: 1800, originalPriceCents: 3000, previousOwners: 1, size: "9-12M", icon: "item_jacket", photo: "https://example.com/jacket.jpg" } as MatchProposal["snapshot"];

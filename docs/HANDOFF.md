@@ -1,4 +1,4 @@
-# Handoff: SproutPass / Hand-Me-Down Relay (Oct 18, 2026, about 07:15 PDT)
+# Handoff: SproutPass (Oct 18, 2026, about 07:15 PDT)
 
 Read this first. It says what is live, what is half-built, and the next steps in order.
 
@@ -147,6 +147,7 @@ Branch `proximity-match-popups` in `/Users/angelren/SproutPass`. **Not committed
   - A walk that meets someone with nothing to trade, or a pair still in its cooldown, ends with a toast.
   - A WALK TO picker shows the other two families. `?walk=` also picks one, and the pick is remembered per tab.
   - Sam's demo spot now matches the server (200 m due east).
+- **Tap to meet (demo trick).** On `/world?demo=1`, every other seed family is drawn (at its demo spot when its tab isn't open, with no extra call) and is a button ("Meet Freja"). A tap picks that family in WALK TO and sends one `demoWalk({ arrive: true })`. That puts the walker 10 m due north of them (`ARRIVE_M`) and runs the walk's own check. Coming from more than 40 m away, it first re-arms a pair that an older meeting disarmed. Already standing together, WALK AGAIN's 10 s rule applies. The cooldown is unchanged. In demo mode the radar centre sits higher, above the walk buttons (`radarLift`, `MapLayer liftPx`), so a family due south can still be tapped. Tests: `base44/shared/tapToMeet.test.ts`, `src/world/tapToMeet.test.ts`. Demo order and the Oct 18 match / no-match table: `docs/TESTING-MATCHES.md`.
 - **Trade window.** It waits while the EncounterScene is up (20 s at most, wall clock). After you close the first live trade, the next one pops. The pill shows a count ("♥ 2 TRADE OFFERS · OPEN").
 - **Seed.** There are 3 new items, 3 listings and 3 needs. `DEMO_MATCHES` lists the four matches: romper Mina→Jo, snowsuit Sam→Mina, fleece jacket Sam→Jo, sleep sack Mina→Sam. The demo clock still creates exactly one nudge. `agents/mock_base44.py` mirrors this with `MockBase44(more_matches=True)`, and `local_demo.py --more-matches` runs it.
 - **Deploy note:** run `npx base44 entities push` before `npx base44 deploy --build -y`, because `Encounter.hasMatch` is a new field. Until it is pushed, the encounter create is retried without the field, so `hasMatch` stays unknown and the app falls back to the old behaviour of popping every meeting. Then RESET, so the live seed gets the new listings and needs.

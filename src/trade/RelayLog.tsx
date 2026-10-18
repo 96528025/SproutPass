@@ -51,7 +51,7 @@ export function RelayLog() {
 
   if (!stats) {
     return (
-      <PixelPanel title="RELAY LOG">
+      <PixelPanel title="TRADE HISTORY">
         <div className="t-center">
           {error ? (
             <>
@@ -99,7 +99,7 @@ export function RelayLog() {
         </Link>
       </nav>
 
-      <PixelPanel title="RELAY LOG">
+      <PixelPanel title="TRADE HISTORY">
         <div className="im-live">
           <Chip tone="paper"><span className="im-live-dot" aria-hidden />LIVE</Chip>
           {updatedAt && <span className="t-label t-muted">UPDATED {clock(updatedAt)}</span>}
@@ -129,7 +129,7 @@ export function RelayLog() {
           <span className="t-counter-num t-counter-sm">{stats.declinedWithZeroCharge}</span>
           <span className="t-label">DECLINED · $0 CHARGED</span>
         </div>
-        <p className="im-sub">Nothing is charged until both parents accept. Demo payment · no real charge.</p>
+        <p className="im-sub">Only the buyer approves. Visa simulation · no real charge.</p>
       </PixelPanel>
 
       <PixelPanel title="OWNER CHAINS" tone="cream">

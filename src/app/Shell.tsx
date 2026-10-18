@@ -9,6 +9,7 @@ import { AppRoutes, PUBLIC_PATHS, TradeWatcher } from "./routes";
 import { errorText, parentRef, startLiveSync, useApp, type ToastTone } from "./store";
 import { ParentPicker } from "./ParentPicker";
 import { DemoPanel } from "./DemoPanel";
+import { ExperienceNav } from "./ExperienceNav";
 import { PixelButton, PixelPanel, Toast, type ToastTone as KitToastTone } from "./ui";
 import { Guard, optional } from "./optional";
 import { api } from "./api";
@@ -71,8 +72,14 @@ function useQuerySync() {
     if (lastSearch.current !== loc.search) {
       lastSearch.current = loc.search;
       const as = q.get("as");
-      const urlDemo = q.get("demo") === "1" || q.get("demo") === "true";
-      if (urlDemo && !demo) setDemo(true);
+      const mode = q.get("demo");
+      const urlDemo = mode === "1" || mode === "true" || (mode === null && loc.pathname === "/demo");
+      const explicitMode = urlDemo || mode === "0" || mode === "false";
+      if (explicitMode && urlDemo !== demo) {
+        setDemo(urlDemo);
+        if (as && as !== parentKey) setParent(as);
+        return;
+      }
       if (as && as !== parentKey) { setParent(as); return; }
     }
     let changed = false;
@@ -247,11 +254,12 @@ export function Shell() {
   const needsParent = !parentKey && kind !== "title" && !PUBLIC_PATHS.includes(path);
   // The projector views (agent console, impact board) are for the big screen: no phone popups, pill or pet on them.
   const projector = path === "/agents" || path === "/impact";
+  const guided = path === "/demo" || path === "/trial" || path === "/feedback";
   // The dev pages (/kit, /dev/*) run their own DialogBoxes, EncounterScene and Celebration.
   const noDialogHere =
-    kind === "title" || projector || path.startsWith("/bag/list/") || path.startsWith("/trade/") ||
+    kind === "title" || projector || guided || path.startsWith("/bag/list/") || path.startsWith("/trade/") ||
     path === "/kit" || path.startsWith("/dev/");
-  const showDemo = demo && kind !== "title";
+  const showDemo = demo && (path === "/demo" || path === "/trial");
   const calm = !paid && !encounterUp; // nothing pops over the celebration or the pets' meeting
   const route = kind === "screen" ? (path.split("/")[1] || "bag") : kind;
 
@@ -266,6 +274,7 @@ export function Shell() {
   return (
     <HandheldFrame>
       <div className={`b-app${showDemo ? "" : " b-app--no-demo"}`}>
+        <ExperienceNav />
         {showDemo && <DemoPanel />}
         <main ref={mainRef} className={`b-main${kind === "screen" ? "" : " b-main--bleed"}`}>
           <Guard key={path} name="screen" fallback={<ScreenCrashed />}>
@@ -280,7 +289,7 @@ export function Shell() {
         {parentKey && !noDialogHere && calm && <Guard name="NudgeDialog" fallback={null}><NudgeDialog /></Guard>}
         {/* The trade window waits until the player is past the title; it pops on the next screen. While the pets'
             meeting is up it holds its pop, so the scene's TRADE PROPOSAL! banner plays first (20 s at most). */}
-        {parentKey && !projector && kind !== "title" && <TradeWatcher hold={encounterUp} />}
+        {parentKey && !projector && !guided && kind !== "title" && <TradeWatcher hold={encounterUp} />}
         {parentKey && !noDialogHere && calm && <Pet />}
         {paid && <PaidCelebration key={paid.id} proposal={paid} onDone={doneCelebrating} onSkip={() => setPaid(null)} />}
         {toastMsg && <Toast key={toastMsg.id} text={toastMsg.text} tone={kitTone(toastMsg.tone)} />}

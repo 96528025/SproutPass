@@ -226,7 +226,7 @@ export function PetMandate() {
           <Toggle on={form.agentMayPropose} onChange={(v) => set({ agentMayPropose: v })}
             label="Pet may propose trades"
             why={form.agentMayPropose
-              ? `${petName} proposes a trade when another pet has a fit. Nothing is charged until you both accept.`
+              ? `${petName} proposes a trade when another pet has a fit. Only the buyer approves. Payment is simulated.`
               : `${petName} only tells you about a fit. It never proposes one for you.`} />
 
           <div className="b-actions">
@@ -248,7 +248,7 @@ export function PetMandate() {
 
       <div className="tr-footer">
         <Chip tone="cream" plain>Demo payment · no real charge</Chip>
-        <p className="tr-text">Nothing is charged until both parents accept a trade.</p>
+        <p className="tr-text">Only the buyer approves the final trade. Payment is simulated.</p>
       </div>
     </>
   );
@@ -495,7 +495,7 @@ function PetImessage({ petName }: { petName: string }) {
             ))}
           </dl>
           <p className="tr-why">
-            {petName} never decides or pays for you: a trade needs both of you to accept, and you pay here in the app.
+            {petName} never decides or pays for you: only the buyer approves a trade, then the simulated payment completes automatically.
             Your phone number stays private; the other parent never sees it.
           </p>
         </div>

@@ -1,0 +1,16 @@
+.sp-experience { flex: 0 0 auto; background: var(--paper); border-bottom: 4px solid var(--ink); position: sticky; top: var(--safe-top, 0px); z-index: 5; }
+.sp-mode { display: flex; align-items: center; gap: 4px; min-height: 52px; padding: 4px 52px 4px 12px; }
+.sp-mode a { color: var(--ink); text-decoration: none; font-weight: 800; padding: 10px 12px; min-height: 44px; font-size: 16px; }
+.sp-mode .sp-wordmark { margin-right: auto; padding-left: 0; padding-right: 4px; font-size: 17px; }
+.sp-mode a[aria-current] { background: var(--gold); box-shadow: inset 0 -3px var(--ink); }
+.sp-journey { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); border-top: 2px solid var(--ink); }
+.sp-journey a, .sp-journey span { color: var(--ink); display: flex; align-items: center; justify-content: center; min-height: 36px; padding: 4px; font-size: 14px; font-weight: 700; text-decoration: none; }
+.sp-journey a[aria-current] { background: var(--mint); box-shadow: inset 0 -3px var(--ink); }
+.sp-journey span { color: var(--ink-soft); background: var(--cream); }
+.sp-demo-note { margin: 0; padding: 4px 8px; font-size: 12px; line-height: 16px; text-align: center; background: var(--cream); }
+.sp-experience a:focus-visible { outline: 3px solid var(--ink); outline-offset: -3px; }
+@media (max-width: 350px) {
+  .sp-mode { padding-left: 8px; gap: 0; }
+  .sp-mode a { padding-left: 8px; padding-right: 8px; }
+  .sp-mode .sp-wordmark { font-size: 15px; }
+}

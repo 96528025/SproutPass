@@ -1,6 +1,6 @@
 {
-  "name": "Hand-Me-Down Relay",
-  "short_name": "Relay",
+  "name": "SproutPass",
+  "short_name": "SproutPass",
   "description": "Pass kids' clothes along to nearby parents.",
   "start_url": "/",
   "scope": "/",

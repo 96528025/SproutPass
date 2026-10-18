@@ -7,11 +7,14 @@
 // from data the caller already has (the walk's target, from demoWalk's distanceM) without a request.
 // Rings are real metres on A's map (`layout`: the map's metres-per-pixel); a band too wide for the phone (the
 // 300 m ring) pulls its sprite in along the same bearing, so it stays on screen.
+// ?demo=1 (tap-to-meet): demoFamilies (pure) adds every other seed family the radar doesn't list (their tab isn't
+// open) at its demo spot, placed from my own position with the same band / bearing / ring rules: no request.
 import { useEffect, useRef, useState } from "react";
 import { api } from "@/app/api";
 import type { Band, NearbyParent } from "@/app/types";
 import type { SpriteName } from "@/pixel/sprites";
-import { asSprite } from "@/world/people";
+import { asSprite, demoFix, seedName, seedParent, walkTargets } from "@/world/people";
+import { band as bandOf, bearingDeg, haversineM, roundBearing, roundDemoDistance, type LatLng } from "../../base44/shared/c/geo.ts";
 
 /** Outer edge of each band in metres. A parent in a band sits on that band's outer ring. */
 export const RING_M = { "<25m": 25, "25-100m": 100, "100-300m": 300 } as const satisfies Record<Band, number>;
@@ -32,6 +35,22 @@ export interface NearbyLayout {
   halfH: number;
 }
 const DEFAULT_LAYOUT: NearbyLayout = { mpp: 0.99, halfW: 147, halfH: 300 };
+
+/**
+ * ?demo=1: the walk controls cover the stage's lower DEMO_CONTROLS_PX at most (20 px over the bar + the hint 56, walk
+ * button 48, WALK TO 44, USE MY REAL LOCATION 44 and three 12 px gaps), so the radar centre (my avatar) goes up by half
+ * of that: the free stage above them is then centred on me, and a sprite pulled in to fit (halfH = cy - 56) stays above
+ * them, in sight and tappable (Caesar due south of Olivia, a walk's target), instead of under them. Never below
+ * MIN_CY_PX on a short stage; a multiple of 4 (the map rests on the 4-px grid).
+ */
+export const DEMO_CONTROLS_PX = 248;
+const MIN_CY_PX = 144;
+
+/** How far the radar centre is raised above the stage centre `stageCy` (px): demo only, else 0. */
+export function radarLift(demo: boolean, stageCy: number): number {
+  if (!demo) return 0;
+  return Math.floor(Math.max(0, Math.min(DEMO_CONTROLS_PX / 2, stageCy - MIN_CY_PX)) / 4) * 4;
+}
 
 export const BAND_LABEL: Record<Band, string> = { "<25m": "<25 M", "25-100m": "25-100 M", "100-300m": "100-300 M" };
 
@@ -80,6 +99,59 @@ function spriteRadius(band: Band, bearing: number, o: NearbyLayout): number {
 function project(bearing: number, radius: number) {
   const r = (bearing * Math.PI) / 180;
   return { x: snap4(Math.sin(r) * radius), y: snap4(-Math.cos(r) * radius) };
+}
+
+// ---- ?demo=1: the demo families the radar doesn't list (pure) ------------------------------------------------------
+
+/** A sprite NearbySprites draws: a radar entry (SmoothParent), tagged when it is a demo family. */
+export interface FamilySprite extends SmoothParent {
+  /** Seed key ("sam") of a demo family: on /world?demo=1 a tap meets them. Absent for anyone else (joined families). */
+  key?: string;
+  /** Drawn by this tab at the family's demo spot (the radar doesn't list them: their tab isn't open). No request. */
+  parked?: boolean;
+}
+
+/**
+ * ?demo=1: the radar's sprites plus every other seed family it doesn't list, so each demo family can be tapped even
+ * when its phone (tab) isn't open. Those are drawn at their demo spot (people.ts demoFix = geo.ts demoHome, where C's
+ * demoWalk parks a target with no fresh presence), from my position `here` with the radar's own rules: band (none
+ * beyond 300 m: not drawn), bearing rounded to 5°, ring radius pulled in to fit the phone, 4-px grid. No request, no
+ * smoothing (a ring change hops; it is rare). The real radar entry always wins: a seed family is matched by its
+ * cached real id (`ids`, useDemoWalk's knownParentIds) or its seed name, and then only tagged with its key.
+ */
+export function demoFamilies(
+  meKey: string,
+  here: LatLng | null,
+  radar: readonly SmoothParent[],
+  { layout = DEFAULT_LAYOUT, ids = {} }: { layout?: NearbyLayout; ids?: Readonly<Record<string, string>> } = {},
+): FamilySprite[] {
+  const keys = walkTargets(meKey);
+  const keyOf = (p: SmoothParent) => keys.find((k) => p.parentId === ids[k] || p.name === seedName(k));
+  const out: FamilySprite[] = radar.map((p) => {
+    const key = keyOf(p);
+    return key ? { ...p, key, parked: false } : { ...p, parked: false };
+  });
+  if (!here) return out;
+  for (const key of keys) {
+    if (out.some((p) => p.key === key)) continue; // on the radar: the real entry wins
+    const spot = demoFix(key);
+    const d = haversineM(here, spot);
+    const b = bandOf(d);
+    if (!b) continue; // beyond the 300 m radar, like listNearby
+    const brg = roundBearing(bearingDeg(here, spot));
+    out.push({
+      parentId: `seed:${key}`,
+      name: seedName(key),
+      sprite: asSprite(seedParent(key)?.avatar.sprite, "parent_b"),
+      band: b,
+      distanceM: roundDemoDistance(d),
+      fading: false,
+      ...project(brg, spriteRadius(b, brg, layout)),
+      key,
+      parked: true,
+    });
+  }
+  return out;
 }
 
 /** A parent the caller knows better than the last poll: band/bearing/distance replace the polled ones. */

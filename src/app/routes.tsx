@@ -12,6 +12,9 @@ import { Bag } from "../closet/Bag";
 import { ListingFlow } from "../closet/ListingFlow";
 import { NeedsScreen } from "../closet/NeedsScreen";
 
+const Trial = optional("../trial/Trial.tsx", "Trial", DevPagePlaceholder);
+const Feedback = optional("../trial/Feedback.tsx", "Feedback", DevPagePlaceholder);
+
 const loading = <div className="b-center"><Chip tone="cream">LOADING…</Chip></div>;
 
 export const TitleScreen = optional("../world/TitleScreen.tsx", "TitleScreen", TitlePlaceholder, loading);
@@ -60,6 +63,9 @@ export function AppRoutes() {
   return (
     <Routes>
       <Route path="/" element={<TitleScreen />} />
+      <Route path="/trial" element={<Trial />} />
+      <Route path="/demo" element={<Trial />} />
+      <Route path="/feedback" element={<Feedback />} />
       <Route path="/world" element={<WorldScreen />} />
       <Route path="/bag" element={<Bag />} />
       <Route path="/bag/needs" element={<NeedsScreen />} />
@@ -82,4 +88,4 @@ export function AppRoutes() {
  * Routes that render without a parent picked: the projector end card, A's title screen (it has its own
  * "WHO ARE YOU?" step with B's ParentPicker) and A's dev pages.
  */
-export const PUBLIC_PATHS = ["/", "/log", "/agents", "/impact", "/kit", "/dev/art", "/dev/encounter"];
+export const PUBLIC_PATHS = ["/", "/demo", "/trial", "/feedback", "/log", "/agents", "/impact", "/kit", "/dev/art", "/dev/encounter"];

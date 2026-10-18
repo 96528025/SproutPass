@@ -1,218 +1,75 @@
-# Hand-Me-Down Relay (SproutPass) · LA Hacks 2026
+# SproutPass · LA Hacks 2026
 
-Kids outgrow their clothes every few months, and most of those clothes end up in a drawer or a bin while the
-family two streets away buys the same size new. **Hand-Me-Down Relay** gives every parent a pixel pet that is
-also their AI closet agent. The pet remembers what each item cost, predicts when the child will outgrow it, and
-asks "still fit? pass it on?" at the right moment. When two parents walk within 25 m of each other, their pets'
-agents (Fetch.ai uAgents) negotiate a hand-me-down trade on their own and put the same proposal on both phones.
-The pet can find and propose. **Only the parents decide**: nothing is charged until both accept, the buyer
-approves the (demo) payment, and the item moves to the buyer's closet with its ownership history. The price is
-fixed and shown up front (2nd owner pays 60% of the original price, 3rd pays 40%), and after 3 owners an item
-has reached its final home. The same pet also lives in iMessage (through Photon), so a parent can sell by
-sending a photo and accept a trade by text.
+Children outgrow clothes before the clothes wear out. SproutPass helps parents pass those garments to another family with less listing, searching and coordination.
 
-**Live app:** https://sproutpass-5c025059.base44.app  (open `/?as=mina&demo=1` on one phone and `/?as=jo&demo=1`
-on another; `sproutpass.base44.app` is *not* the address)
+Parents can send clothing photos through iMessage or upload them in the app. Base44 identifies visible garment details, stores the inventory and shared needs, checks matches, and records ownership transfers. The seller authorizes an offer by sharing a listing. **Only the buyer approves the final trade.** Approval runs an explicitly labeled Visa simulation and moves the item into the buyer’s inventory. No real card, Visa API, charge, or funds transfer is involved.
 
-> Payments are a **demo payment · no real charge**. No card is collected or stored, and no payment network is
-> integrated. See [What is live and what is not](#what-is-live-and-what-is-not).
+- [Live app](https://sproutpass-5c025059.base44.app)
+- [Staged demo and progress](https://sproutpass-5c025059.base44.app/trial)
+- [User feedback form](https://sproutpass-5c025059.base44.app/feedback)
+- [Demo instructions](docs/submission/demo-script.md)
+- [Submission description](docs/submission/devpost.md)
+- [Architecture](docs/submission/architecture.md)
+- [Challenge mapping](docs/submission/tracks.md)
+- [Historical testing record](docs/submission/testing.md)
 
-Submission material: [Devpost write-up](docs/submission/devpost.md) · [Track mapping](docs/submission/tracks.md) ·
-[Demo script](docs/submission/demo-script.md) · [Architecture and trust design](docs/submission/architecture.md) ·
-[Testing](docs/submission/testing.md)
+## Fast demonstration
 
----
+1. Open `/trial`. Choose **Prepare Sample + Need**. This adds a clearly labeled illustrated children’s garment to Freja’s inventory and a compatible need for Olivia. It preserves existing inventory and reuses the sample on repeated clicks.
+2. Choose **Create Demo Offer**, or open both world screens and demonstrate the approach with simulated location. In the world's demo mode, tap another family's character to meet them in one step. At Oct 18 the seeded bags give each pair a match or a deliberate no-match (table and demo order in [docs/TESTING-MATCHES.md](docs/TESTING-MATCHES.md)).
+3. Open the buyer’s offer as Olivia. Review the garment and $18 final price, then approve or decline. Approval performs the simulated payment and ownership transfer; decline leaves the item with its seller.
+4. Return to `/trial` to verify the saved state. Check both physical phones to verify the iMessage receipt actually arrived.
 
-## Run it
+The staged sample does not demonstrate photo recognition or organic customer demand. To demonstrate photo recognition, send an actual garment photo, confirm the label size and original purchase price when asked, and list it. Have the buyer state a compatible need and confirm it. Select that garment in `/trial`.
 
-Requirements: Node 22 (see `.nvmrc`), and Python 3.11+ for the agents (we use 3.13). Install once with `npm i`.
+## iMessage setup
 
-### Mock mode (no account, no network backend)
+Each demo participant has an assigned shared Photon number:
 
-```bash
-npx vite --mode mock --port 5174        # or: npm run mock
-```
-
-Open http://localhost:5174/?demo=1 for the title screen, or go straight to a family:
-
-- http://localhost:5174/bag?as=mina&demo=1 (Mina, the seller)
-- http://localhost:5174/world?as=jo&demo=1 (Jo, the buyer), in a second tab
-
-Mock mode (`VITE_USE_MOCK=1`, set by `.env.mock`) runs the **real server handlers** from `base44/shared/**` on an
-in-browser fake database. Tabs on the same origin share one world through `BroadcastChannel` and a `localStorage`
-snapshot, so two tabs behave like two phones. The `?demo=1` panel adds a story clock (MAY 15 / SEP 20 / OCT 18),
-RESET, and, in mock mode only, TRIGGER ENCOUNTER. Fonts (Google Fonts) and map tiles (Esri) still come from the
-internet; everything else runs locally.
-
-On Windows PowerShell, `npm run x -- --flag` drops the `--`, so start Vite with `npx vite …` directly.
-
-### Real mode (local frontend, live Base44 backend)
-
-`.env.real` is gitignored. Create it with the app's public id and API base:
-
-```bash
-VITE_BASE44_APP_ID=6ad44c7f93f653025c025059
-VITE_BASE44_APP_BASE_URL=https://base44.app
-```
-
-then run `npm run real` (Vite on port 5176). Real mode calls the live Base44 functions, which share one rate
-limit for the whole team (see [testing.md](docs/submission/testing.md#rate-limit-notes)), so don't loop
-scripts against it.
-
-### The Fetch.ai agents
-
-```bash
-cd agents
-python -m venv .venv && .venv/Scripts/python -m pip install -r requirements.txt   # bin/python on macOS/Linux
-.venv/Scripts/python local_demo.py          # the whole story offline: three uAgents in one Bureau, "LOCAL DEMO PASS"
-.venv/Scripts/python live_bureau.py         # mina + jo + sam agents against the live app (needs AGENT_KEY)
-```
-
-`local_demo.py` needs no keys and no network. It prints the agent-to-agent protocol log
-(`LookingFor → HaveListings → ProposeTrade → TradeAck` between two `agent1q…` addresses) and ends with 13 PASS
-checks. `live_bureau.py` reads `AGENT_KEY` from the environment, `agents/.env` or the repo's `.env.local`, and never
-prints it. More in [agents/agent_readme.md](agents/agent_readme.md).
-
-Each pet has its own personality: Button (Mina's) is tidy and warm, Pip (Jo's) curious and bouncy, Moss (Sam's) calm
-and thrifty. The voice changes how a pet says a line, never the item, the price or "nothing is charged until you both
-accept", and the voice itself never names a parent or a child. The agents read it from `agents/personality.py`, the
-app from `base44/shared/c/personality.ts`, and `parity_test.ts` checks that both say the same words.
-`local_demo.py --more-matches` also walks the three other seeded matches below (17 PASS checks).
-
-### Who matches with whom
-
-The seed (`DEMO_MATCHES` in `base44/shared/seed.ts`) gives every pair of families a match on Oct 18 (and on Sep 20),
-each at its fixed `priceFor` price and within the buyer's default pet rules:
-
-| Seller → buyer | Item | Price |
+| Person | Text the agent at | App identity |
 |---|---|---|
-| Mina → Jo | Yellow duck romper (listed during the demo, after the Sep 20 nudge) | $18.00 |
-| Sam → Mina | Star puffer snowsuit | $33.60 |
-| Sam → Jo | Fleece bear jacket | $21.60 |
-| Mina → Sam | Spare star sleep sack | $19.20 |
+| Caesar | +1 (628) 263-4622 | `mina` |
+| Freja | +1 (628) 316-6196 | `sam` |
+| Olivia | +1 (628) 316-7976 | `jo` |
 
-Mina and Sam match both ways. Mina and Jo match only through the romper, so before it is listed they have nothing
-for each other. The rules:
+Text **hi** to the assigned number first. The app learns the private conversation for subsequent offers and receipts. Changing a phone in Base44 or `.env.photon` alone does not create a Photon shared-line assignment. Never commit either file’s secrets.
 
-- **Only a meeting where the two lists match opens a trade, on both phones.** A shared listing of one parent must fit
-  a shared need of the other, either way, before the buyer's pet rules (`Encounter.hasMatch`). Every meeting still
-  shows the pets' scene on `/world` (a no-match one ends with "Nothing fits today"), the agents still talk it
-  through, and the Agent Console shows them all.
-- **One trade per meeting, and the smaller parent id buys first**, whoever walked. The app's fallback and the Python
-  agents use the same rule. A pair that fits both ways trades the other way at its next meeting.
-- **A paid trade lets the pair meet again at once.** Otherwise a pair waits 2 min (demo) or 10 min between meetings,
-  but a meeting where nothing fit doesn't count.
-- **Demo walk picker:** in `?demo=1`, `/world` shows WALK TO under the walk button with the other two families.
-  `?walk=mina|jo|sam` picks one too, and the pick is remembered per tab. A walk that meets someone with nothing to
-  trade, or a pair that met a moment ago, ends with a toast saying so ("Your pets can meet again in 1:20").
+These shared lines support individual conversations. The real family group-chat workflow requires a dedicated Photon line and has not been verified. ASI:One is not part of the submission target.
 
----
+## What is real and what is staged
 
-## Architecture
+- **Real application behavior:** Base44 persistence, photo analysis through Base44 AI, conversational need extraction, eligibility rules, proposal records, buyer approval, inventory ownership updates, live UI changes and Photon sends when configured.
+- **Staged demonstration:** named demo accounts, prefilled sample clothing and needs, and optional simulated locations. The app uses demo identity selectors, not production account isolation.
+- **Simulated payment:** a saved Visa simulation record with amount, authorization code, capture timestamp and receipt. No money moves.
+- **Receipt evidence:** the trial page distinguishes pending/failed sends from text and image submissions accepted by Photon. Submission is not a delivery or read confirmation; show the physical phones for that.
+- **Feedback evidence:** `/feedback` stores actual submissions privately in Base44. Parent/caregiver feedback is distinct from teammate testing. Quotation consent is optional. No interviews or feedback are invented.
+- **Matching:** listed-price offers use size, category, budget, current fit and the buyer’s rules. Prices follow the current 60% / 40% resale rules; this is not open-ended price bargaining.
 
-Three people built three layers against one frozen contract (`base44/shared/types.ts` and the `Api` interface in
-`src/app/api.ts`). Diagrams are in [architecture.md](docs/submission/architecture.md).
+## Run locally
 
-| Layer | Owner | What it does | Where |
-|---|---|---|---|
-| **World and pixel kit** | A | Title screen, Leaflet map with a 25 m radar, real GPS or the `?demo=1` walk, the encounter cut-scene, the flower celebration, the pixel UI kit, original sprites and sounds generated by code | `src/world/*`, `src/pixel/*`, `tools/art/*`, `public/` |
-| **Closet, trade and backend** | B | Base44 entities, pricing (`priceFor`, the only price implementation), outgrow dates, nudges, listings, proposals, demo payment and ownership transfer, demo clock and seed, the pet's spending rules and passkey approval, snap-to-list, impact, and the bag, trade, pet-rules and impact screens | `base44/entities/*`, `base44/shared/*.ts`, `base44/shared/logic/*`, `base44/functions/*`, `src/app/*`, `src/closet/*`, `src/trade/*`, `src/trust/*`, `src/impact/*` |
-| **Agents and messages** | C | Presence and encounters, the local fallback matcher, the Fetch.ai closet agents and their RelayProtocol, the agent API, Photon iMessage (webhook, per-parent lines, the conversation), the in-app pet and speech bubbles, the Agent Console | `base44/shared/c/*`, `agents/*`, `src/agent/*`, `src/console/*` |
-
-How a request flows:
-
-- **Screens never touch Base44 directly.** Every screen calls `api` (`src/app/api.ts`), which is either
-  `api.real.ts` (Base44 functions plus realtime entity subscriptions) or `api.mock.ts` (the same handlers on an
-  in-browser fake database).
-- **Business logic is pure TypeScript** in `base44/shared/**` (no `npm:` or `base44:` imports). The same code runs in
-  the Deno functions, in the browser mock and in vitest. Only `base44/functions/*/entry.ts`, `base44/shared/http.ts`
-  and `base44/shared/c/auth.ts` touch the Base44 runtime.
-- **The browser can't write any entity.** Every entity has `create/update/delete: false` for clients; writes go
-  through the 29 functions in `base44/functions/`, which use the service role. A parent's phone number, Photon ids,
-  pet rules and passkeys are admin-only fields and are stripped by `publicParent` before anything leaves the
-  backend.
-- **Agents talk to the app over one endpoint**, `agentApi` (header `x-agent-key`), and to each other over the
-  `HandMeDownRelay 0.3.0` uAgents protocol. When the agents are offline or slow, C's local matcher proposes the same
-  trade after 8 s (25 s while agents are on duty) and labels it `fallback`.
-
-### Repo map
-
-| Path | What it is |
-|---|---|
-| `base44/entities/*.json` | 13 entity schemas with row- and field-level access rules |
-| `base44/functions/<name>/entry.ts` | 29 Deno functions (thin wrappers around `base44/shared`) |
-| `base44/shared/logic/{closet,trade,trust,snap,impact,demo}.ts` | B's handlers |
-| `base44/shared/c/*` | C's location, encounter, iMessage and Photon helpers, and the pets' personalities (Deno tests live here as `*_test.ts`) |
-| `src/app/*` | Shell, routes, store, `Api` interface, mock and real adapters, demo panel |
-| `src/{world,pixel,closet,trade,trust,impact,agent,console}/*` | Screens and components |
-| `agents/*` | Python uAgents: `closet_agent.py`, `relay_protocol.py`, `personality.py`, `live_bureau.py`, `local_demo.py`, `mock_base44.py`, tests |
-| `scripts/demo-api.mjs` | Backend smoke test that drives the whole story over HTTP (12 steps) |
-| `docs/submission/*` | Submission write-ups |
-| `NEEDS.md` | The team's running log of cross-owner requests and live-run findings |
-
-### Screens
-
-| Route | Screen |
-|---|---|
-| `/` | Title screen, location explainer, "Who's playing?" picker, links to the Agent Console and impact |
-| `/world` | Map and radar, real GPS or the `?demo=1` "WALK TOWARD …" button and WALK TO picker (`?walk=`), encounter scene (the trade window opens only when the two lists match), celebration |
-| `/bag` | The closet: item slots, fit bar, nudges, needs, items passed on |
-| `/bag/needs` | What this family needs next: sizes, kinds, max price, and whether the pet may share it |
-| `/bag/add` | Snap to list: a photo of the item or its tag, the AI's guess, a check card, "Add to bag" |
-| `/bag/list/:itemId` | Listing flow: photo, condition (the pet suggests one), fixed price receipt |
-| `/bag/pet` | The pet's spending rules, passkey (Face ID) set-up, and how to text the pet on iMessage |
-| `/trade/:id` | Trade window: both decisions, receipt, pay |
-| `/agents` | Agent Console, on a projector or a phone: each pet's personality, the agents' protocol messages, the pets' lines, a privacy check, the outcome. `?enc=<id>` opens one encounter; the encounter scene's "See the agents' chat" and the pet's AGENTS' CHAT link there |
-| `/impact` | Impact and rewards: new homes, CO₂e, water, landfill, money saved and earned, points, sources |
-| `/log` | Relay log hub: funnel, $0 declines, ownership chains |
-
----
-
-## Tests
+Use Node 22 or later and install dependencies with `npm install`.
 
 ```bash
-npx tsc -p tsconfig.check.json                                   # typecheck (exit 0)
-npx vitest run                                                   # 32 files, 562 tests
-npx -y deno@2 test --no-lock -A base44/shared/c/                 # 74 Deno tests (iMessage, webhook, parity, personalities)
-agents/.venv/Scripts/python.exe -m pytest -q agents/tests        # 137 Python tests
-agents/.venv/Scripts/python.exe agents/local_demo.py             # offline Fetch.ai story, 13 PASS checks
+npm run real       # Local frontend connected to the live configured Base44 backend
+npm run mock       # Offline demo; does not prove the live iMessage integration
+npm run typecheck
+npm test
 ```
 
-Counts are from a run on Oct 18, 2026, on the current tree. Details per file, what each suite proves, and the live
-runs we did are in [testing.md](docs/submission/testing.md).
+The local project is linked by `base44/.app.jsonc`. The real frontend needs `VITE_BASE44_APP_ID` and `VITE_BASE44_APP_BASE_URL` in its environment. Use the public app ID from the linked project; keep all service credentials in ignored environment files or Base44 secrets.
 
----
+```bash
+npx base44 whoami
+npx base44 entities push -y
+npx base44 functions deploy
+npx base44 build
+npx base44 site deploy -y
+```
 
-## What is live and what is not
+Entity synchronization affects the whole configured schema, so check for remote-only entities before pushing. Do not reset live inventory to rehearse. `/trial` creates only its labeled sample and matching need.
 
-- **Live and verified on the deployed site (Oct 18, about 02:00):** the whole story on two tabs: Sep 20 nudge, sell,
-  condition suggested by the pet, $18.00 listing, Oct 18 demo walk, encounter scene with the pets' bubbles, trade
-  window on both tabs, accept on both, demo pay, celebration on both, romper in Jo's bag. A second run with the
-  Fetch.ai agents running in `live_bureau.py`: the agents negotiated and created the proposal themselves
-  (`source: fetch`). The backend `selfTest` passed 13 of 13 checks.
-- **Deployed with the hackathon upgrades and run again live (Oct 18, about 04:30):** all 29 functions, the new
-  entity fields and the site. The same two-tab story from RESET to payment (`DEMO-6FCQR4`), now with the pet's
-  rules in the trade window ("Within your pet's rules (up to $50.00 a trade, $82.00 left this month after this)"),
-  the Agent Console (`/agents`) showing that encounter's 4 protocol messages, the pets' lines, a clean privacy check
-  and PAID, and the impact board (`/impact`) counting the trade.
-- **Deployed, not yet exercised on live:** snap-to-list on a real photo (`analyzeItemPhoto`), saving new pet rules
-  (`setMandate`), passkey set-up and a passkey-approved payment, and the iMessage conversation (sell by photo,
-  accept by text, STOP, signed webhooks). Each is covered by the mock run and the tests in
-  [testing.md](docs/submission/testing.md).
-- **In the repo, not deployed yet:** the pets' personalities, the Agent Console on phones (`/agents?enc=<id>`,
-  "See the agents' chat" in the encounter scene, AGENTS' CHAT in the pet's dialog), and whole-page scrolling for the
-  bag and the other regular screens on phones. They run in mock mode.
-- **Needs a human:** Photon set-up (webhook, one shared-pool number per demo phone, each phone texts "hi" once; the
-  API key is already set), the Agentverse mailbox for ASI:One, and a real device for Face ID. Real Face ID approval
-  has been exercised in Deno with a software authenticator and in Chrome with a virtual authenticator, not on
-  Base44. The steps are in [testing.md](docs/submission/testing.md#going-live-checklist).
-- **Demo shortcuts, stated plainly:** there is no sign-in (`?as=mina` picks the family), the payment is simulated
-  (`DEMO-XXXXXX` reference), and `?demo=1` simulates the walk for indoor judging.
+## Product feedback
 
-## Rules the code never breaks
+Ask two parents/caregivers to add an item without coaching, then send them `/feedback`. Record whether they finished unaided, what they currently do with outgrown clothes, where they hesitated, whether this would save effort, and the change they want. The `UserFeedback` entity is private; the team can review it through privileged Base44 access. Report the actual response counts and make one observable improvement from the feedback before claiming user validation.
 
-1. Nothing is charged until **both** parents accept (`payProposal` refuses anything that isn't `both_accepted`).
-2. An item with 3 owners can never be listed or sold (`priceFor` returns `null`, `listItem` and `payProposal` refuse).
-3. Agents and screens never decide for a person: agents only propose; accepting and paying are human taps.
-4. A parent's phone number never leaves the backend (`publicParent`, admin-only field rules, masking in texts).
-5. Every pay surface says "Demo payment · no real charge".
+Legacy internal keys and protocol identifiers are retained for data compatibility; the product name is SproutPass.

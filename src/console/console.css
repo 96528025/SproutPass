@@ -26,7 +26,7 @@
   margin: -16px -16px calc(-1 * (var(--bottom-bar, 64px) + 80px + var(--dock-h, 0px)));
 }
 /* no demo strip above: the top-right 48 px belong to A's MuteToggle */
-.b-app--no-demo > .b-main > .ac { margin-top: -48px; padding-top: calc(48px + var(--u2)); }
+.b-app--no-demo > .b-main > .ac { margin-top: -16px; padding-top: var(--u2); }
 
 /* Big screen: a full-viewport layer over the handheld frame (portal to <body>). */
 .ac-layer {

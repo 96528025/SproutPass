@@ -51,15 +51,10 @@ button { border-radius: 0; }
     overflow-y: visible;
     overscroll-behavior: auto;
   }
-  .b-app:has(> .b-main:not(.b-main--bleed)) > .b-demo {
-    position: sticky;
-    top: var(--safe-top, 0px);
-    z-index: 4; /* under the bottom bar (5) and A's MuteToggle (6) */
-  }
-  .b-app:has(> .b-main:not(.b-main--bleed)) > .b-demo:has(.b-demo-body) { position: static; }
+  .b-app:has(> .b-main:not(.b-main--bleed)) > .b-demo { position: static; }
 }
 /* no demo panel above: the top-right 48 px belong to A's MuteToggle */
-.b-app--no-demo > .b-main:not(.b-main--bleed) { padding-top: 48px; }
+.b-app--no-demo > .b-main:not(.b-main--bleed) { padding-top: 16px; }
 /* A's title and world fill the screen. They size themselves with var(--screen-h) / --safe-top, so those become
    "the space under the demo panel" here (the column above already took the status-bar inset). */
 .b-main--bleed {

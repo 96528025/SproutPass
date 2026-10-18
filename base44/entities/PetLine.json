@@ -3,11 +3,45 @@
   "type": "object",
   "title": "PetLine",
   "properties": {
-    "parentId": { "type": "string" },
-    "text": { "type": "string" },
-    "imageUrl": { "type": "string" },
-    "createdAt": { "type": "string", "format": "date-time" }
+    "parentId": {
+      "type": "string"
+    },
+    "text": {
+      "type": "string"
+    },
+    "imageUrl": {
+      "type": "string"
+    },
+    "createdAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "deliveryStatus": {
+      "type": "string",
+      "enum": [
+        "pending",
+        "submitted",
+        "not_sent"
+      ]
+    },
+    "deliveryReason": {
+      "type": "string"
+    },
+    "photonMessageId": {
+      "type": "string"
+    },
+    "imageSubmitted": {
+      "type": "boolean"
+    }
   },
-  "required": ["parentId", "text"],
-  "rls": { "create": false, "read": true, "update": false, "delete": false }
+  "required": [
+    "parentId",
+    "text"
+  ],
+  "rls": {
+    "create": false,
+    "read": true,
+    "update": false,
+    "delete": false
+  }
 }

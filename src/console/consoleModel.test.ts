@@ -75,9 +75,9 @@ describe("engine + outcome", () => {
   });
 
   it("proposal status in words; nothing charged on every dead end", () => {
-    expect(proposalStatus({ status: "open", sellerDecision: "pending", buyerDecision: "pending" }).label).toBe("Open · waiting for both parents");
-    expect(proposalStatus({ status: "open", sellerDecision: "accepted", buyerDecision: "pending" }).label).toBe("Open · 1 of 2 accepted");
-    expect(proposalStatus({ status: "paid", sellerDecision: "accepted", buyerDecision: "accepted" }).label).toMatch(/demo payment/);
+    expect(proposalStatus({ status: "open", sellerDecision: "pending", buyerDecision: "pending" }).label).toBe("Open · waiting for buyer approval");
+    expect(proposalStatus({ status: "open", sellerDecision: "accepted", buyerDecision: "pending" }).label).toBe("Open · waiting for buyer approval");
+    expect(proposalStatus({ status: "paid", sellerDecision: "accepted", buyerDecision: "accepted" }).label).toMatch(/simulated payment/);
     for (const status of ["declined", "expired", "payment_failed"] as const) {
       expect(proposalStatus({ status, sellerDecision: "pending", buyerDecision: "pending" }).label).toMatch(/nothing charged/);
     }

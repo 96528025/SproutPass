@@ -41,6 +41,11 @@ export interface MapLayerProps {
   avatar: SpriteName;
   /** Shown as an empty paper map when there is no position and we are not in zone view. */
   noFix?: boolean;
+  /**
+   * Follow mode: my avatar (the radar centre) stands this many px above the map's centre, a multiple of 4. /world?demo=1
+   * raises it over the walk controls; 0 (default) = the stage centre.
+   */
+  liftPx?: number;
 }
 
 function prefersReducedMotion(): boolean {
@@ -48,7 +53,7 @@ function prefersReducedMotion(): boolean {
 }
 
 /** Keeps Leaflet's size in sync with the stage, and drives follow / zone view. */
-function Controller({ me, zoomedOut, zone }: Pick<MapLayerProps, "me" | "zoomedOut" | "zone">) {
+function Controller({ me, zoomedOut, zone, liftPx = 0 }: Pick<MapLayerProps, "me" | "zoomedOut" | "zone" | "liftPx">) {
   const map = useMap();
   const target = useRef<{ x: number; y: number } | null>(null);
 
@@ -59,15 +64,16 @@ function Controller({ me, zoomedOut, zone }: Pick<MapLayerProps, "me" | "zoomedO
     return () => ro.disconnect();
   }, [map]);
 
-  // Target = my position at the follow zoom, rounded to the 4-px grid so the map only ever rests on whole pixels.
+  // Target = my position at the follow zoom, rounded to the 4-px grid so the map only ever rests on whole pixels; the
+  // map's centre sits liftPx below me, so I stand liftPx above it (on the raised radar centre).
   useEffect(() => {
     if (!me) {
       target.current = null;
       return;
     }
     const p = map.project(L.latLng(me.lat, me.lng), FOLLOW_ZOOM);
-    target.current = { x: Math.round(p.x / STEP_PX) * STEP_PX, y: Math.round(p.y / STEP_PX) * STEP_PX };
-  }, [map, me?.lat, me?.lng]); // eslint-disable-line react-hooks/exhaustive-deps
+    target.current = { x: Math.round(p.x / STEP_PX) * STEP_PX, y: Math.round(p.y / STEP_PX) * STEP_PX + liftPx };
+  }, [map, me?.lat, me?.lng, liftPx]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Entering a view: zone = fit the polygon; follow = jump straight onto me.
   useEffect(() => {
@@ -175,7 +181,7 @@ function ZoneMarker({ me, avatar }: { me: { lat: number; lng: number } | null; a
   );
 }
 
-export function MapLayer({ me, zoomedOut, zone, avatar, noFix }: MapLayerProps) {
+export function MapLayer({ me, zoomedOut, zone, avatar, noFix, liftPx = 0 }: MapLayerProps) {
   const empty = !zoomedOut && (noFix || !me);
   const start = me ? ([me.lat, me.lng] as [number, number]) : FALLBACK_CENTRE;
   return (
@@ -206,7 +212,7 @@ export function MapLayer({ me, zoomedOut, zone, avatar, noFix }: MapLayerProps) 
           {/* z-1 tiles at tileSize 512: each 256-px source pixel is a 2×2 block, same ground scale as normal z17 */}
           <TileLayer url={TILE_URL} tileSize={512} zoomOffset={-1} maxNativeZoom={17} keepBuffer={2} />
           {zone && zoomedOut && <GeoJSON key={zone.boundaryMode} data={zone.geojson} style={ZONE_STYLE} />}
-          <Controller me={me} zoomedOut={zoomedOut} zone={zone} />
+          <Controller me={me} zoomedOut={zoomedOut} zone={zone} liftPx={liftPx} />
           {!zoomedOut && <Trail me={me} />}
           {zoomedOut && <ZoneMarker me={me} avatar={avatar} />}
         </MapContainer>

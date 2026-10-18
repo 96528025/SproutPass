@@ -41,6 +41,7 @@ export interface OwnershipEntry { ownerId: ID; from: ISODate; to?: ISODate; pric
 export type ItemStatus = "in_closet" | "listed" | "pending_trade" | "transferred_out";
 
 export interface ClothingItem {
+  trialSample?: boolean;
   id: ID;
   name: string;                      // "Yellow duck romper"
   category: Category;
@@ -331,7 +332,10 @@ export interface NearbyParent {
   distanceM?: number;                // demo only (both sides simulated), rounded to 5 m — A's "WALKING… 85 M"
 }
 export interface ListNearbyRes { me: { accuracyM: number; simulated: boolean; fresh: boolean } | null; nearby: NearbyParent[] }
-export interface DemoWalkReq { parentId: ID; targetParentId: ID; stepM?: number; reset?: boolean }
+export interface DemoWalkReq {
+  parentId: ID; targetParentId: ID; stepM?: number; reset?: boolean;
+  arrive?: boolean;                  // tap-to-meet (demo): one call puts the walker 10 m from the target, then the walk's check
+}
 export interface DemoWalkRes { ok: true; distanceM: number; encounters: EncounterStart[]; fallback: ID[]; cooldown?: PairCooldown[]; position?: DemoPosition; bearingDeg?: number }
 
 /** Public card for a trade party: never phone, Photon ids, convo or ASI address (approved by Caesar, 00:10). */

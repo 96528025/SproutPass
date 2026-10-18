@@ -14,9 +14,16 @@
 // The target is a seed key ("mina"); its real Parent id is resolved once per tab: from the radar when that parent
 // is on it (same name), else one getCloset({ parentKey }) (demo only, only the id is kept), cached in
 // sessionStorage. (A demoWalk that took the target's seed key would make that fallback unnecessary: NEEDS.)
+// Tap-to-meet (`meet(key)`, a tap on a family on /world?demo=1): the caller picks that family as the walk target
+// (WALK TO) and the walk's first tick becomes ONE demoWalk({ arrive: true }), which puts this parent's simulated
+// presence 10 m from them and runs the same meeting check. Its answer goes through walkStep like a walk step:
+// arrive → the usual hold ticks; a pair still in its cooldown → done + the Toast. (An answer still > 25 m out, e.g.
+// a backend that doesn't know `arrive` yet, just walks on.) One tap at a time: a meet runs as a walk, so the next tap
+// waits until it is answered; a failed arrive call is tried once more (with the walk's backoff), then the tap is
+// dropped quietly and the walk is back where it was.
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api, ApiError } from "@/app/api";
-import type { DemoPosition, EncounterStart, NearbyParent, PairCooldown } from "@/app/types";
+import type { DemoPosition, DemoWalkReq, EncounterStart, NearbyParent, PairCooldown } from "@/app/types";
 import { seedName } from "@/world/people";
 
 export type WalkPhase = "idle" | "walking" | "arrived" | "done";
@@ -49,6 +56,11 @@ function remember(key: string, id: string | null) {
   } catch {
     /* private mode: memory only */
   }
+}
+
+/** The seed key → real Parent id pairs this tab has resolved (demoFamilies tells the radar's demo families apart). */
+export function knownParentIds(): Readonly<Record<string, string>> {
+  return ids;
 }
 
 const resolving = new Map<string, Promise<string>>();
@@ -116,6 +128,33 @@ export function walkStep(res: WalkTick, phase: "walking" | "arrived", targetId: 
   return { next: "hold" };
 }
 
+/** One tick's demoWalk request: a tap's single arrive call (meet), a 20 m walk step, or a 1 m hold tick. */
+export function walkRequest(parentId: string, targetParentId: string, kind: "meet" | "walk" | "hold"): DemoWalkReq {
+  if (kind === "meet") return { parentId, targetParentId, arrive: true };
+  return { parentId, targetParentId, stepM: kind === "walk" ? WALK_STEP_M : HOLD_STEP_M };
+}
+
+/** What /world knows when a family is tapped (?demo=1). */
+export interface MeetGate {
+  demo: boolean;
+  /** My real Parent id (null while the closet loads). */
+  meId: string | null;
+  /** A meeting is on screen (the EncounterScene is up). */
+  encounterUp: boolean;
+  /** A walk is running, or a tap's arrive call is in flight (DemoWalk.active). */
+  walking: boolean;
+  /** A trade of mine is open, just paid or celebrating: /world is quiet. */
+  paused: boolean;
+}
+
+/**
+ * The families can be tapped to meet them: demo only, never on top of a meeting, a walk (or a tap still in flight)
+ * or a live trade: the walk button's own conditions, plus "not walking". Otherwise the sprites aren't buttons.
+ */
+export function canMeet(g: MeetGate): boolean {
+  return g.demo && !!g.meId && !g.encounterUp && !g.walking && !g.paused;
+}
+
 /** Seconds → "1:20" from a minute up, "45 s" below. */
 export function waitLabel(seconds: number): string {
   const s = Math.max(0, Math.ceil(seconds));
@@ -158,6 +197,12 @@ export interface DemoWalk {
   clearNote: () => void;
   start: () => void;
   stop: () => void;
+  /**
+   * Tap-to-meet: walk straight to `key` (a seed family) in ONE arrive call. The caller picks `key` as the walk target
+   * in the same handler (WALK TO); the call goes out once the hook has that target. Ignored while a walk (or another
+   * tap) is running.
+   */
+  meet: (key: string) => void;
 }
 
 export interface DemoWalkOptions {
@@ -180,6 +225,12 @@ export function useDemoWalk(parentId: string | null, targetKey: string, { enable
   const [visible, setVisible] = useState(() => typeof document === "undefined" || document.visibilityState === "visible");
   const inFlight = useRef(false);
   const arrivedAt = useRef(0);
+  // A tap waiting for (or in) its arrive call: the family, the phase to fall back to if it fails, one retry spent.
+  const meetRef = useRef<{ key: string; from: WalkPhase; retried: boolean } | null>(null);
+  const stateRef = useRef(state);
+  stateRef.current = state;
+  const targetRef = useRef(targetKey);
+  targetRef.current = targetKey;
 
   useEffect(() => {
     const onVis = () => setVisible(document.visibilityState === "visible");
@@ -187,9 +238,13 @@ export function useDemoWalk(parentId: string | null, targetKey: string, { enable
     return () => document.removeEventListener("visibilitychange", onVis);
   }, []);
 
-  // A new parent / target / leaving demo mode: start over.
+  // A new parent / target / leaving demo mode: start over. A tap that just picked this family (meet) starts right
+  // away instead: its arrive call is the walk's first tick.
   useEffect(() => {
-    setState("idle");
+    const m = meetRef.current;
+    const meeting = enabled && !!parentId && m?.key === targetKey;
+    meetRef.current = meeting && m ? { ...m, from: "idle" } : null;
+    setState(meeting ? "walking" : "idle");
     setDistanceM(null);
     setBearing(null);
     setNote(null);
@@ -228,17 +283,18 @@ export function useDemoWalk(parentId: string | null, targetKey: string, { enable
         return;
       }
       inFlight.current = true;
+      // A tap on this family (meet): this tick is its one arrive call, read below exactly like a walk step.
+      const m = walking && meetRef.current?.key === targetKey ? meetRef.current : null;
       try {
         const target = await resolveParentId(targetKey, nearby.current);
-        if (!alive) return;
+        if (!alive) return; // a tap not sent yet stays pending for the next run
         setTargetId(target);
-        const res = await api.demoWalk({
-          parentId,
-          targetParentId: target,
-          stepM: walking ? WALK_STEP_M : HOLD_STEP_M,
-        });
-        if (!alive) return;
+        const res = await api.demoWalk(walkRequest(parentId, target, m ? "meet" : walking ? "walk" : "hold"));
+        // Answered: the tap is spent, and the position is mine whatever happened meanwhile (a meeting that popped
+        // through realtime before this answer already moved the walk on to its hold).
+        if (m && meetRef.current === m) meetRef.current = null;
         if (res.position) setLocation({ parentId, position: res.position });
+        if (!alive) return;
         if (typeof res.bearingDeg === "number") setBearing(res.bearingDeg);
         wait = base;
         if (typeof res?.distanceM === "number") setDistanceM(res.distanceM);
@@ -259,6 +315,15 @@ export function useDemoWalk(parentId: string | null, targetKey: string, { enable
           remember(targetKey, null);
           setTargetId(null);
         }
+        // A tap is one call: tried once more (a stale id is resolved afresh first), then dropped where it started.
+        if (m && meetRef.current === m) {
+          if (m.retried) {
+            meetRef.current = null;
+            if (alive) setState(m.from);
+            return;
+          }
+          m.retried = true;
+        }
         wait = Math.min(MAX_BACKOFF_MS, wait * 2);
       } finally {
         inFlight.current = false;
@@ -274,11 +339,25 @@ export function useDemoWalk(parentId: string | null, targetKey: string, { enable
   }, [enabled, parentId, targetKey, visible, state, ticking, nearby]);
 
   const start = useCallback(() => {
+    meetRef.current = null;
     setNote(null);
     setState("walking");
   }, []);
-  const stop = useCallback(() => setState("idle"), []);
+  const stop = useCallback(() => {
+    meetRef.current = null;
+    setState("idle");
+  }, []);
   const clearNote = useCallback(() => setNote(null), []);
+  const meet = useCallback(
+    (key: string) => {
+      if (!enabled || !parentId || stateRef.current === "walking") return; // one at a time: a walk / tap is running
+      meetRef.current = { key, from: stateRef.current, retried: false };
+      setNote(null);
+      // Already the target: go now. Otherwise the caller's pick changes the target and the reset above starts it.
+      if (key === targetRef.current) setState("walking");
+    },
+    [enabled, parentId],
+  );
 
   const phase: WalkPhase = enabled ? state : "idle";
   return {
@@ -293,5 +372,6 @@ export function useDemoWalk(parentId: string | null, targetKey: string, { enable
     clearNote,
     start,
     stop,
+    meet,
   };
 }

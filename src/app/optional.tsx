@@ -17,6 +17,7 @@ const FILES: Record<string, Loader> = {
   ...import.meta.glob<Record<string, unknown>>("../impact/ImpactScreen.tsx"),
   ...import.meta.glob<Record<string, unknown>>("../trust/PetMandate.tsx"),
   ...import.meta.glob<Record<string, unknown>>("../closet/SnapToList.tsx"),
+  ...import.meta.glob<Record<string, unknown>>("../trial/{Trial,Feedback}.tsx"),
 };
 
 /** Error boundary: renders `fallback` instead of blanking the whole app when a child throws. */
