@@ -5,9 +5,19 @@
 //   2. the Python agents (header `x-agent-key`)             → service role
 //   3. Photon webhooks (query `?k=<WEBHOOK_KEY>`)            → service role
 // Reads of Presence are server-only (rule 3), so every C function writes and
-// reads entities through `asServiceRole` and never trusts a parentId from the
-// client without the matching key or a demo flag. For the hackathon the app
-// sends `parentId` explicitly (ParentPicker), which `Setting.demo` allows.
+// reads entities through `asServiceRole`.
+//
+// Trust model, honestly: the hackathon app is anonymous. It picks a family with
+// ?as= (ParentPicker) and sends that `parentId`; app callers are NOT bound to a
+// parent, so for updatePresence / listNearby / demoWalk the parentId is a claim.
+// What C enforces today:
+//   - agent-only doors (agentApi, sendImessage) need `x-agent-key`;
+//   - a simulated presence is server-owned (client coordinates ignored);
+//   - a real fix can't teleport a parent who is live on real GPS (location.ts
+//     MAX_SPEED_MPS), and others only ever get band + 5° bearing (no coordinates).
+// Binding a real-GPS caller to its parent (not done yet) needs a per-parent
+// token issued by B's getCloset and sent back by A's hooks, or a Base44 login
+// tied to the Parent.
 
 // deno-lint-ignore-file no-explicit-any
 import { createClientFromRequest } from "npm:@base44/sdk";
@@ -77,8 +87,8 @@ export async function resolveCaller(
     throw new HttpError(401, "bad webhook key");
   }
 
-  // App caller. Anonymous access is fine for the public demo; if a user is
-  // logged in we keep the email for logs only.
+  // App caller. Anonymous access is fine for the public demo (see the trust
+  // model above); if a user is logged in we keep the email for logs only.
   let userEmail: string | undefined;
   try {
     const me = await base44.auth.me();

@@ -7,7 +7,7 @@
 //   fit             {buyerId, sellerId} | {itemId, childId} → matches | outgrow prediction
 //   suggestCondition{imageUrl, itemName?}         → {condition, note, via:"llm"|"template"}
 //   createProposal  {...B's createProposal args}  → proposal (+ Encounter.status = proposed)
-//   noMatch         {encounterId}                 → Encounter.status = no_match
+//   noMatch         {encounterId}                 → Encounter.status = no_match (only while still talking, no proposal)
 //   appendTurn      {encounterId, turn}           → {transcript}
 //   now             {}                            → {now, matchVia, imessage}
 //   sendImessage    {parentId, text?, imageUrl?}  → sendToParent
@@ -16,12 +16,17 @@
 //
 // Rule 3 guard: getState for a peer strips everything except shared listings,
 // shared needs and the child's age in months.
+//
+// Heartbeat: claimInbox / now / registerAgent / lookupParent stamp Setting {key:"agents", now} (at most every 10 s
+// per warm isolate). While that stamp is < 45 s old, C's fallbacks give the agents room: inbox rows wait 30 s
+// (not 5 s) and encounters 25 s (not 8 s) before the template pet answers for them.
 
 // deno-lint-ignore-file no-explicit-any
 import { getSetting, handle, HttpError, readJson, resolveCaller } from "../../shared/c/auth.ts";
 import { sendToParent } from "../../shared/c/imessage.ts";
 import { sweepInbox } from "../../shared/c/inboxFallback.ts";
 import { suggestCondition } from "../../shared/c/condition.ts";
+import { endWithoutMatch, stampAgents } from "../../shared/c/location.ts";
 import { callB, findMatches, predictOutgrow } from "../../shared/cbridge.ts"; // B handlers, C-shaped (shared/cbridge.ts)
 
 const PASS_THROUGH = new Set([
@@ -31,11 +36,24 @@ const PASS_THROUGH = new Set([
 // B's handlers run in-process via cbridge (no HTTP hop; B's createProposal would 403 an SDK call without the agent key).
 const invokeB = (db: any, name: string, payload: any): Promise<any> => callB(db, name, payload);
 
+const HEARTBEAT_ACTIONS = new Set(["claimInbox", "now", "registerAgent", "lookupParent"]);
+const HEARTBEAT_EVERY_MS = 10_000;
+let lastHeartbeatAt = 0;
+
+/** "The agents are on duty" for C's fallbacks (location.ts agentsOnDuty). Best effort, never fails the call. */
+async function heartbeat(db: any): Promise<void> {
+  const now = Date.now();
+  if (now - lastHeartbeatAt < HEARTBEAT_EVERY_MS) return;
+  lastHeartbeatAt = now;
+  await stampAgents(db, now).catch((e) => console.error("[C] heartbeat", e));
+}
+
 export default handle(async (req) => {
   const { base44, db, kind } = await resolveCaller(req);
   if (kind !== "agent") throw new HttpError(401, "x-agent-key required");
   const body = await readJson<any>(req);
   const action = String(body.action ?? "");
+  if (HEARTBEAT_ACTIONS.has(action)) await heartbeat(db);
 
   switch (action) {
     case "claimInbox": {
@@ -114,18 +132,20 @@ export default handle(async (req) => {
       args.source = args.source ?? "fetch";
       const prop = await invokeB(db, "createProposal", args);
       if (args.encounterId) {
-        await db.Encounter.update(args.encounterId, {
-          status: "proposed",
-          ...(Array.isArray(args.transcript) ? { transcript: args.transcript } : {}),
-        }).catch(() => {});
+        const patch = { status: "proposed", ...(Array.isArray(args.transcript) ? { transcript: args.transcript } : {}) };
+        // + proposalId (A's EncounterScene hands it to the Trade window); retried without it if the schema refuses it.
+        await db.Encounter.update(args.encounterId, { ...patch, ...(prop?.id ? { proposalId: prop.id } : {}) })
+          .catch(() => db.Encounter.update(args.encounterId, patch))
+          .catch(() => {});
       }
       return prop;
     }
 
     case "noMatch": {
+      // A late conversation (the local fallback already proposed, or the agents' own proposal landed) must not
+      // flip a proposed encounter to no_match: only a still-talking encounter with no proposal ends here.
       if (!body.encounterId) throw new HttpError(400, "encounterId required");
-      await db.Encounter.update(body.encounterId, { status: "no_match" });
-      return { ok: true };
+      return await endWithoutMatch(db, String(body.encounterId));
     }
 
     case "appendTurn": {
@@ -145,7 +165,7 @@ export default handle(async (req) => {
 
     case "now": {
       const s = await getSetting(db);
-      // Agents poll this ~every second anyway, so piggy-back the fallback sweep.
+      // Piggy-back the fallback sweep (the agents are on duty, so rows wait 30 s for them first).
       await sweepInbox(base44, db).catch(() => {});
       return { now: s.now, matchVia: s.matchVia, imessage: s.imessage };
     }

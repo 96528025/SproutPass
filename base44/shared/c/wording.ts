@@ -29,6 +29,14 @@ export const t = {
   accepted: (other: string) => `You accepted! Waiting on ${other} now.`,
   bothAccepted: (payLink: string) => `Both of you said yes! Tap to pay (demo payment · no real charge): ${payLink}`,
   declined: () => `Declined — $0 charged, and the listing is back up.`,
+  expired: () => `That trade timed out — $0 charged, and the listing is back up.`,
+  paymentFailed: () => `The demo payment didn't go through — $0 charged, and the listing is back up.`,
+  notYet: () => `Both of you need to accept first — nothing is charged until then.`,
+  inTrade: (item: string) => `The ${item} already has a trade open — answer that one first.`,
+  alreadyListed: (item: string, priceCents: number) =>
+    `The ${item} is already listed at ${dollars(priceCents)}. I'll tell you when a friend's pet wants it.`,
+  listFailed: (item: string) => `I couldn't list the ${item} just now — try again from the bag.`,
+  busy: () => `The app is busy right now — give me a minute and try again.`,
   completed: (item: string, until: string) =>
     `Say hi to the ${item}! It should fit until ~${until}. I'll check in then.`,
   sold: (item: string, priceCents: number) => `The ${item} found its next home for ${dollars(priceCents)}. Flowers all round!`,
@@ -39,6 +47,29 @@ export const t = {
   otherAccepted: (other: string) => `${other} accepted — your turn! Reply "accept" or "decline".`,
   noOpenProposal: () => `There's no open trade right now. Walk around — your pet will find one!`,
   bag: (lines: string[]) => lines.length ? `In the bag: ${lines.join(" · ")}` : `The bag is empty — text me when you buy something!`,
+};
+
+/* ---------- agent-to-agent transcript lines (pixel bubbles in the app) ----------
+ * Same text as agents/wording.py t_*. The Python agents prefix the pet's name ("Pip: …"); C's local fallback
+ * doesn't know the names, so it passes no pet and AgentBubbles labels the line from the parent id instead. */
+
+const said = (pet: string | undefined, text: string) => (pet ? `${pet}: ${text}` : text);
+
+export const tl = {
+  hello: (pet?: string) => said(pet, `Hi! Anything on your list for your little one?`),
+  /** Python says "anything" for a need with no categories; C's fallback doesn't know the need (undefined → bare). */
+  lookingFor: (sizes: string[], categories?: string[], pet?: string) =>
+    said(pet, `Looking for ${sizes.join("/")}${categories ? ` ${categories.length ? categories.join(" or ") : "anything"}` : ""}!`),
+  have: (item: string, size: string, pet?: string) => said(pet, `I have a ${item} in ${size}.`),
+  noFit: (pet?: string) => said(pet, `Nothing in my closet fits today.`),
+  /** Said by the BUYER's pet (it ran B's fit for its own child). */
+  fitCheck: (weeks: number | null | undefined, pet?: string) =>
+    said(pet, weeks == null ? `Size looks right for my little one.` : `My little one fits it for about ${weeks} more weeks.`),
+  propose: (priceCents: number, pet?: string) =>
+    said(pet, `Trade proposal! ${dollars(priceCents)} — nothing is charged until you both accept.`),
+  ack: (pet?: string) => said(pet, `Sounds good — over to the humans!`),
+  notNeeded: (pet?: string) => said(pet, `Thanks, but that won't fit my little one.`),
+  decline: (why: string, pet?: string) => said(pet, `Not this one — ${why}`),
 };
 
 export function label(condition: string): string {
