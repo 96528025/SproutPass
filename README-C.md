@@ -38,7 +38,10 @@ AGENT_KEY, WEBHOOK_KEY, PHOTON_API_KEY, PHOTON_PROJECT_ID, SEED_PHONES, APP_HOST
 url  = https://<slug>.base44.app/functions/photonWebhook?k=<WEBHOOK_KEY>
 apiVersion = 2026-07-01, enabledEvents = ["message.received"]
 
-# 4. Both demo phones text the line "hi"  → Setting.lineUserId gets saved by photonWebhook
+# 4. In the Photon dashboard (iMessage → Add → "Assign a number from the shared pool") give EACH demo phone its
+#    own assignment, then each phone texts "hi" to ITS assigned number → photonWebhook saves that parent's line
+#    (Parent.photonLineUserId) and the pet answers from it. A shared line can't text first: until a phone has
+#    texted, its pet only talks in the app.
 
 # 5. Agents
 cd agents && cp .env.example .env && $EDITOR .env && make install

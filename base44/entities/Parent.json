@@ -83,6 +83,21 @@
         }
       }
     },
+    "photonLineUserId": {
+      "type": "string",
+      "rls": {
+        "read": {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        "write": {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      }
+    },
     "convo": {
       "type": "object",
       "rls": {

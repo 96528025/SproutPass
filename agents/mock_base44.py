@@ -178,7 +178,7 @@ class MockBase44(Base44Client):
         age = age_in_months(child["birthDate"], self.clock) if child else None
         mine = [p for p in reversed(list(self.proposals.values())) if parent_id in (p["buyerId"], p["sellerId"])]
         terminal = [p for p in mine if p["status"] not in LIVE][:5]
-        public = {k: v for k, v in parent.items() if k not in ("phone", "photonUserId", "photonSpaceId", "convo", "asiAddress")}
+        public = {k: v for k, v in parent.items() if k not in ("phone", "photonUserId", "photonSpaceId", "photonLineUserId", "convo", "asiAddress")}
         return copy.deepcopy({
             "now": self.clock,
             "parent": public,

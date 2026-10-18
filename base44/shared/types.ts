@@ -22,6 +22,7 @@ export interface Parent {
   discoverable: boolean;
   photonUserId?: string;             // cache for sendImessage (C)
   photonSpaceId?: string;
+  photonLineUserId?: string;         // C: the Photon iMessage line this parent texts; their pet replies from it
   convo?: Record<string, unknown>;   // C's iMessage fallback conversation state (server-only)
   asiAddress?: string;               // C: ASI:One user bound with "claim mina-1234" (server-only)
 }
@@ -194,7 +195,7 @@ export type ParentRef = { parentId?: ID; parentKey?: string };   // functions ac
 
 export interface ClosetView {
   now: ISODate;
-  parent: Omit<Parent, "phone" | "photonUserId" | "photonSpaceId" | "convo" | "asiAddress">;
+  parent: Omit<Parent, "phone" | "photonUserId" | "photonSpaceId" | "photonLineUserId" | "convo" | "asiAddress">;
   child: Child | null;
   childAgeMonths: number | null;
   items: ClothingItem[];             // items currently owned (status != transferred_out)

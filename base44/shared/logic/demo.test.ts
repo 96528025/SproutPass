@@ -187,13 +187,30 @@ describe("demoReset keeps parent and child ids stable (C's agents cache them)", 
   it("rewrites seed fields, keeps identity bindings, restarts the iMessage convo", async () => {
     const [mina] = await db.Parent.filter({ key: "mina" });
     await db.Parent.update(mina.id, { name: "Renamed", pet: { sprite: "pet_x", name: "Zed" }, agentAddress: "agent1qregistered",
-      photonUserId: "ph_u", photonSpaceId: "ph_s", asiAddress: "asi1q", convo: { step: "await_condition", itemId: "gone" } });
+      photonUserId: "ph_u", photonSpaceId: "ph_s", photonLineUserId: "ph_line", asiAddress: "asi1q",
+      convo: { step: "await_condition", itemId: "gone" } });
     await demoReset(db, { MINA_PHONE: "+15555550101" });
     const after = await db.Parent.get(mina.id);
     expect(after).toMatchObject({ name: "Mina", pet: { sprite: "pet_a", name: "Button" }, phone: "+15555550101",
-      agentAddress: "agent1qregistered", photonUserId: "ph_u", photonSpaceId: "ph_s", asiAddress: "asi1q", convo: { step: "idle" } });
+      agentAddress: "agent1qregistered", photonUserId: "ph_u", photonSpaceId: "ph_s", photonLineUserId: "ph_line",
+      asiAddress: "asi1q", convo: { step: "idle" } });
     await demoReset(db, { MINA_AGENT: "agent1qfromsecret" });
     expect((await db.Parent.get(mina.id)).agentAddress).toBe("agent1qfromsecret");
+  });
+
+  it("a new phone on RESET drops the old phone's Photon user, space and iMessage line", async () => {
+    const [mina] = await db.Parent.filter({ key: "mina" });
+    await db.Parent.update(mina.id, { photonUserId: "ph_u", photonSpaceId: "ph_s", photonLineUserId: "ph_line", agentAddress: "agent1qkeep" });
+    await demoReset(db, { MINA_PHONE: "+1 (555) 555-0101" });       // same number, other format: kept
+    expect(await db.Parent.get(mina.id)).toMatchObject({ photonUserId: "ph_u", photonSpaceId: "ph_s", photonLineUserId: "ph_line" });
+    await demoReset(db, { MINA_PHONE: "+15555550199" });            // a different phone: cleared
+    expect(await db.Parent.get(mina.id)).toMatchObject({ phone: "+15555550199", photonUserId: "", photonSpaceId: "",
+      photonLineUserId: "", agentAddress: "agent1qkeep" });
+    await db.Parent.update(mina.id, { photonUserId: "ph_u2", photonSpaceId: "ph_s2", photonLineUserId: "ph_line2" });
+    await demoReset(db, { MINA_PHONE: "5555550199" });              // 10-digit form of the same number: kept
+    await demoReset(db, {});                                          // no phone secret: phone and ids untouched
+    expect(await db.Parent.get(mina.id)).toMatchObject({ phone: "5555550199", photonUserId: "ph_u2", photonSpaceId: "ph_s2",
+      photonLineUserId: "ph_line2" });
   });
 
   it("removes duplicate and unknown parents/children, and re-creates missing ones", async () => {

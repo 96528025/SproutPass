@@ -74,6 +74,6 @@ export async function writeInbox(db: Db, parentId: ID, event: InboxEvent): Promi
 
 /** Strip private fields before returning a Parent to a client. */
 export function publicParent(p: Parent) {
-  const { phone: _phone, photonUserId: _u, photonSpaceId: _s, convo: _c, asiAddress: _a, ...rest } = p;
+  const { phone: _phone, photonUserId: _u, photonSpaceId: _s, photonLineUserId: _l, convo: _c, asiAddress: _a, ...rest } = p;
   return rest;
 }

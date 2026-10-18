@@ -1,13 +1,9 @@
 // (C) photon.ts — thin client for Photon 2.0 REST (https://api.photon.codes/v1).
 //
-// Verification status (Oct 17): the auth header, the message body shape
-// {spaceId, senderId, content:{type:"text", format:"plain", text}}, the
-// `idempotency-key` header and `apiVersion: "2026-07-01"` are confirmed from
-// photon.codes/docs/beta. The users/spaces/attachments/webhooks paths below
-// follow the team brief; confirm them at Hour 0 with
-//   curl -s https://api.photon.codes/openapi.json | jq '.paths | keys'
-// (the spec is too large for me to read in-session). Every path is a constant
-// here so a rename is a one-line fix.
+// Checked Oct 18 against https://api.photon.codes/openapi.json: the paths below, Bearer auth, the users / spaces /
+// messages / webhook-destination bodies, apiVersion "2026-07-01", the idempotency-key header (required on
+// messages, attachments, spaces and webhook destinations), and the message.received shape (data.object.sentBy /
+// receivedBy / space / content). Every path is a constant here so a rename is a one-line fix.
 
 export const PHOTON_BASE = "https://api.photon.codes/v1";
 export const PHOTON_API_VERSION = "2026-07-01";
@@ -49,6 +45,12 @@ async function call(
     Accept: "application/json",
     ...extraHeaders,
   };
+  // Photon REQUIRES an idempotency-key (visible ASCII, ≤ 255) on POST /messages, /attachments, /spaces and webhook
+  // destinations. Callers pass a stable key where a retry must replay (spaces; users, where it's harmless); every
+  // other POST gets a fresh one. Never reuse a key with a different body: Photon answers 422 IDEMPOTENCY_KEY_REUSED.
+  if (method === "POST" && !Object.keys(headers).some((h) => h.toLowerCase() === "idempotency-key")) {
+    headers["idempotency-key"] = crypto.randomUUID();
+  }
   let payload: BodyInit | undefined;
   if (body instanceof Uint8Array || body instanceof Blob) {
     payload = body as BodyInit;
@@ -71,16 +73,20 @@ export async function ensureUser(cfg: PhotonCfg, handle: string): Promise<string
   const r = await call(cfg, "POST", paths.users(cfg.projectId), {
     handle,
     platform: "imessage",
-  }, { "idempotency-key": `user:${handle}` });
+  }, { "idempotency-key": `user:${normalizePhone(handle)}` });   // digits only: the key must be visible ASCII
   return r.id ?? r.userId ?? r.user?.id;
 }
 
-/** Step 2: a 1:1 space with that user. */
-export async function ensureSpace(cfg: PhotonCfg, userId: string): Promise<string> {
+/**
+ * Step 2: the direct space between our line and that user. iMessage spaces need 2+ participants and a project-owned
+ * agent; the creator (our line) goes first. The idempotency key binds the participants for 24 h, so it names both.
+ * (Rarely needed: an inbound message already carries its space, and photonWebhook caches it with the line.)
+ */
+export async function ensureSpace(cfg: PhotonCfg, lineUserId: string, userId: string): Promise<string> {
   const r = await call(cfg, "POST", paths.spaces(cfg.projectId), {
-    participantIds: [userId],
+    participantIds: [lineUserId, userId],
     platform: "imessage",
-  }, { "idempotency-key": `space:${userId}` });
+  }, { "idempotency-key": `space:${lineUserId}:${userId}` });
   return r.id ?? r.spaceId ?? r.space?.id;
 }
 
@@ -164,7 +170,7 @@ export async function registerWebhook(
 }
 
 export async function listEventTypes(cfg: PhotonCfg): Promise<any> {
-  return call(cfg, "GET", paths.webhookEventTypes(cfg.projectId));
+  return call(cfg, "GET", `${paths.webhookEventTypes(cfg.projectId)}?apiVersion=${PHOTON_API_VERSION}`);   // apiVersion is a required query
 }
 
 /* ---------- inbound event parsing (pure, unit-testable) ---------- */
@@ -173,7 +179,7 @@ export interface InboundMessage {
   messageId: string;
   fromHandle: string; // sentBy.handle (phone)
   fromUserId?: string;
-  lineUserId?: string; // receivedBy user id → Setting.lineUserId
+  lineUserId?: string; // receivedBy user id: the line this parent texts → Parent.photonLineUserId (lines.ts)
   spaceId?: string;
   text: string;
   attachmentIds: string[];

@@ -81,6 +81,17 @@ describe("getCloset", () => {
     expect(c.parent).not.toHaveProperty("photonUserId");
   });
 
+  it("never sends the server-only Photon / C fields to the browser", async () => {
+    const mina = ids.parentIds.mina;
+    await db.Parent.update(mina, { phone: "+15551230000", photonUserId: "pho_usr_parent", photonSpaceId: "pho_spc_1",
+      photonLineUserId: "pho_usr_line", convo: { step: "await_photo" }, asiAddress: "asi1qmina" });
+    const c = await getCloset(db, { parentId: mina });
+    for (const k of ["phone", "photonUserId", "photonSpaceId", "photonLineUserId", "convo", "asiAddress"]) {
+      expect(c.parent).not.toHaveProperty(k);
+    }
+    expect(JSON.stringify(c)).not.toMatch(/\+1555123|pho_usr_|pho_spc_|await_photo|asi1q/);
+  });
+
   it("accepts parentId as well as parentKey; unknown parent is 404", async () => {
     const c = await getCloset(db, { parentId: ids.parentIds.jo });
     expect(c.parent.name).toBe("Jo");
