@@ -58,7 +58,7 @@ export function NudgeDialog() {
     try {
       const res = await api.resolveNudge({ ...parentRef(), nudgeId: nudge.id, action: value as Action });
       if (res.next === "open_listing") nav(`/bag/list/${res.itemId}`);
-      else if (value === "snooze") toast(`${closet.parent.pet.name.toUpperCase()} WILL ASK AGAIN LATER`, "lav");
+      else if (value === "snooze") toast(`${closet.parent.pet.name} will ask again later.`, "lav");
       void refreshCloset();
     } catch (e) {
       setAnswered((s) => { const n = new Set(s); n.delete(nudge.id); return n; });

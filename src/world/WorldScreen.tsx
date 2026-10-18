@@ -271,6 +271,9 @@ export function WorldScreen() {
 
       {demo && (
         <div className="ws__walk">
+          {!encounter && !walk.active && walk.phase === "idle" && (
+            <p className="ws__walk-hint">Your pets meet when you're within 25 m.</p>
+          )}
           {/* A walk that ended reads WALK AGAIN (a new walk starts over 120 m out); never while my trade is open. */}
           <PixelButton
             disabled={(!!encounter && !settled) || !meId || (paused && !walk.active)}
@@ -288,7 +291,7 @@ export function WorldScreen() {
         </div>
       )}
 
-      {hint && !demo && <Toast text="KEEP THIS SCREEN OPEN WHILE YOU WALK" duration={4000} onHide={hideHint} />}
+      {hint && !demo && <Toast text="Keep this screen open while you walk." duration={4000} onHide={hideHint} />}
 
       {encounter && !settled && me && peer && (
         <EncounterLayer key={encounter.id} encounter={encounter} proposalId={proposalId} me={me} peer={peer} onDone={dismiss} />

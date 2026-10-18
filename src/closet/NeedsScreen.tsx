@@ -72,7 +72,7 @@ export function NeedsScreen() {
         maxPriceCents: priceCents, shared,
       });
       setNeedId(need.id);
-      toast(shared ? "SAVED · YOUR PET WILL ASK AROUND" : "SAVED · KEPT PRIVATE", "mint");
+      toast(shared ? "Saved. Your pet will ask around." : "Saved and kept private.", "mint");
       await refreshCloset();
       nav("/bag");
     } catch (e) {
@@ -129,7 +129,7 @@ export function NeedsScreen() {
             <span className="b-switch" aria-hidden />
             <span className="b-stack" style={{ gap: 4 }}>
               <span className="b-label">SHARE {shared ? "ON" : "OFF"}</span>
-              <span className="b-small">Your pet only tells other pets what's shared</span>
+              <span className="b-small">Your pet only tells other pets what's shared.</span>
             </span>
           </label>
 

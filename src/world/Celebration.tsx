@@ -18,7 +18,7 @@ export interface CelebrationProposal {
   id: string;
   sellerId: string;
   buyerId: string;
-  snapshot: { icon: string; priceCents: number; previousOwners: number; wearWeeksLeft?: number };
+  snapshot: { icon: string; priceCents: number; previousOwners: number; wearWeeksLeft?: number; itemName?: string };
 }
 
 export interface CelebrationProps {
@@ -140,6 +140,7 @@ export function Celebration({ proposal, me, peer, onDone }: CelebrationProps) {
   const ix = Math.round((fromX + (toX - fromX) * t) / 4) * 4;
   const iy = Math.round((top - 44 - ARC_PEAK * 4 * t * (1 - t)) / 4) * 4;
   const owners = Math.min(3, Math.max(1, proposal.snapshot.previousOwners + 1)) as 1 | 2 | 3;
+  const thing = proposal.snapshot.itemName ? `The ${proposal.snapshot.itemName.toLowerCase()}` : "Your item";
 
   return (
     <div className="cel" ref={root} role="dialog" aria-label="Trade complete">
@@ -161,14 +162,19 @@ export function Celebration({ proposal, me, peer, onDone }: CelebrationProps) {
       {panel && (
         <div className="cel__panel">
           <PixelPanel title="TRADED!" tone="paper">
-            <div className="cel__price font-wordmark">{money(proposal.snapshot.priceCents)}</div>
-            <div className="px-label-12 cel__note">DEMO PAYMENT · NO REAL CHARGE</div>
-            <div className="cel__owner">
-              <Hearts filled={owners} />
-              <span className="px-label-12">{ordinal(owners)} OWNER</span>
+            <p className="cel__headline">
+              {sellerIsMe ? `${thing} is off to ${peer.name}'s closet.` : `${thing} is in your bag now.`}
+            </p>
+            <div className="cel__row">
+              <div className="cel__price">{money(proposal.snapshot.priceCents)}</div>
+              <div className="cel__owner">
+                <Hearts filled={owners} />
+                <span className="px-label-12">{ordinal(owners)} OWNER OF 3</span>
+              </div>
             </div>
+            <p className="cel__note">Demo payment · no real charge</p>
             <PixelButton block onClick={() => onDoneRef.current()}>
-              SEE IT IN THE BAG
+              {sellerIsMe ? "BACK TO MY BAG" : "SEE IT IN MY BAG"}
             </PixelButton>
           </PixelPanel>
         </div>

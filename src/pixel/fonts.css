@@ -1,2 +1,10 @@
-/* Google Fonts, open licences. Pixelify Sans = body/UI, Silkscreen = labels, Press Start 2P = wordmark only. */
-@import url("https://fonts.googleapis.com/css2?family=Pixelify+Sans:wght@400;500;700&family=Press+Start+2P&family=Silkscreen:wght@400;700&display=swap");
+/* Google Fonts, open licences (SIL OFL). One request, display=swap (text shows at once in the fallback).
+   - Atkinson Hyperlegible Next = var(--font-ui): every sentence, button, input and toast. Made by the Braille
+     Institute for low-vision readers: unambiguous letterforms (I/l/1, O/0, b/d), open counters.
+   - Silkscreen               = var(--font-display) at 16px+ (short titles, numbers, prices) and var(--font-label)
+                                for tiny uppercase tags (never below 12px). Unambiguous pixel digits.
+   - Pixelify Sans            = still loaded for older callers that name it; not used for text by the kit
+                                (its "5"/"S", "7" and "B"/"ß" look alike, which is not OK on a price).
+   - Press Start 2P           = var(--font-wordmark): the logo only.
+   index.html links this same URL (one fetch) so the fonts start downloading before the JS bundle runs. */
+@import url("https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible+Next:wght@400;500;700&family=Pixelify+Sans:wght@400;500;600;700&family=Press+Start+2P&family=Silkscreen:wght@400;700&display=swap");

@@ -16,14 +16,16 @@
   left: 40px;
   top: 112px;
 }
+/* name tags on a solid plate */
 .cel__name {
   position: absolute;
   left: 50%;
   top: calc(100% + 48px);
   transform: translateX(-50%);
-  padding: 0 4px;
+  padding: 2px 6px;
   background: var(--ink);
   color: var(--paper);
+  box-shadow: 2px 2px 0 var(--grass-dark);
   white-space: nowrap;
 }
 .cel__item {
@@ -58,21 +60,48 @@
   from { transform: translateY(48px); }
   to   { transform: translateY(0); }
 }
-.cel__price {
-  font-size: 24px;
-  line-height: 32px;
+.cel__headline {
+  font-family: var(--font-ui);
+  font-size: var(--fs-lg, 20px);
+  line-height: 26px;
+  font-weight: 700;
   text-align: center;
+  text-wrap: balance;
+}
+/* price and owner count side by side, so the panel stays low and the name tags above it stay visible */
+.cel__row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 8px 16px;
+  margin-top: 12px;
+}
+.cel__price {
+  padding: 2px 12px;
+  background: var(--gold);
+  border: 4px solid var(--ink);
+  box-shadow: var(--shadow-hard-sm);
+  font-family: var(--font-display, var(--font-wordmark));
+  font-size: var(--fs-xl, 26px);
+  font-weight: 700;
+  line-height: 36px;
+  text-align: center;
+  -webkit-font-smoothing: none;
 }
 .cel__note {
+  margin: 8px 0 12px;
+  color: var(--ink-soft, #4a3f5c);
+  font-family: var(--font-ui);
+  font-size: var(--fs-md, 16px);
+  line-height: 22px;
   text-align: center;
-  margin: 4px 0 12px;
 }
 .cel__owner {
   display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  margin-bottom: 16px;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
 }
 
 @media (prefers-reduced-motion: reduce) {

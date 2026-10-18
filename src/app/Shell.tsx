@@ -180,7 +180,7 @@ function PaidCelebration({ proposal, onDone, onSkip }: { proposal: MatchProposal
       <Celebration
         proposal={proposal}
         me={me}
-        peer={peer ?? standIn(peerId, me.id === proposal.sellerId ? "BUYER" : "SELLER", me.avatar.sprite)}
+        peer={peer ?? standIn(peerId, me.id === proposal.sellerId ? "Buyer" : "Seller", me.avatar.sprite)}
         onDone={onDone}
       />
     </Guard>
@@ -193,7 +193,7 @@ function ScreenCrashed() {
   return (
     <PixelPanel title="OOPS">
       <div className="b-center">
-        <p className="b-p">This screen tripped over something.</p>
+        <p className="b-p">This screen tripped over something. Reloading usually fixes it.</p>
         <PixelButton onClick={() => window.location.reload()}>RELOAD</PixelButton>
       </div>
     </PixelPanel>
@@ -245,16 +245,18 @@ export function Shell() {
   const kind = routeKind(path);
   // A's title has its own "who are you?" step; /log is the projector end card.
   const needsParent = !parentKey && kind !== "title" && !PUBLIC_PATHS.includes(path);
+  // The projector views (agent console, impact board) are for the big screen: no phone popups, pill or pet on them.
+  const projector = path === "/agents" || path === "/impact";
   // The dev pages (/kit, /dev/*) run their own DialogBoxes, EncounterScene and Celebration.
   const noDialogHere =
-    kind === "title" || path.startsWith("/bag/list/") || path.startsWith("/trade/") ||
+    kind === "title" || projector || path.startsWith("/bag/list/") || path.startsWith("/trade/") ||
     path === "/kit" || path.startsWith("/dev/");
   const showDemo = demo && kind !== "title";
   const calm = !paid && !encounterUp; // nothing pops over the celebration or the pets' meeting
   const route = kind === "screen" ? (path.split("/")[1] || "bag") : kind;
 
   const onPetUnhandled = () =>
-    toast(petName ? `FINISH UP HERE · ${petName.toUpperCase()} IS WAITING` : "PICK A PARENT FIRST", "lav");
+    toast(petName ? `Finish up here first. ${petName} is waiting.` : "Pick a parent first.", "lav");
   const doneCelebrating = () => {
     setPaid(null);
     nav("/bag");
@@ -275,7 +277,8 @@ export function Shell() {
         {!needsParent && kind !== "title" && <BottomBar petName={petName} onPetUnhandled={onPetUnhandled} />}
         <MuteToggle />
         {parentKey && !noDialogHere && calm && <Guard name="NudgeDialog" fallback={null}><NudgeDialog /></Guard>}
-        {parentKey && <TradeWatcher />}
+        {/* The trade window waits until the player is past the title; it pops on the next screen. */}
+        {parentKey && !projector && kind !== "title" && <TradeWatcher />}
         {parentKey && !noDialogHere && calm && <Pet />}
         {paid && <PaidCelebration key={paid.id} proposal={paid} onDone={doneCelebrating} onSkip={() => setPaid(null)} />}
         {toastMsg && <Toast key={toastMsg.id} text={toastMsg.text} tone={kitTone(toastMsg.tone)} />}

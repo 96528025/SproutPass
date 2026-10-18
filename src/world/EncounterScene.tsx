@@ -162,7 +162,7 @@ export function EncounterScene({ encounter, me, peer, bubbles, talking, onPropos
       </div>
 
       {banner && (
-        <div className="enc__banner font-wordmark" aria-live="polite">
+        <div className="enc__banner" aria-live="polite">
           TRADE PROPOSAL!
         </div>
       )}
@@ -170,6 +170,27 @@ export function EncounterScene({ encounter, me, peer, bubbles, talking, onPropos
       <button type="button" className="enc__close" aria-label="Close" onClick={() => onClosedRef.current()}>
         ×
       </button>
+
+      {/* what is happening, in one readable line (the no-match DialogBox takes this spot when nothing fits) */}
+      {!noMatch && (
+        <div className="enc__caption" aria-live="polite">
+          <p className="enc__caption-title">
+            {banner
+              ? "They found a fit!"
+              : phase < 2
+                ? `You're near ${peer.name}!`
+                : `${me.pet.name} and ${peer.pet.name} are talking`}
+          </p>
+          <p className="enc__caption-text">
+            {banner
+              ? `Opening the trade so you and ${peer.name} can each decide.`
+              : phase < 3
+                ? "Your pets hop out to compare closets."
+                : "They're checking size, fit and price for you."}
+          </p>
+          <span className="enc__caption-tag">PETS SUGGEST · YOU DECIDE</span>
+        </div>
+      )}
 
       {noMatch && (
         <DialogBox
@@ -207,7 +228,10 @@ function ParentSprite({
         </div>
       )}
       <Sprite name={asSprite(who.avatar.sprite, side === "me" ? "parent_a" : "parent_b")} anim={anim} scale={PARENT_SCALE} facing={facing} />
-      <div className="enc__name px-label-12">{who.name}</div>
+      <div className={`enc__name px-label-12${side === "me" ? " enc__name--you" : ""}`}>
+        {who.name}
+        {side === "me" && <span className="enc__you"> · YOU</span>}
+      </div>
     </div>
   );
 }
