@@ -18,8 +18,8 @@ import { tradeBanner } from "./tradeLogic";
 import "./trade.css";
 import "../trust/trust.css";
 
-// A paid trade stays open on its receipt (payment ref, how it was approved) until the person taps DONE;
-// A's Celebration plays over it first.
+// A paid trade stays open on its receipt (payment ref, how it was approved) until the person taps DONE.
+// A's Celebration plays over it first; its SEE IT IN MY BAG closes the window too (tradeDone → TradeWatcher).
 const CLOSE_AFTER_DECLINE_MS = 2500;
 
 export function TradeWindow({ proposalId, onClose }: { proposalId: string; onClose: () => void }) {

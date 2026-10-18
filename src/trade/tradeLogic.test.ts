@@ -2,7 +2,8 @@
 import { describe, expect, it, vi } from "vitest";
 import type { MatchProposal } from "../app/types";
 import {
-  confirmedGone, createPartyLoader, mandateFit, missingLive, ownerSentence, slimParty, tradeBanner, tradeReceipt, type Party,
+  confirmedGone, createPartyLoader, doneWithTrade, mandateFit, missingLive, ownerSentence, slimParty, tradeBanner, tradeReceipt,
+  tradeToPop, type Party, type WatcherState,
 } from "./tradeLogic";
 
 const jo: Party = { id: "p_jo", name: "Jo", avatar: { sprite: "parent_b", palette: "mint" }, pet: { sprite: "pet_b", name: "Pip" } };
@@ -104,6 +105,33 @@ describe("gone detection", () => {
     const seenAt = new Map([["a", 1000], ["b", 5000]]);
     expect(confirmedGone(["a", "b"], [], seenAt, 3000)).toEqual(["a"]);   // b arrived after the fetch began: stale, keep it
     expect(confirmedGone(["a", "b"], ["a"], seenAt, 9000)).toEqual(["b"]); // a is listed again
+  });
+});
+
+describe("trade window watcher", () => {
+  const fresh: WatcherState = { openId: null, dismissed: new Set() };
+
+  it("pops the newest live trade, but not over an open window, on /trade/:id, or once dismissed", () => {
+    expect(tradeToPop(fresh, "a", false)).toBe("a");
+    expect(tradeToPop(fresh, null, false)).toBeNull();
+    expect(tradeToPop({ ...fresh, openId: "a" }, "a", false)).toBeNull();
+    expect(tradeToPop(fresh, "a", true)).toBeNull();
+    expect(tradeToPop({ ...fresh, dismissed: new Set(["a"]) }, "a", false)).toBeNull();
+  });
+
+  it("SEE IT IN MY BAG on the paid trade closes its window for good; the next trade still pops", () => {
+    const after = doneWithTrade({ ...fresh, openId: "a" }, "a");
+    expect(after.openId).toBeNull();
+    expect(tradeToPop(after, "a", false)).toBeNull();
+    expect(tradeToPop(after, "b", false)).toBe("b");
+  });
+
+  it("a window that moved on to a newer trade stays up when the older one's celebration ends", () => {
+    const before: WatcherState = { ...fresh, openId: "b" };
+    const after = doneWithTrade(before, "a");
+    expect(after.openId).toBe("b");
+    expect(after.dismissed.has("a")).toBe(true);
+    expect(before.dismissed.size).toBe(0); // state is replaced, not mutated
   });
 });
 

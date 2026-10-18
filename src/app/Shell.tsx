@@ -13,7 +13,7 @@ import { PixelButton, PixelPanel, Toast, type ToastTone as KitToastTone } from "
 import { Guard, optional } from "./optional";
 import { api } from "./api";
 import { NudgeDialog } from "../closet/NudgeDialog";
-import { celebrate, usePublicParent } from "../trade/tradeKit";
+import { celebrate, tradeDone, usePublicParent } from "../trade/tradeKit";
 import { HandheldFrame } from "../world/HandheldFrame";
 import { BottomBar } from "../world/BottomBar";
 import { MuteToggle } from "../world/MuteToggle";
@@ -258,6 +258,7 @@ export function Shell() {
   const onPetUnhandled = () =>
     toast(petName ? `Finish up here first. ${petName} is waiting.` : "Pick a parent first.", "lav");
   const doneCelebrating = () => {
+    if (paid) tradeDone(paid.id); // the trade window under the celebration closes, so the bag shows
     setPaid(null);
     nav("/bag");
   };

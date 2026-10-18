@@ -50,6 +50,9 @@ export function celebrate(p: MatchProposal): boolean {
   return true;
 }
 
+/** The celebration's SEE IT IN MY BAG / BACK TO MY BAG: this tab is done with the trade, so TradeWatcher closes its window. */
+export const tradeDone = (id: string) => window.dispatchEvent(new CustomEvent("trade:done", { detail: id }));
+
 /** A's sound system listens for these ("accept", "decline", "coin", …). */
 export const sfx = (name: string) => window.dispatchEvent(new CustomEvent("sfx", { detail: name }));
 
