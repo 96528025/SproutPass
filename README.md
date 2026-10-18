@@ -156,14 +156,19 @@ runs we did are in [testing.md](docs/submission/testing.md).
   window on both tabs, accept on both, demo pay, celebration on both, romper in Jo's bag. A second run with the
   Fetch.ai agents running in `live_bureau.py`: the agents negotiated and created the proposal themselves
   (`source: fetch`). The backend `selfTest` passed 13 of 13 checks.
-- **In the repo, tested on the mock and in unit tests, not yet deployed:** the pet's spending rules and passkey
-  approval (`getTrust`, `setMandate`, `passkey*`, the new `payProposal`), snap-to-list (`analyzeItemPhoto`),
-  impact (`getImpact`), the Agent Console's stored protocol log (`Encounter.agentLog`), and the full iMessage
-  conversation (sell by photo, accept by text, STOP, rate limits, signed webhooks). They need one entity push and a
-  function deploy; the order is in [testing.md](docs/submission/testing.md#going-live-checklist).
-- **Needs a human:** Photon set-up (API key, webhook, one shared-pool number per demo phone, each phone texts "hi"
-  once), the Agentverse mailbox for ASI:One, and a real device for Face ID. Real Face ID approval has been
-  exercised in Deno with a software authenticator and in Chrome with a virtual authenticator, not on Base44.
+- **Deployed with the hackathon upgrades and run again live (Oct 18, about 04:30):** all 29 functions, the new
+  entity fields and the site. The same two-tab story from RESET to payment (`DEMO-6FCQR4`), now with the pet's
+  rules in the trade window ("Within your pet's rules (up to $50.00 a trade, $82.00 left this month after this)"),
+  the Agent Console (`/agents`) showing that encounter's 4 protocol messages, the pets' lines, a clean privacy check
+  and PAID, and the impact board (`/impact`) counting the trade.
+- **Deployed, not yet exercised on live:** snap-to-list on a real photo (`analyzeItemPhoto`), saving new pet rules
+  (`setMandate`), passkey set-up and a passkey-approved payment, and the iMessage conversation (sell by photo,
+  accept by text, STOP, signed webhooks). Each is covered by the mock run and the tests in
+  [testing.md](docs/submission/testing.md).
+- **Needs a human:** Photon set-up (webhook, one shared-pool number per demo phone, each phone texts "hi" once; the
+  API key is already set), the Agentverse mailbox for ASI:One, and a real device for Face ID. Real Face ID approval
+  has been exercised in Deno with a software authenticator and in Chrome with a virtual authenticator, not on
+  Base44. The steps are in [testing.md](docs/submission/testing.md#going-live-checklist).
 - **Demo shortcuts, stated plainly:** there is no sign-in (`?as=mina` picks the family), the payment is simulated
   (`DEMO-XXXXXX` reference), and `?demo=1` simulates the walk for indoor judging.
 

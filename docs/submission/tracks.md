@@ -125,7 +125,9 @@ remembers and predicts, the price is fixed, and the buyer is found by walking pa
   accept on both, demo pay, celebration on both, item in the buyer's bag. A second run had the Fetch.ai agents
   create the proposal. The backend's `selfTest` passed 13 of 13 checks on live.
 - The newer features (pet rules and passkeys, snap-to-list, impact, Agent Console log, the full iMessage
-  conversation) are in the repo and verified on the mock and in tests; they need one deploy (checklist in
+  conversation) are deployed too. A second live run on Oct 18 (about 04:30) went from RESET to payment again and
+  showed the pet's rules in the trade window, the Agent Console and the impact board. Snap-to-list on a real photo,
+  passkey payments and iMessage on real phones are deployed but not yet exercised live (what is left is in
   [testing.md](testing.md#going-live-checklist)).
 - Anyone can try the full product with no account: `npx vite --mode mock`, two tabs.
 
@@ -181,8 +183,9 @@ kids' gear, books and toys. Next steps are in [devpost.md](devpost.md#whats-next
 ## Photon · Messaging Agent (iMessage)
 
 Our pet lives in the parent's iMessage thread through Photon 2.0. **Status:** the full conversation is implemented
-and tested end to end against Photon's documented API with a stubbed Photon (59 Deno tests). Running it on real
-phones needs the Photon set-up steps in [testing.md](testing.md#going-live-checklist).
+and tested end to end against Photon's documented API with a stubbed Photon (59 Deno tests), and the code is
+deployed. Running it on real phones needs the Photon webhook and phone set-up in
+[testing.md](testing.md#going-live-checklist).
 
 ### Agents that live in conversations
 
