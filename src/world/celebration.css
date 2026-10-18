@@ -1,0 +1,80 @@
+/* A5 Celebration styles. Steps only; the panel slides up in hard 4-px steps. */
+.cel {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-overlay);
+  overflow: hidden;
+  background: var(--grass) url(/sprites/tile_grass.png) 0 0 / 48px 48px repeat;
+  image-rendering: pixelated;
+}
+.cel__avatar {
+  position: absolute;
+  z-index: 2;
+}
+.cel__pet {
+  position: absolute;
+  left: 40px;
+  top: 112px;
+}
+.cel__name {
+  position: absolute;
+  left: 50%;
+  top: calc(100% + 48px);
+  transform: translateX(-50%);
+  padding: 0 4px;
+  background: var(--ink);
+  color: var(--paper);
+  white-space: nowrap;
+}
+.cel__item {
+  position: absolute;
+  z-index: 3;
+}
+.cel__item.is-landed .item-icon {
+  animation: cel-land 160ms steps(2, end) 1;
+}
+@keyframes cel-land {
+  0%   { transform: translateY(-4px); }
+  100% { transform: translateY(0); }
+}
+.cel__canvas {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  image-rendering: pixelated;
+}
+.cel__panel {
+  position: absolute;
+  z-index: 5;
+  left: 16px;
+  right: 16px;
+  bottom: calc(24px + env(safe-area-inset-bottom, 0px));
+  animation: cel-up 240ms steps(6, end) 1;
+}
+@keyframes cel-up {
+  from { transform: translateY(48px); }
+  to   { transform: translateY(0); }
+}
+.cel__price {
+  font-size: 24px;
+  line-height: 32px;
+  text-align: center;
+}
+.cel__note {
+  text-align: center;
+  margin: 4px 0 12px;
+}
+.cel__owner {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cel__item.is-landed .item-icon, .cel__panel { animation: none; }
+}
