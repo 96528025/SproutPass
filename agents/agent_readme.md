@@ -32,11 +32,19 @@ claimed chat gets my later lines (nudges, proposals, pay links).
 ## Protocols
 
 - **AgentChatProtocol** (ASI:One) with Interactive Cards: nudges are `detail` cards, proposals are `review` cards.
-- **HandMeDownRelay 0.2.0** (agent ↔ agent): `LookingFor → HaveListings | NoFit → ProposeTrade → TradeAck`.
-  The app picks the opening side by parent id, so a pet with nothing to offer but its own needs answers a
-  `LookingFor` with its own `LookingFor` (the roles swap once); `NoFit` ends it only when neither way fits.
-  Only *shared* listings, *shared* needs, the child's age in months and the pets' bubble lines cross the wire —
-  never names, phones, birth dates or coordinates.
+- **HandMeDownRelay 0.3.0** (agent ↔ agent): `LookingFor → HaveListings | NoFit → ProposeTrade → TradeAck`, or
+  `HaveListings → Decline` when the buyer's **pet rules** say no (the parent's price limit, monthly budget, kinds of
+  clothes, or "point out matches only" — checked before proposing, and again by the app). The buyer's pet says which
+  rule ("Not this one — it's over the price limit Jo set for me."), never the amount; nothing is proposed or charged,
+  and the encounter keeps the reason. The app picks the opening side by parent id, so a pet with nothing to offer but
+  its own needs answers a `LookingFor` with its own `LookingFor` (the roles swap once); `NoFit` ends it only when
+  neither way fits. Only *shared* listings, *shared* needs, the child's age in months and the pets' bubble lines cross
+  the wire — never phones, birth dates, ids or coordinates (a `Decline` line may name the buyer's parent).
+- **Provable negotiation**: every RelayProtocol message of an encounter is logged (sender and receiver `agent1q…`
+  address, message type, a one-sentence summary built from shared data only, latency since the previous message).
+  The agent that ends the talk hands the whole log to the app inside the `createProposal` / `noMatch` call it makes
+  anyway, so the app's Agent Console shows the real Fetch.ai exchange (`Encounter.agentLog`, `negotiatedBy: fetch`)
+  next to the trade. When the agents are offline, the app's local matcher writes the same shape, labelled `fallback`.
 
 ## Links
 
@@ -64,7 +72,14 @@ talk to each other inside the Bureau and to the app over HTTPS (`agentApi`, `sen
 Config comes from the environment, then `agents/.env`, then the repo's `.env.local` (that's where `AGENT_KEY` lives);
 values are never printed. Defaults: `BASE44_URL` = the live app, `APP_URL` = the same, `TEAM_SECRET=dev`.
 On start it looks the three parents up by name and registers its agent addresses on their Parent rows (only if they
-differ), so encounter rows point at these agents.
+differ), so encounter rows point at these agents. A 429 during those startup calls waits (15 → 30 → 60 → 120 s, up
+to `STARTUP_ATTEMPTS`=10 tries) instead of exiting, and the startup calls share the running Bureau's call budget.
+Ctrl+C runs the Bureau's shutdown and closes the HTTP session.
+
+**Division of labour.** The agents claim only `encounter` inbox rows (`claimInbox {types: ["encounter"]}`) and do
+the agent-to-agent negotiation. `imessage` and `event` rows are answered by the app's TypeScript side (the Photon
+webhook and C's inbox handler) in the same voice. `INBOX_TYPES=all` brings back the old claim-everything mode.
+`local_demo.py` has no TypeScript side, so a clearly labelled stand-in answers those rows there.
 
 **Rate limit.** The Base44 Free plan gives the *whole team* about 10 function calls a minute. The Bureau therefore
 spends at most `CALLS_PER_MIN` (default 8) for all three agents together, makes **one** `claimInbox` for all three
@@ -73,9 +88,8 @@ calls are left in the minute, and on a 429 / "Rate limit exceeded" pauses every 
 15 → 30 → 60 → 120 s and retries the row later (never at once). Cheaper still: `APPEND_TURNS=0` (default) sends the
 pets' whole two-sided conversation with `createProposal` instead of one `appendTurn` per bubble; `SEND_LINES=0`
 skips `sendImessage` (then the in-app pet and iMessage don't get the agent's lines). Don't run it while someone
-loops scripts against live data. Inbox rows still pending after 5 s are answered by C's Deno fallback in the
-same voice (it's swept by the app's `updatePresence` / `demoWalk` ticks), so with a slow poll some lines come
-from the fallback; that's expected. Only one runner per app: `claimInbox` without a parent id claims every
+loops scripts against live data. An encounter the agents haven't proposed within 25 s (60 s at most while their
+lines keep arriving) is matched by C's local fallback instead; that's expected with a slow poll. Only one runner per app: `claimInbox` without a parent id claims every
 parent's rows, so don't run `make live` and `make mina` at the same time.
 
 **Stale rows.** An inbox row older than `INBOX_MAX_AGE_S` (600 s) is completed without a word: after a rehearsal

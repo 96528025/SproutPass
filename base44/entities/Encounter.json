@@ -35,6 +35,52 @@
       "type": "string",
       "format": "date-time"
     },
+    "negotiatedBy": {
+      "type": "string",
+      "enum": [
+        "fetch",
+        "local"
+      ]
+    },
+    "noMatchReason": {
+      "type": "string",
+      "description": "Why a no_match encounter ended without a trade when the buyer's pet rules said no (one plain sentence, no amounts)"
+    },
+    "agentLog": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "from": {
+            "type": "string"
+          },
+          "to": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string"
+          },
+          "summary": {
+            "type": "string"
+          },
+          "ms": {
+            "type": "number"
+          },
+          "by": {
+            "type": "string",
+            "enum": [
+              "fetch",
+              "fallback",
+              "mock"
+            ]
+          }
+        }
+      }
+    },
     "transcript": {
       "type": "array",
       "items": {

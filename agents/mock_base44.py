@@ -2,9 +2,13 @@
 
 Same methods as Base44Client. It mirrors what the agents really get back from the live app:
 
-  * agentApi (base44/functions/agentApi/entry.ts): claimInbox (parentId optional), complete, getState (+ peerOf
-    view), fit, suggestCondition, createProposal, noMatch, appendTurn, now, sendImessage, lookupParent,
-    registerAgent, bindAsiUser, and the pass-through to B via shared/cbridge.ts.
+  * agentApi (base44/functions/agentApi/entry.ts): claimInbox (parentId, types, peek optional), complete, getState
+    (+ peerOf view), fit (+ the buyer's pet-rules verdict per match), suggestCondition, createProposal / noMatch (+ the
+    protocol log → encounter.agentLog, a pet_rules(<rule>) refusal, noMatchReason), appendTurn, now, sendImessage,
+    lookupParent, registerAgent, bindAsiUser, and the pass-through to B via shared/cbridge.ts.
+  * B5's pet rules (base44/shared/logic/trust.ts): parents[id]["mandate"] (partial PetMandate, defaults: may propose,
+    $50 limit, $100 a month, any kind) is enforced by createProposal; a passkey (mandate.requirePasskey) makes
+    payProposal answer 403 "Approve with Face ID first" (only the app's passkey flow pays then).
   * B's handlers (base44/shared/logic/{closet,trade}.ts): getCloset's ClosetView (+ child.ageMonths), listItem
     (idempotent, resolves the item's outgrow nudges, returns the Listing + {listing, item}), resolveNudge
     (sell|keep|later → snooze), createProposal (idempotent per buyer, eligibility, encounter must be talking),
@@ -21,6 +25,7 @@ from __future__ import annotations
 import copy
 import itertools
 import math
+import re
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
 
@@ -36,8 +41,54 @@ SIZE_RANGES = {"0-3M": (0, 3), "3-6M": (3, 6), "6-9M": (6, 9), "9-12M": (9, 12),
                "18-24M": (18, 24), "2T": (24, 36), "3T": (36, 48), "4T": (48, 60)}
 PCT = {1: 60, 2: 40}
 TURN_KINDS = {"looking_for", "have", "no_fit", "fit_check", "propose", "ack", "decline"}
+INBOX_TYPES = ("encounter", "imessage", "event")
 LIVE = ("open", "both_accepted")
+AGENT_LOG_MAX = 40
+_PHONE = re.compile(r"\+?\d[\d\s().-]{6,}\d")
+_EMAIL = re.compile(r"[\w.+-]+@[\w-]+\.[\w.]+")
+
+
+def clean_agent_log(raw: Any, by: str = "fetch") -> List[Dict[str, Any]]:
+    """agentApi's cleanAgentLog (location.ts), condensed: the last 40 entries, plain fields, no phone / email in a
+    summary, by forced to "fetch" (only the agents call agentApi)."""
+    out: List[Dict[str, Any]] = []
+    for e in (raw if isinstance(raw, list) else [])[-AGENT_LOG_MAX:]:
+        if not isinstance(e, dict):
+            continue
+        typ = re.sub(r"[^A-Za-z0-9_]", "", str(e.get("type") or ""))[:40]
+        if not typ:
+            continue
+        summary = _EMAIL.sub("[hidden]", _PHONE.sub("[hidden]", " ".join(str(e.get("summary") or "").split())))[:200]
+        entry = {"at": str(e.get("at") or now_iso()),
+                 "from": re.sub(r"[^A-Za-z0-9_:.-]", "", str(e.get("from") or ""))[:80] or "unknown",
+                 "to": re.sub(r"[^A-Za-z0-9_:.-]", "", str(e.get("to") or ""))[:80] or "unknown",
+                 "type": typ, "summary": summary, "by": by}
+        if isinstance(e.get("ms"), (int, float)) and e["ms"] >= 0:
+            entry["ms"] = min(int(round(e["ms"])), 3_600_000)
+        out.append(entry)
+    return out
 PROPOSAL_TTL = timedelta(minutes=30)
+
+DEFAULT_MANDATE = {"agentMayPropose": True, "maxPriceCents": 5000, "monthlyBudgetCents": 10000, "categories": [], "requirePasskey": False}
+
+
+def mandate_of(parent: Dict[str, Any]) -> Dict[str, Any]:
+    """trust.ts mandateOf, condensed: the stored partial mandate over the defaults."""
+    stored = parent.get("mandate") if isinstance(parent.get("mandate"), dict) else {}
+    return {**DEFAULT_MANDATE, **{k: v for k, v in stored.items() if k in DEFAULT_MANDATE}}
+
+
+def check_mandate(m: Dict[str, Any], price_cents: int, category: str, committed_cents: int, name: str, pet: str):
+    """trust.ts checkMandate: None = ok, else (rule, reason). The reasons never carry an amount."""
+    if not m["agentMayPropose"]:
+        return "agent_may_not_propose", f"{name} asked {pet} to only point out matches, not propose trades."
+    if price_cents > m["maxPriceCents"]:
+        return "over_price", f"It costs more than the price limit {name} set for {pet}."
+    if m["categories"] and category not in m["categories"]:
+        return "category", f"It isn't one of the kinds of clothes {name} asked {pet} to look for."
+    if committed_cents + price_cents > m["monthlyBudgetCents"]:
+        return "over_budget", f"It would go over {name}'s monthly budget for {pet}."
+    return None
 
 
 def nid(prefix: str) -> str:
@@ -248,10 +299,23 @@ class MockBase44(Base44Client):
     async def _api(self, action: str, a: Dict[str, Any]) -> Any:  # noqa: C901 — one switch, like agentApi
         if action == "claimInbox":
             limit = min(20, int(a.get("limit") or 5))
-            rows = [r for r in self.inbox if r["status"] == "pending" and (not a.get("parentId") or r["parentId"] == a["parentId"])][:limit]
+            types = a.get("types")
+            if types is not None:  # agentApi: {types:["encounter"]} claims only those rows; the rest stay pending
+                types = [t for t in (types if isinstance(types, list) else [types]) if t in INBOX_TYPES]
+                if not types:
+                    raise Base44Error("claimInbox 400: types must list encounter | imessage | event", status=400, code="bad_request")
+            rows = [r for r in self.inbox if r["status"] == "pending" and (not a.get("parentId") or r["parentId"] == a["parentId"])
+                    and (types is None or r["type"] in types)][:limit]
             for r in rows:
                 r.update(status="claimed", claimedBy=a.get("agentAddress") or "agent", claimedAt=now_iso())
-            return {"rows": rows}
+            out: Dict[str, Any] = {"rows": rows}
+            peek = a.get("peek")
+            if isinstance(peek, dict) and a.get("parentId"):  # encounter.ts claimInbox: newer rows, NOT claimed
+                ptypes = [t for t in (peek.get("types") or ["event"]) if t in INBOX_TYPES]
+                since = str(peek.get("since") or "")
+                out["peeked"] = [r for r in self.inbox if r["parentId"] == a["parentId"] and r["type"] in ptypes
+                                 and str(r.get("createdAt") or "") > since][:10]
+            return out
         if action == "complete":
             if not a.get("inboxId"):
                 raise Base44Error("inboxId required", status=400, code="bad_request")
@@ -289,8 +353,8 @@ class MockBase44(Base44Client):
                           for n in s["needs"] if n["shared"]],
             }
         if action == "fit":
-            if a.get("buyerId") and a.get("sellerId"):
-                return {"matches": self._find_matches(a["buyerId"], a["sellerId"])}
+            if a.get("buyerId") and a.get("sellerId"):  # encounter.ts fitForAgents: + the buyer's pet-rules verdict
+                return {"matches": [self._with_rules(a["buyerId"], m) for m in self._find_matches(a["buyerId"], a["sellerId"])]}
             raise Base44Error("fit needs {buyerId, sellerId} or {itemId, childId}", status=400, code="bad_request")
         if action == "suggestCondition":
             return {"condition": "gently_used", "note": "A little fading on the collar.", "via": "template"}
@@ -304,9 +368,26 @@ class MockBase44(Base44Client):
             enc["transcript"].append({**turn, "text": str(turn["text"])[:200]})
             return {"transcript": enc["transcript"]}
         if action == "noMatch":
+            # agentApi → location.ts endWithoutMatch: only a still-talking encounter without a proposal ends here;
+            # the agents' protocol log (+ their bubbles) is stored with it, negotiatedBy "fetch".
             if not a.get("encounterId"):
                 raise Base44Error("encounterId required", status=400, code="bad_request")
-            self.encounters[a["encounterId"]]["status"] = "no_match"
+            enc = self.encounters[a["encounterId"]]
+            if enc["status"] != "talking":
+                return {"ok": True, "skipped": enc["status"]}
+            if any(p.get("encounterId") == enc["id"] for p in self.proposals.values()):
+                enc["status"] = "proposed"
+                return {"ok": True, "skipped": "proposed"}
+            enc.update(status="no_match", negotiatedBy="fetch")
+            log_ = clean_agent_log(a.get("agentLog"))
+            if log_:
+                enc["agentLog"] = log_
+            turns = [t for t in (a.get("transcript") or []) if isinstance(t, dict) and t.get("kind") in TURN_KINDS and t.get("text")
+                     and t.get("kind") not in ("propose", "ack")]  # location.ts endWithoutMatch: no trade, no trade bubbles
+            if turns:
+                enc["transcript"] = copy.deepcopy(turns)
+            if isinstance(a.get("reason"), str) and a["reason"].strip():
+                enc["noMatchReason"] = " ".join(a["reason"].split())[:200]
             return {"ok": True}
         if action == "sendImessage":
             return self._send(a)
@@ -320,14 +401,31 @@ class MockBase44(Base44Client):
             p["asiAddress"] = a.get("asiAddress")
             return {"ok": True, "parentId": p["id"], "name": p["name"]}
         if action == "createProposal":
-            args = {k: v for k, v in a.items() if k != "sellerId"}  # cbridge: B derives the seller from the listing
+            # cbridge: B derives the seller from the listing; the protocol log is agentApi's, not B's
+            args = {k: v for k, v in a.items() if k not in ("sellerId", "agentLog", "negotiatedBy")}
             args.setdefault("source", "fetch")
-            prop = self._create_proposal(args)
+            if isinstance(args.get("transcript"), list):  # encounter.ts: cleanTurns before B sees it
+                args["transcript"] = [t for t in args["transcript"] if isinstance(t, dict) and t.get("kind") in TURN_KINDS
+                                      and t.get("from") in ("buyer_agent", "seller_agent") and t.get("text")]
+            try:
+                prop = self._create_proposal(args)
+            except Base44Error as e:  # encounter.ts proposeFromAgents: a refusal by the buyer's pet rules is tagged
+                listing = self.listings.get(args.get("listingId", ""))
+                blocked = self._with_rules(args.get("buyerId", ""), {"priceCents": listing["priceCents"], "category":
+                                           self.items[listing["itemId"]]["category"]}).get("blocked") if listing and e.code == "not_eligible" else None
+                if blocked:
+                    raise err("createProposal", "not_eligible", f"pet_rules({blocked['rule']}): {blocked['reason']}", 409) from e
+                raise
             if args.get("encounterId") in self.encounters:  # agentApi: Encounter → proposed (+ the agents' transcript)
                 enc = self.encounters[args["encounterId"]]
                 enc["status"] = "proposed"
                 if isinstance(args.get("transcript"), list):
                     enc["transcript"] = copy.deepcopy(args["transcript"])
+                if prop.get("source") == "fetch":  # agentApi (encounter.ts proposeFromAgents): the agents' own log
+                    enc["negotiatedBy"] = "fetch"
+                    log_ = clean_agent_log(a.get("agentLog"))
+                    if log_:
+                        enc["agentLog"] = log_
             return prop
         # ---- pass-through to B (cbridge.callB) ----
         if action == "getCloset":
@@ -362,6 +460,24 @@ class MockBase44(Base44Client):
         if not fits_now(item["size"], child["birthDate"], self.clock):
             return None, "child doesn't fit this size now"
         return wear_weeks_left(item["size"], child["birthDate"], self.clock), ""
+
+    def _with_rules(self, buyer_id: str, match: Dict[str, Any]) -> Dict[str, Any]:
+        """location.ts withRules for one match: {..., blocked: {rule, reason, line}} when the buyer's rules say no."""
+        from closet_agent import RULE_LINES  # the pet's words, same as location.ts rulesLine
+
+        buyer = self.parents.get(buyer_id)
+        if not buyer:
+            return match
+        month = self.clock[:7]
+        committed = sum(p["snapshot"]["priceCents"] for p in self.proposals.values()
+                        if p["buyerId"] == buyer_id and str(p.get("createdAt", ""))[:7] == month
+                        and (p["status"] == "paid" or (p["status"] in LIVE and not (p["status"] == "open" and _dt(self.clock) > _dt(p["expiresAt"])))))
+        hit = check_mandate(mandate_of(buyer), int(match.get("priceCents") or 0), match.get("category") or "other", committed,
+                            buyer["name"], buyer["pet"]["name"])
+        if not hit:
+            return match
+        rule, reason = hit
+        return {**match, "blocked": {"rule": rule, "reason": reason, "line": RULE_LINES[rule].format(name=buyer["name"])}}
 
     def _find_matches(self, buyer_id: str, seller_id: str) -> List[Dict[str, Any]]:
         child = self._child(buyer_id)
@@ -455,6 +571,9 @@ class MockBase44(Base44Client):
                 break
         if weeks is None:
             raise err(A, "not_eligible", why, 409)
+        blocked = self._with_rules(buyer["id"], {"priceCents": listing["priceCents"], "category": it["category"]}).get("blocked")
+        if blocked:  # trade.ts → trust.ts enforceMandate: the buyer's own rules for their pet
+            raise err(A, "not_eligible", blocked["reason"], 409)
         transcript = a.get("transcript") if isinstance(a.get("transcript"), list) else []
         if a.get("encounterId"):
             enc = self.encounters.get(a["encounterId"])
@@ -543,6 +662,8 @@ class MockBase44(Base44Client):
         if p["status"] != "both_accepted":
             msg = "Both of you need to accept before paying." if p["status"] == "open" else f"this trade is {p['status'].replace('_', ' ')}"
             raise err(A, "invalid_transition", msg, 409)
+        if mandate_of(parent)["requirePasskey"] or parent.get("passkeys"):  # trade.ts: only the app's Face ID flow pays
+            raise err(A, "forbidden", "Approve with Face ID first", 403)
         now = self.clock
         child = self._child(p["buyerId"])
         for h in it["ownershipHistory"]:

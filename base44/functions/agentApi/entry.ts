@@ -1,13 +1,25 @@
 // (C) agentApi — the agents' single door. Header `x-agent-key: <AGENT_KEY>`.
 // Body: { action, ...args }. Every action returns JSON; errors are { error }.
 //
-//   claimInbox      {parentId, limit?}            → {rows:[AgentInbox]} (status → claimed)
+//   claimInbox      {parentId?, limit?, types?}   → {rows:[AgentInbox]} (status → claimed). types: ["encounter"] = the
+//                                                   Python agents' share; imessage / event rows stay pending for the
+//                                                   TypeScript side (Photon webhook, inboxFallback). No types = all.
+//                                                   peek {types:["event"], since} (with parentId): + {peeked:[…]} rows
+//                                                   NOT claimed (a standalone agent mirrors them to its ASI:One owner).
 //   complete        {inboxId}                     → {ok}
 //   getState        {parentId, peerOf?}           → B's getCloset; shared-only when peerOf is set
-//   fit             {buyerId, sellerId} | {itemId, childId} → matches | outgrow prediction
+//   fit             {buyerId, sellerId} | {itemId, childId} → {matches} | outgrow prediction. Each match carries the
+//                                                   BUYER's pet-rules verdict: blocked {rule, reason, line} when their
+//                                                   mandate (price limit, budget, kinds, may-propose) says no
 //   suggestCondition{imageUrl, itemName?}         → {condition, note, via:"llm"|"template"}
-//   createProposal  {...B's createProposal args}  → proposal (+ Encounter.status = proposed)
-//   noMatch         {encounterId}                 → Encounter.status = no_match (only while still talking, no proposal)
+//   createProposal  {...B's createProposal args, agentLog?}
+//                                                 → proposal (+ Encounter.status = proposed, proposalId, transcript,
+//                                                   agentLog = the agents' RelayProtocol messages, negotiatedBy "fetch").
+//                                                   Refused by the buyer's pet rules → 409 "…not_eligible: pet_rules(<rule>): <why>"
+//   noMatch         {encounterId, agentLog?, transcript?, reason?}
+//                                                 → Encounter.status = no_match (only while still talking, no proposal),
+//                                                   with the agents' log / bubbles (never a propose / ack bubble),
+//                                                   negotiatedBy "fetch", and reason → Encounter.noMatchReason
 //   appendTurn      {encounterId, turn}           → {transcript}
 //   now             {}                            → {now, matchVia, imessage}
 //   sendImessage    {parentId, text?, imageUrl?}  → sendToParent
@@ -26,8 +38,9 @@ import { getSetting, handle, HttpError, readJson, resolveCaller } from "../../sh
 import { sendToParent } from "../../shared/c/imessage.ts";
 import { sweepInbox } from "../../shared/c/inboxFallback.ts";
 import { suggestCondition } from "../../shared/c/condition.ts";
-import { endWithoutMatch, stampAgents } from "../../shared/c/location.ts";
-import { callB, findMatches, predictOutgrow } from "../../shared/cbridge.ts"; // B handlers, C-shaped (shared/cbridge.ts)
+import { stampAgents } from "../../shared/c/location.ts";
+import { claimInbox, fitForAgents, noMatchFromAgents, proposeFromAgents } from "../../shared/c/encounter.ts"; // pure, vitest-covered
+import { callB, predictOutgrow } from "../../shared/cbridge.ts"; // B handlers, C-shaped (shared/cbridge.ts)
 
 const PASS_THROUGH = new Set([
   "listItem", "resolveNudge", "decideProposal", "payProposal", "getCloset", "withdrawListing", "upsertNeed", "recordPurchase",
@@ -56,20 +69,9 @@ export default handle(async (req) => {
   if (HEARTBEAT_ACTIONS.has(action)) await heartbeat(db);
 
   switch (action) {
-    case "claimInbox": {
-      const limit = Math.min(20, Number(body.limit ?? 5));
-      const q: any = { status: "pending" };
-      if (body.parentId) q.parentId = body.parentId;
-      const rows: any[] = await db.AgentInbox.filter(q, "createdAt", limit);
-      const claimed: any[] = [];
-      for (const r of rows) {
-        // Best-effort claim; Base44 has no compare-and-set, so the agent also
-        // tolerates the rare double delivery (idempotent handlers).
-        await db.AgentInbox.update(r.id, { status: "claimed", claimedBy: body.agentAddress ?? "agent", claimedAt: new Date().toISOString() });
-        claimed.push({ ...r, status: "claimed" });
-      }
-      return { rows: claimed };
-    }
+    case "claimInbox":
+      // {types:["encounter"]}: the agents negotiate; iMessages and app events are the TypeScript side's (encounter.ts).
+      return await claimInbox(db, body);
 
     case "complete": {
       if (!body.inboxId) throw new HttpError(400, "inboxId required");
@@ -111,7 +113,8 @@ export default handle(async (req) => {
 
     case "fit": {
       if (body.buyerId && body.sellerId) {
-        return { matches: await findMatches(db, { buyerId: body.buyerId, sellerId: body.sellerId }) };
+        // B's ranking + the buyer's pet-rules verdict per match (encounter.ts fitForAgents).
+        return await fitForAgents(db, { buyerId: body.buyerId, sellerId: body.sellerId });
       }
       if (body.itemId && body.childId) {
         const item = await db.ClothingItem.get(body.itemId);
@@ -127,26 +130,16 @@ export default handle(async (req) => {
     case "suggestCondition":
       return await suggestCondition(base44, body.imageUrl, body.itemName);
 
-    case "createProposal": {
-      const { action: _a, ...args } = body;
-      args.source = args.source ?? "fetch";
-      const prop = await invokeB(db, "createProposal", args);
-      if (args.encounterId) {
-        const patch = { status: "proposed", ...(Array.isArray(args.transcript) ? { transcript: args.transcript } : {}) };
-        // + proposalId (A's EncounterScene hands it to the Trade window); retried without it if the schema refuses it.
-        await db.Encounter.update(args.encounterId, { ...patch, ...(prop?.id ? { proposalId: prop.id } : {}) })
-          .catch(() => db.Encounter.update(args.encounterId, patch))
-          .catch(() => {});
-      }
-      return prop;
-    }
+    case "createProposal":
+      // B's createProposal, then Encounter → proposed + proposalId + transcript + the agents' protocol log
+      // (Encounter.agentLog, negotiatedBy "fetch"): it rides on this call, no extra request (encounter.ts).
+      return await proposeFromAgents(db, body);
 
-    case "noMatch": {
+    case "noMatch":
       // A late conversation (the local fallback already proposed, or the agents' own proposal landed) must not
-      // flip a proposed encounter to no_match: only a still-talking encounter with no proposal ends here.
-      if (!body.encounterId) throw new HttpError(400, "encounterId required");
-      return await endWithoutMatch(db, String(body.encounterId));
-    }
+      // flip a proposed encounter to no_match: only a still-talking encounter with no proposal ends here, and only
+      // then is the agents' log stored (location.ts endWithoutMatch).
+      return await noMatchFromAgents(db, body);
 
     case "appendTurn": {
       const { encounterId, turn } = body;
