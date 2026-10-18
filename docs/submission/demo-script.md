@@ -24,8 +24,7 @@ A 3-minute live demo, a 60-second version, optional segments for specific judges
    trades, the pets' spending rules and saved passkeys.
 3. On Phone B, open `<base>/bag/pet?as=jo&demo=1` and tap **SET UP FACE ID**. Approve with Face ID. The passkey shows
    in the list and "Require Face ID to pay" turns on. Go back to `<base>/world?as=jo&demo=1`.
-   (Do this *after* RESET, because RESET forgets passkeys. Skip it if the trust functions aren't deployed yet; the
-   Pay button is then a plain tap.)
+   (Do this *after* RESET, because RESET forgets passkeys. If you skip it, the Pay button is a plain tap.)
 4. Optional: start the Fetch.ai agents on the laptop: `agents/.venv/Scripts/python.exe agents/live_bureau.py`. If
    they are not running, the app's fallback matcher proposes after 8 s and the console labels it "Fallback matcher".
 5. Optional (iMessage): each phone has texted "hi" once to its own Photon number, and Messages is one swipe away.
@@ -140,7 +139,7 @@ the 2-minute demo cooldown) proposes the trade.
 **For Base44 and AI judges: snap to list (30 s).** On Phone A open `<base>/bag/add?as=mina&demo=1`, tap **Take
 photo**, and photograph any piece of kids' clothing or its size tag. "Button is looking…", then the check card with
 the pet's guess, a confidence meter and **PET SUGGESTED** chips. Change a field and its chip disappears. Tap **Add
-to bag**. (On the live site this needs `analyzeItemPhoto` deployed; in mock mode the card honestly says "Quick
+to bag**. (On the live site the guess comes from `analyzeItemPhoto`; in mock mode the card honestly says "Quick
 guess" or "Demo pick".)
 
 **For Fetch.ai-minded judges: the agents offline (35 s, laptop terminal).**

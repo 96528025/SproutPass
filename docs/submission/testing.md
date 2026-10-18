@@ -111,11 +111,12 @@ log, `NEEDS.md`.
 | Oct 18, ~02:00 | **Full integration, A + B + C** | Two tabs: Sep 20 nudge → Sell → photo (pixel fallback) → "Gently used · pet suggested" → $18.00 listed → Oct 18 → Jo walks toward Mina → encounter scene with the pets' bubbles → trade window on both tabs → accept on both (each tab sees the other's ✓) → demo pay → celebration on both → romper in Jo's bag with Pip's welcome nudge. |
 | Oct 18, ~02:00 | **Fetch.ai agents live** (`live_bureau.py`) | The agents negotiated in their Bureau and created the proposal themselves (`source: fetch`, 6-turn transcript), and each pet told its parent. Found: startup exited on a 429 and Ctrl+C left an unclosed session (both fixed since, with tests); Python and TypeScript wording differed (now checked by `parity_test.ts`). |
 | Oct 18, ~02:00 | `selfTest` on live | **13 of 13 checks pass** (prices, the Sep 20 nudge, no phone in a closet, $18.00 listing, 3rd owner can't list, decline charges nothing, pay before both accept is refused, accept twice is idempotent, pay twice transfers once, 2 owners, welcome nudge). |
+| Oct 18, ~04:30 | **After deploying the upgrades** (entities pushed, all 29 functions, site), three tabs at 430×880 | RESET → Sep 20 nudge → Sell → pixel-art photo → "Gently used · pet suggested" → $18.00 listed → Oct 18 → Jo walks toward Mina → encounter scene with the pets' bubbles → trade window on both tabs with the receipt "You save vs new $12.00 (40% off)" and "Within your pet's rules (up to $50.00 a trade, $82.00 left this month after this)" → accept on both → pay `DEMO-6FCQR4` → celebration. `/agents` on the third tab: the encounter, negotiated by the fallback matcher (agents off to save the rate limit), 4 HandMeDownRelay messages, the pets' 5 lines, a clean privacy check, PAID with both accepts. `/impact`: 5 new homes, 10.3 kg CO₂e, 4,830 litres, $79.20 saved, $98.80 earned, the points leaderboard. Found: `/impact` hit the rate limit right after the payment and loaded a minute later; the console's names showed "A parent" for a while for the same reason and filled in on its next poll. |
 
-## Mock-verified on Oct 18 (not yet on live)
+## Mock-verified on Oct 18
 
-After the live runs, nine workstreams added the hackathon upgrades. Each was checked in mock mode (the real handlers
-in the browser) and in the tests above:
+After the first live runs, nine workstreams added the hackathon upgrades. Each was checked in mock mode (the real
+handlers in the browser) and in the tests above, then deployed (see the ~04:30 live run):
 
 - **Pet rules and passkeys:** a $25 limit saved; a $10 limit stops the trade with the rule named; demo passkey set-up
   turns "require Face ID" on; paying without approval is refused; paying with it goes through and the month's spend
@@ -137,8 +138,8 @@ protocol messages labelled Mock, a clean privacy check and PAID; `/impact` showe
 
 ### Not verified anywhere yet
 
-- The deployed versions of the new functions (`getTrust`, `setMandate`, `passkey*`, `analyzeItemPhoto`,
-  `getImpact`) and the new entity fields.
+- On live: snap-to-list on a real photo (`analyzeItemPhoto`), saving pet rules (`setMandate`), and passkey set-up
+  and a passkey-approved payment (`passkey*`, `payProposal`). `getTrust` and `getImpact` ran in the ~04:30 run.
 - Face ID on a real phone against the deployed `payProposal`.
 - Real Photon deliveries with signatures, Photon's webhook timeout while a photo guess runs, and the GIF upload.
 - ASI:One through an Agentverse mailbox.
@@ -161,11 +162,13 @@ at about 10 calls a minute. What we do about it:
 
 ## Going-live checklist
 
-Everything below needs a person with access to the Base44 app and Photon; none of it was done in this pass.
+Status on Oct 18, about 04:30: steps 1, 2 and 7 are done, step 3 is safe now, step 4 is done except the iMessage
+phone and webhook secrets, and step 6 is done apart from snap-to-list on a real photo and Face ID. What is left needs
+a person with Photon access and real phones (steps 4 and 5).
 
-1. **Push entities** (`npx base44 entities push`): `Encounter.json` adds `agentLog`, `negotiatedBy` and
+1. **Done. Push entities** (`npx base44 entities push`): `Encounter.json` adds `agentLog`, `negotiatedBy` and
    `noMatchReason`; `Parent.json` adds `mandate`, `passkeys` and `passkeyChallenge` (admin-only).
-2. **Deploy functions and the site** (`npx base44 deploy --build -y`). New: `getTrust`, `setMandate`,
+2. **Done. Deploy functions and the site** (`npx base44 deploy --build -y`). New: `getTrust`, `setMandate`,
    `passkeyRegisterOptions`, `passkeyRegisterVerify`, `passkeyAuthOptions`, `passkeyRemove`, `analyzeItemPhoto`,
    `getImpact`. Changed: `payProposal`, `createProposal`, `demoReset`, `agentApi`, `photonWebhook`, `sendImessage`
    and the location functions (their shared code changed). Confirm on the first deploy that the four passkey
@@ -180,5 +183,5 @@ Everything below needs a person with access to the Base44 app and Photon; none o
    shared-pool number, and have each phone text "hi" to its number once.
 6. **Rehearse once:** run `selfTest`, then the [demo script](demo-script.md). Check that `/bag/add` says "AI GUESS"
    on a real photo, `/impact` loads, and Face ID set-up works on `/bag/pet`.
-7. **Optional follow-ups:** call `sendEventTexts(db)` after the handler in the decide, pay and list entry files so
-   event texts go out at once; keep a parent's STOP across RESET (today `seed.ts` resets `convo`, which clears it).
+7. **Done. Follow-ups:** the decide, pay, list and demo-clock entry files call `sendEventTexts(db)` after the
+   handler, so event texts go out at once; RESET keeps a parent's STOP (`seed.ts` carries `convo.optedOut` over).

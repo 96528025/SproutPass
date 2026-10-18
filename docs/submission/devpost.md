@@ -98,9 +98,10 @@ to them, and that never spends money or makes a decision on its own.
 
 ## Accomplishments that we're proud of
 
-- The whole story ran end to end on the deployed site with two phones: nudge, listing, walk, encounter, proposal on
-  both phones, two accepts, demo payment, celebration, and the item in the new closet with its history. A second run
-  had the Fetch.ai agents negotiate and create the proposal themselves.
+- The whole story ran end to end on the deployed site with two browser tabs, one per parent: nudge, listing, walk,
+  encounter, proposal on both screens, two accepts, demo payment, celebration, and the item in the new closet with
+  its history. A second run had the Fetch.ai agents negotiate and create the proposal themselves. A third run, after
+  deploying the upgrades, added the pet's spending rules in the trade window, the Agent Console and the impact board.
 - 429 vitest tests, 59 Deno tests and 102 Python tests pass, plus an offline Fetch.ai demo with 13 checks. A parity
   test runs the Python agent's wording and intent parser and compares them word for word with the TypeScript side.
 - The trust design holds on the server, not just in the UI: the buyer's spending rules are checked in

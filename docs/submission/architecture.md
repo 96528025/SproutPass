@@ -264,7 +264,8 @@ webhook redelivery is answered once.
   register a passkey for them. A real product would bind rules and passkeys to an account and require a passkey to
   change them.
 - **The monthly budget** is checked when a trade is proposed, not again at payment.
-- **Event texts** go out on the next inbox sweep rather than in the same request as the accept or payment.
-- **Not yet run on the deployed functions:** the passkey verification, `analyzeItemPhoto`, `getImpact` and the signed
-  Photon webhook. They are tested in Deno, vitest and the mock (see [testing.md](testing.md)).
+- **Event texts** go out at the end of the accept, payment, listing or demo-clock request (`sendEventTexts`, best
+  effort); rows it doesn't reach, for example under a rate limit, go out on the next inbox sweep.
+- **Deployed but not yet exercised live:** the passkey verification, `analyzeItemPhoto` and the signed Photon
+  webhook. They are tested in Deno, vitest and the mock (see [testing.md](testing.md)).
 - **The payment is simulated.** No card is collected or stored, and no payment network is integrated.
