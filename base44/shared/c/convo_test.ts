@@ -146,6 +146,40 @@ Deno.test("a photo the pet can't place: it asks which one, and the name finishes
   });
 });
 
+Deno.test("the AI looks first: a water bottle is said back, never quoted as an item in the bag", async () => {
+  await withWorld(async (w) => {
+    await sayHi(w, "mina");
+    await w.setClock(DEMO_DATES.nudge); // the pet is asking about the romper: a photo still has to show it
+    await w.tick();
+    w.inbox("mina");
+    w.llm.photo = { seen: "Black water bottle.", kidsItem: false, condition: "gently_used", note: "", match: "" };
+    await w.text("mina", "", ["att_bottle"]);
+    assertEquals(w.inbox("mina"), [t.notKidsItem("a black water bottle")]);
+    assertMatch(w.llm.calls.at(-1).prompt, /Look at this photo/);
+    assertEquals((await w.db.Listing.list()).length, 0);
+
+    // A kids' item the AI can't place among the bag's items: it asks which one instead of assuming the nudged romper.
+    w.llm.photo = { seen: "a red toddler raincoat", kidsItem: true, condition: "gently_used", note: "", name: "Red raincoat", match: "" };
+    await w.text("mina", "", ["att_coat"]);
+    assertEquals(w.inbox("mina"), [t.photoWhich()]);
+  });
+});
+
+Deno.test("the parent named the item but the photo shows something else: the pet says so and waits for the right photo", async () => {
+  await withWorld(async (w) => {
+    await sayHi(w, "mina");
+    await w.text("mina", "sell the striped tee");
+    w.inbox("mina");
+    w.llm.photo = { seen: "a blue rain jacket", kidsItem: true, isThatItem: false, condition: "gently_used", note: "", match: "" };
+    await w.text("mina", "", ["att_jacket"]);
+    assertEquals(w.inbox("mina"), [t.notThatItem("a blue rain jacket", "Striped long-sleeve tee")]);
+    assertEquals((await w.convo("mina")).step, "await_photo");
+    w.llm.photo = { seen: "a striped shirt", kidsItem: true, isThatItem: true, condition: "like_new", note: "", match: "" };
+    await w.text("mina", "", ["att_tee"]);
+    assertMatch(w.inbox("mina")[0], /^That's the Striped long-sleeve tee, like new\. Fair price \$8\.40/);
+  });
+});
+
 Deno.test("no LLM: the photo still works (template guess + the open nudge's item)", async () => {
   await withWorld(async (w) => {
     await sayHi(w, "mina");

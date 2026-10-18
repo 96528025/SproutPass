@@ -65,6 +65,12 @@ export const t = {
   askPhoto: (item: string) => `Great! Send a photo of the ${item} and I'll suggest its condition and a fair price.`,
   askWhich: () => `Which one? Send a photo, or text "sell" plus its name, like "sell the romper".`,
   photoWhich: () => `Cute! I couldn't tell which item that is. Text "sell" plus its name, like "sell the romper".`,
+  /** The AI looked at a photo and it isn't something a child outgrows (a water bottle): nothing is quoted or listed. */
+  notKidsItem: (seen: string) =>
+    `That looks like ${seen || "something else"}! I can only pass on things your little one has outgrown. Send a photo of one of those.`,
+  /** The parent said which item it is, but the photo clearly shows something else. */
+  notThatItem: (seen: string, item: string) =>
+    `Hmm, that looks like ${seen || "something else"}, not the ${item}. Send me a photo of the ${item}?`,
   askCondition: (condition: string) => `Looks ${label(condition)} — right? Reply "yes" or tell me a different one.`,
   /** After a photo: the item, the AI's condition guess and the fair price (pricing.ts priceFor, the 60/40 rule). */
   quote: (item: string, condition: string, priceCents: number, originalPriceCents: number, ownerCount: number, note = "") =>

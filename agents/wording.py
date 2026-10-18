@@ -103,6 +103,17 @@ def photo_which() -> str:
     return 'Cute! I couldn\'t tell which item that is. Text "sell" plus its name, like "sell the romper".'
 
 
+def not_kids_item(seen: str) -> str:
+    """The AI looked at a photo and it isn't something a child outgrows (a water bottle): nothing is quoted."""
+    return (f"That looks like {seen or 'something else'}! I can only pass on things your little one has outgrown. "
+            "Send a photo of one of those.")
+
+
+def not_that_item(seen: str, item: str) -> str:
+    """The parent said which item it is, but the photo clearly shows something else."""
+    return f"Hmm, that looks like {seen or 'something else'}, not the {item}. Send me a photo of the {item}?"
+
+
 def ask_condition(condition: str) -> str:
     return f'Looks {LABEL.get(condition, condition)} — right? Reply "yes" or tell me a different one.'
 
