@@ -1,5 +1,6 @@
-// The pixelated real map behind the radar: Leaflet + OpenStreetMap tiles (z-1 tiles shown at ×2 so every source pixel
-// is a 2×2 block), the Los Angeles city boundary on top. Follow mode is locked to me at zoom 17 and pans in 4-px steps;
+// The pixelated real map behind the radar: Leaflet + Esri's "World Light Gray Base" canvas (no street names, no key;
+// z-1 tiles shown at ×2 so every source pixel is a 2×2 block) tinted cream/green, a petal trail where I walked, and the Los Angeles city
+// boundary only in zone view. Follow mode is locked to me at zoom 17 and pans in 4-px steps;
 // zone mode is a fixed zoomed-out fit of the polygon. Leaflet's own controls and attribution are off.
 import { useEffect, useRef, useState } from "react";
 import { GeoJSON, MapContainer, TileLayer, useMap, useMapEvents } from "react-leaflet";
@@ -17,6 +18,14 @@ const TICK_MS = 60;
 // smoothFactor 0 = no simplification of the routed boundary (a Polyline option that setStyle forwards)
 const ZONE_STYLE = { className: "map__zone", smoothFactor: 0, lineCap: "butt", lineJoin: "miter", dashArray: "8 8", weight: 4 } as L.PathOptions;
 const FALLBACK_CENTRE: [number, number] = [34.0689, -118.4452];
+// Esri's light-gray canvas has no labels (they live in a separate reference layer) and needs no key. Note {y}/{x}.
+const TILE_URL = "https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}";
+// At zoom 17 a metre is a pixel and my ×5 avatar covers ±80 px, so the trail only shows past ~80 m: bigger petals,
+// a long life, and a wide step keep it readable behind a walker (and the demo walk draws the whole 250 m).
+const TRAIL_STEP_M = 8;
+const TRAIL_TTL_MS = 45_000;
+const TRAIL_FADE_MS = 8_000;
+const TRAIL_MAX = 60;
 
 /** Metres per screen pixel at a latitude and zoom (Web Mercator, 256-px world tiles). */
 export function metersPerPixel(lat: number, zoom: number): number {
@@ -94,6 +103,64 @@ function Controller({ me, zoomedOut, zone }: Pick<MapLayerProps, "me" | "zoomedO
   return null;
 }
 
+interface Petal {
+  id: number;
+  lat: number;
+  lng: number;
+  at: number;
+}
+
+/** Petals dropped where I walked (a bloom trail): one every ~8 m, gone after 45 s, dithered out at the end. */
+function Trail({ me }: { me: { lat: number; lng: number } | null }) {
+  const map = useMap();
+  const [petals, setPetals] = useState<Petal[]>([]);
+  const last = useRef<{ lat: number; lng: number } | null>(null);
+  const [, setTick] = useState(0);
+  useMapEvents({ move: () => setTick((n) => n + 1) });
+
+  useEffect(() => {
+    if (!me) return;
+    const l = last.current;
+    if (!l) {
+      last.current = me; // the first fix is where we stand, not a step
+      return;
+    }
+    if (map.distance([l.lat, l.lng], [me.lat, me.lng]) < TRAIL_STEP_M) return;
+    last.current = me;
+    // a little sideways jitter (±1.5 m) so the trail doesn't look like a ruler
+    const j = () => (Math.random() - 0.5) * 0.00003;
+    setPetals((p) => [...p.slice(-(TRAIL_MAX - 1)), { id: Date.now() + Math.random(), lat: me.lat + j(), lng: me.lng + j(), at: Date.now() }]);
+  }, [map, me?.lat, me?.lng]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    const id = window.setInterval(() => {
+      setPetals((p) => p.filter((x) => Date.now() - x.at < TRAIL_TTL_MS));
+      setTick((n) => n + 1);
+    }, 1000);
+    return () => window.clearInterval(id);
+  }, []);
+
+  if (!petals.length) return null;
+  const now = Date.now();
+  return (
+    <>
+      {petals.map((p) => {
+        const pt = map.latLngToContainerPoint([p.lat, p.lng]);
+        const fading = now - p.at > TRAIL_TTL_MS - TRAIL_FADE_MS;
+        return (
+          <div
+            key={p.id}
+            className={`map__petal ${fading ? "map__petal--fade" : ""}`}
+            style={{ transform: `translate(${Math.round(pt.x) - 16}px, ${Math.round(pt.y) - 16}px)` }}
+          >
+            <Sprite name="fx_petal" anim="loop" scale={2} />
+          </div>
+        );
+      })}
+    </>
+  );
+}
+
 /** My avatar as a 16-px marker while zoomed out (the big centred avatar is hidden then). */
 function ZoneMarker({ me, avatar }: { me: { lat: number; lng: number } | null; avatar: SpriteName }) {
   const map = useMap();
@@ -137,13 +204,14 @@ export function MapLayer({ me, zoomedOut, zone, avatar, noFix }: MapLayerProps) 
           zoomSnap={1}
         >
           {/* z-1 tiles at tileSize 512: each 256-px source pixel is a 2×2 block, same ground scale as normal z17 */}
-          <TileLayer url="https://tile.openstreetmap.org/{z}/{x}/{y}.png" tileSize={512} zoomOffset={-1} maxNativeZoom={17} keepBuffer={2} />
-          {zone && <GeoJSON key={zone.boundaryMode} data={zone.geojson} style={ZONE_STYLE} />}
+          <TileLayer url={TILE_URL} tileSize={512} zoomOffset={-1} maxNativeZoom={17} keepBuffer={2} />
+          {zone && zoomedOut && <GeoJSON key={zone.boundaryMode} data={zone.geojson} style={ZONE_STYLE} />}
           <Controller me={me} zoomedOut={zoomedOut} zone={zone} />
+          {!zoomedOut && <Trail me={me} />}
           {zoomedOut && <ZoneMarker me={me} avatar={avatar} />}
         </MapContainer>
       )}
-      {!empty && <span className="map__attrib">© OPENSTREETMAP</span>}
+      {!empty && <span className="map__attrib">TILES © ESRI</span>}
     </div>
   );
 }

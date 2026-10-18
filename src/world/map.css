@@ -28,8 +28,9 @@
 }
 .map .leaflet-container { background: var(--paper); }
 
-/* ×2 pixel blocks, tinted down a little so sprites read on top */
-.map .leaflet-tile-pane { filter: saturate(0.6) contrast(1.15); }
+/* ×2 pixel blocks. Esri's light-gray canvas is near-white; sepia warms the ground to cream, saturate brings the
+   parks and water back, so the map reads as a pastel diorama under the sprites. */
+.map .leaflet-tile-pane { filter: sepia(0.32) saturate(1.5) brightness(1.03) contrast(1.06); }
 .map .leaflet-tile {
   image-rendering: pixelated;
 }
@@ -45,6 +46,21 @@
   fill: var(--grass);
   fill-opacity: 0.25;
   shape-rendering: crispEdges;
+}
+
+/* petal trail (inside the map so it stays glued to the ground) */
+.map__petal {
+  position: absolute;
+  left: 0;
+  top: 0;
+  z-index: 650;
+  width: 32px;
+  height: 32px;
+  pointer-events: none;
+}
+.map__petal--fade > .spr {
+  -webkit-mask: var(--dither-ink);
+  mask: var(--dither-ink);
 }
 
 /* 16-px avatar while zoomed out */

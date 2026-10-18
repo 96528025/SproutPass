@@ -97,7 +97,7 @@
   align-items: center;
   pointer-events: none;
 }
-.ws__me { z-index: 200; margin-left: -64px; margin-top: -64px; width: 128px; }
+.ws__me { z-index: 200; margin-left: -80px; margin-top: -96px; width: 160px; } /* ×5 sprite, feet a little below centre */
 .ns { margin-left: -48px; margin-top: -48px; width: 96px; }
 .ws__me .name,
 .ns__name {
@@ -138,21 +138,33 @@
   right: 0;
   top: 0;
   height: var(--chip-row);
-  padding: 0 52px 0 12px;
+  padding: 0 132px 0 12px;
   display: flex;
   align-items: center;
   gap: 8px;
   z-index: 4; /* below --z-overlay so A5's scenes cover the HUD */
 }
 .ws__chips .chip { flex: none; }
-.ws__disc {
-  position: absolute;
-  left: 12px;
-  top: calc(var(--chip-row) + 4px);
+/* ---- HUD buttons: 32px icons in the top-right, slots 40px apart, slot 0 = A3's MuteToggle ---- */
+.hud {
+  position: fixed;
+  top: calc(var(--safe-top, 0px) + 8px);
+  z-index: 6;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: var(--border-ink);
+  background: var(--paper);
   display: flex;
-  gap: 8px;
-  z-index: 4; /* below --z-overlay so A5's scenes cover the HUD */
+  align-items: center;
+  justify-content: center;
+  touch-action: manipulation;
 }
+.hud--on { background: var(--cream); }
+.hud:active { transform: translate(2px, 2px); }
+.hud:focus-visible { outline: 4px solid var(--sky); outline-offset: 2px; }
+.hud__glyph { position: relative; width: 24px; height: 24px; }
+.hud__glyph > i { position: absolute; left: 0; top: 0; width: 4px; height: 4px; }
 
 /* ---- demo walk button ---- */
 .ws__walk {

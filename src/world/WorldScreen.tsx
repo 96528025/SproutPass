@@ -7,6 +7,7 @@ import { Celebration } from "@/world/Celebration";
 import { EncounterScene } from "@/world/EncounterScene";
 import { Chip } from "@/pixel/components/Chip";
 import { PixelButton } from "@/pixel/components/PixelButton";
+import { HudButton } from "@/world/HudButton";
 import { Sprite } from "@/pixel/components/Sprite";
 import { Toast } from "@/pixel/components/Toast";
 import { BottomBar } from "@/world/BottomBar";
@@ -95,6 +96,8 @@ export function WorldScreen() {
   const showEncounter = !!encounter && !!peerId && dismissedEncounter !== encounter.id;
   const showCelebration = proposal?.status === "paid" && dismissedProposal !== proposal.id;
 
+  // Quiet HUD: a chip only when something needs saying. A good real fix shows nothing; SIMULATED GPS is required
+  // by rule 5 whenever positions are simulated.
   const gpsChip =
     gps.status === "denied" || gps.status === "unavailable" ? (
       <Chip tone="red">NO GPS</Chip>
@@ -102,9 +105,7 @@ export function WorldScreen() {
       <Chip tone="lav">SIMULATED GPS</Chip>
     ) : gps.status === "weak" ? (
       <Chip tone="gold">WEAK GPS — STEP OUTSIDE</Chip>
-    ) : gps.status === "ok" && gps.accuracyM !== null ? (
-      <Chip tone="mint">GPS ±{Math.round(gps.accuracyM)}M</Chip>
-    ) : (
+    ) : gps.status === "ok" ? null : (
       <Chip tone="paper">FINDING GPS…</Chip>
     );
 
@@ -117,26 +118,19 @@ export function WorldScreen() {
             <Radar mpp={mpp} />
             <NearbySprites items={items} />
             <div className={`ws__me ${discoverable ? "" : "ws__me--hidden"}`} data-me={me.id}>
-              <Sprite name={me.avatar.sprite} anim={moving ? "walk" : "idle"} scale={4} facing={facing} />
-              <span className="name">{me.name}</span>
+              <Sprite name={me.avatar.sprite} anim={moving ? "walk" : "idle"} scale={5} facing={facing} />
             </div>
           </>
         )}
       </div>
 
-      {/* row 1 is exactly 40px and its right 52px belong to A3's MuteToggle; the stale-GPS chip takes the GPS chip's slot */}
+      {/* row 1 is exactly 40px; its right 132px belong to the three HUD buttons. The zone chip lives in zone view only. */}
       <div className="ws__chips">
         {gps.paused ? <Chip tone="gold">SCREEN LOCKED? GPS PAUSED</Chip> : gpsChip}
-        {inside !== null && (inside ? <Chip tone="mint">IN LOS ANGELES</Chip> : <Chip tone="gold">OUTSIDE LA</Chip>)}
+        {zoomedOut && inside !== null && (inside ? <Chip tone="mint">IN LA</Chip> : <Chip tone="gold">OUTSIDE LA</Chip>)}
       </div>
-      <div className="ws__disc">
-        <PixelButton small variant={discoverable ? "primary" : "ghost"} aria-pressed={discoverable} onClick={() => setDiscoverable((d) => !d)}>
-          DISCOVERABLE
-        </PixelButton>
-        <PixelButton small variant="ghost" aria-pressed={zoomedOut} pressed={zoomedOut} onClick={() => setZoomedOut((z) => !z)}>
-          ZONE
-        </PixelButton>
-      </div>
+      <HudButton slot={1} glyph={discoverable ? "eyeOn" : "eyeOff"} on={discoverable} label={discoverable ? "Discoverable. Tap to hide" : "Hidden. Tap to be discoverable"} onClick={() => setDiscoverable((d) => !d)} />
+      <HudButton slot={2} glyph={zoomedOut ? "zoneOut" : "zone"} on={zoomedOut} label={zoomedOut ? "Back to walking view" : "Show the Los Angeles zone"} onClick={() => setZoomedOut((z) => !z)} />
 
       {demo && (
         <div className="ws__walk">
@@ -150,7 +144,7 @@ export function WorldScreen() {
         </div>
       )}
 
-      {hint && <Toast text="KEEP THIS SCREEN OPEN WHILE YOU WALK" duration={4000} onHide={hideHint} />}
+      {hint && !demo && <Toast text="KEEP THIS SCREEN OPEN WHILE YOU WALK" duration={4000} onHide={hideHint} />}
 
       {showEncounter && encounter && peerId && (
         <EncounterScene

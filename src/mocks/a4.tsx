@@ -85,7 +85,7 @@ const STEP_CAP_MS = 1500;
 // moves WALK_STEP_M per demoWalk call toward the other parent, so the map pans while walking. The other parent is
 // never given coordinates: listNearby still returns band + bearing only.
 export const DEMO_LAWN = { lat: 34.0709, lng: -118.4446 };
-const WALK_STEP_M = 5;
+const WALK_STEP_M = 12; // matches the ~12 m/s the 20-s demo countdown implies, so the map pans in step with it
 
 export interface LatLng {
   lat: number;
