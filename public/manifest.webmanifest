@@ -1,0 +1,14 @@
+{
+  "name": "Hand-Me-Down Relay",
+  "short_name": "Relay",
+  "description": "Pass kids' clothes along to nearby parents.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#FFF4D6",
+  "theme_color": "#2B2140",
+  "icons": [
+    { "src": "/icon-180.png", "sizes": "180x180", "type": "image/png", "purpose": "any" }
+  ]
+}
