@@ -441,3 +441,138 @@ describe("getParties", () => {
     await expect(getParties(db, { parentIds: [ids.jo, 7] } as never)).rejects.toMatchObject({ code: "bad_request" });
   });
 });
+
+// ---------------------------------------------------------------- trusted checkout (B5): the buyer's mandate + Face ID approval
+
+describe("the buyer's mandate (createProposal)", () => {
+  const mandate = (m: Record<string, unknown>) => db.Parent.update(ids.jo, { mandate: { agentMayPropose: true, maxPriceCents: 5000,
+    monthlyBudgetCents: 10_000, categories: [], requirePasskey: false, ...m } });
+  const refused = async (reason: RegExp) => {
+    await expect(propose()).rejects.toMatchObject({ code: "not_eligible", status: 409, message: expect.stringMatching(reason) });
+    expect(await db.MatchProposal.filter({ listingId: listing.id })).toHaveLength(0);
+    expect((await item()).status).toBe("listed");
+    expect(await events(ids.jo)).toEqual([]);
+  };
+  const otherTrade = (status: "paid" | "open", createdAt: string, priceCents: number) => db.MatchProposal.create({
+    listingId: "l_other", itemId: "i_other", sellerId: ids.sam, buyerId: ids.jo, snapshot: { priceCents } as never, reason: "",
+    transcript: [], source: "local", sellerDecision: "accepted", buyerDecision: "accepted", status, handover: "now",
+    createdAt, expiresAt: new Date(new Date(createdAt).getTime() + PROPOSAL_TTL_MS).toISOString(),
+  });
+
+  it("the default rules allow the demo trade", async () => {
+    expect((await propose()).status).toBe("open");
+  });
+
+  it("no proposal when the parent told the pet only to point out matches", async () => {
+    await mandate({ agentMayPropose: false });
+    await refused(/Jo asked Pip to only point out matches/);
+  });
+
+  it("no proposal above the price limit (the limit itself is fine)", async () => {
+    await mandate({ maxPriceCents: 1799 });
+    await refused(/price limit/);
+    await mandate({ maxPriceCents: 1800 });
+    expect((await propose()).status).toBe("open");
+  });
+
+  it("no proposal outside the chosen kinds of clothes", async () => {
+    await mandate({ categories: ["outerwear", "dress"] });
+    await refused(/kinds of clothes/);
+    await mandate({ categories: ["onesie"] });
+    expect((await propose()).status).toBe("open");
+  });
+
+  it("no proposal that would go over the monthly budget, counting paid and pending trades this month", async () => {
+    await mandate({ monthlyBudgetCents: 2500 });
+    await otherTrade("paid", DEMO_DATES.meet, 800);
+    await refused(/monthly budget/);
+    await mandate({ monthlyBudgetCents: 2600 });                // 800 + 1800 = 2600: exactly on budget
+    expect((await propose()).status).toBe("open");
+  });
+
+  it("last month's trades and timed-out offers don't count; a pending one does", async () => {
+    await mandate({ monthlyBudgetCents: 2000 });
+    await otherTrade("paid", "2026-09-30T17:00:00.000Z", 1500);
+    await otherTrade("open", "2026-10-18T15:00:00.000Z", 1500);  // expired 15:30 → doesn't count
+    expect((await propose()).status).toBe("open");
+    await db.MatchProposal.delete((await db.MatchProposal.filter({ listingId: listing.id }))[0].id);
+    await db.ClothingItem.update(romper.id, { status: "listed" });
+    await otherTrade("open", DEMO_DATES.meet, 500);            // live → 500 + 1800 > 2000
+    await expect(propose()).rejects.toMatchObject({ code: "not_eligible", message: expect.stringMatching(/monthly budget/) });
+  });
+
+  it("the reason never shows the buyer's amounts, and the seller's own rules don't block a sale", async () => {
+    await db.Parent.update(ids.mina, { mandate: { agentMayPropose: false, maxPriceCents: 0, monthlyBudgetCents: 0, categories: ["dress"], requirePasskey: false } });
+    expect((await propose()).status).toBe("open");
+    await db.MatchProposal.delete((await db.MatchProposal.list())[0].id);
+    await db.ClothingItem.update(romper.id, { status: "listed" });
+    await mandate({ maxPriceCents: 1234 });
+    await expect(propose()).rejects.toMatchObject({ message: expect.not.stringMatching(/\$|12\.34|1234/) });
+  });
+
+  it("an already-open proposal for the same buyer is returned, not re-judged", async () => {
+    const p = await propose();
+    await mandate({ agentMayPropose: false });
+    expect((await propose()).id).toBe(p.id);
+  });
+});
+
+describe("Face ID approval (payProposal)", () => {
+  const passkey = { key: "pk_1", credentialId: "cred-1", publicKey: "", counter: 0, transports: [], label: "Jo's phone",
+    createdAt: DEMO_DATES.meet, rpID: "localhost" };
+  async function accepted() {
+    const p = await propose();
+    await decideProposal(db, { parentKey: "mina", proposalId: p.id, decision: "accepted" });
+    return decideProposal(db, { parentKey: "jo", proposalId: p.id, decision: "accepted" });
+  }
+  const untouched = async (id: string) => {
+    expect(await db.MatchProposal.get(id)).toMatchObject({ status: "both_accepted" });
+    expect((await db.MatchProposal.get(id)).paymentRef).toBeUndefined();
+    expect(await item()).toMatchObject({ currentOwnerId: ids.mina, ownerCount: 1, status: "pending_trade" });
+  };
+
+  it("with a saved passkey, paying needs an approval for THIS trade", async () => {
+    await db.Parent.update(ids.jo, { passkeys: [passkey] });
+    const p = await accepted();
+    await expect(payProposal(db, { parentKey: "jo", proposalId: p.id }, { delayMs: 0 }))
+      .rejects.toMatchObject({ code: "forbidden", status: 403, message: "Approve with Face ID first" });
+    await expect(payProposal(db, { parentKey: "jo", proposalId: p.id }, { delayMs: 0, passkeyApprovedFor: "another_trade" }))
+      .rejects.toMatchObject({ code: "forbidden" });
+    // the body can't carry the approval: only the entry (after verifying a passkey) sets opts.passkeyApprovedFor
+    await expect(payProposal(db, { parentKey: "jo", proposalId: p.id, passkeyApprovedFor: p.id } as never, { delayMs: 0 }))
+      .rejects.toMatchObject({ code: "forbidden" });
+    await untouched(p.id);
+    const res = await payProposal(db, { parentKey: "jo", proposalId: p.id }, { delayMs: 0, passkeyApprovedFor: p.id });
+    expect(res.proposal.status).toBe("paid");
+    expect(res.item.currentOwnerId).toBe(ids.jo);
+    // reading back a paid trade needs no new approval and doesn't pay twice
+    const again = await payProposal(db, { parentKey: "jo", proposalId: p.id }, { delayMs: 0 });
+    expect(again.proposal.paymentRef).toBe(res.proposal.paymentRef);
+  });
+
+  it("a simulated failure needs approval too", async () => {
+    await db.Parent.update(ids.jo, { passkeys: [passkey] });
+    const p = await accepted();
+    await expect(payProposal(db, { parentKey: "jo", proposalId: p.id, fail: true }, { delayMs: 0 })).rejects.toMatchObject({ code: "forbidden" });
+    await untouched(p.id);
+  });
+
+  it("a stored requirePasskey with no passkey saved doesn't lock the buyer out (Face ID follows the passkeys)", async () => {
+    await db.Parent.update(ids.jo, { mandate: { agentMayPropose: true, maxPriceCents: 5000, monthlyBudgetCents: 10_000, categories: [], requirePasskey: true } });
+    const p = await accepted();
+    expect((await payProposal(db, { parentKey: "jo", proposalId: p.id }, { delayMs: 0 })).proposal.status).toBe("paid");
+  });
+
+  it("the order of checks: only the buyer, both must accept, then approval", async () => {
+    await db.Parent.update(ids.jo, { passkeys: [passkey] });
+    const p = await propose();
+    await expect(payProposal(db, { parentKey: "jo", proposalId: p.id }, { delayMs: 0 })).rejects.toMatchObject({ code: "invalid_transition" });
+    await expect(payProposal(db, { parentKey: "mina", proposalId: p.id }, { delayMs: 0 })).rejects.toMatchObject({ code: "forbidden", message: "only the buyer can pay" });
+  });
+
+  it("a seller's passkey doesn't change what the buyer must do", async () => {
+    await db.Parent.update(ids.mina, { passkeys: [passkey] });
+    const p = await accepted();
+    expect((await payProposal(db, { parentKey: "jo", proposalId: p.id }, { delayMs: 0 })).proposal.status).toBe("paid");
+  });
+});

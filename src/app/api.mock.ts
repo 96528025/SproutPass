@@ -8,8 +8,9 @@ import { createFakeDb } from "../../base44/shared/testing/fakeDb.ts";
 import type { ChangeEvent } from "../../base44/shared/testing/fakeDb.ts";
 import { applySeed, seedPlan } from "../../base44/shared/seed.ts";
 import { getCloset, listItem, recordPurchase, resolveNudge, upsertNeed, withdrawListing } from "../../base44/shared/logic/closet.ts";
-import { createProposal, decideProposal, getParties, payProposal } from "../../base44/shared/logic/trade.ts";
+import { decideProposal, getParties, payProposal } from "../../base44/shared/logic/trade.ts";
 import { demoClock, demoReset, getStats, selfTest } from "../../base44/shared/logic/demo.ts";
+import { getTrust, mockPasskeys, removePasskey, setMandate } from "../../base44/shared/logic/trust.ts"; // B5
 import { toSmallDataUrl } from "./photo";
 import { createMockWorld } from "./mockWorld";
 
@@ -70,16 +71,23 @@ const call = async <T>(fn: () => Promise<T>): Promise<T> => {
 /** Mock-only helpers for building screens without B1/C. Not part of Api. */
 export const mockDev = {
   db,
-  /** Create the demo proposal (first active listing → Jo) as if the agents had met. Same handler C's agents call. */
+  /**
+   * TRIGGER ENCOUNTER: Jo's pet meets the seller of the first active listing, without the walk. A real mock
+   * encounter (mockWorld.instantEncounter): the pets' lines, the mock agents' protocol log, then C's fallback →
+   * B's createProposal, so /agents, the bubbles and the trade fill in as on a walk. In the browser the pets talk
+   * first (a few seconds); resolves with the proposal, or throws with why there is none (e.g. Jo's pet rules).
+   */
   async triggerEncounter(): Promise<MatchProposal | null> {
     await ready;
     const [jo] = await db.Parent.filter({ key: "jo" });
-    const [listing] = await db.Listing.filter({ status: "active" });
+    const listing = (await db.Listing.filter({ status: "active" })).find((l) => l.sellerId !== jo?.id);
     if (!jo || !listing) return null;
     try {
-      return await createProposal(db, { listingId: listing.id, buyerId: jo.id, reason: "", transcript: [], source: "local" });
+      const met = await world.instantEncounter(jo.id, listing.sellerId, { talk: inBrowser });
+      if (met.proposal) return met.proposal;
+      throw new ApiError(met.declined ? "not_eligible" : "no_match", met.message);
     } catch (e: any) {
-      throw new ApiError(e?.code ?? "mock_error", e?.message ?? String(e));
+      throw e instanceof ApiError ? e : new ApiError(e?.code ?? "mock_error", e?.message ?? String(e));
     }
   },
 };
@@ -93,7 +101,8 @@ export const mockApi: Api = {
   resolveNudge: (req) => call(() => resolveNudge(db, req)),
 
   decideProposal: (req) => call(() => decideProposal(db, req)),
-  payProposal: (req) => call(() => payProposal(db, req, { delayMs: 600 })),
+  // B5: a passkey approval (req.passkey) is checked first, mock-style (see mockPasskeys), like payProposal's entry does for real.
+  payProposal: (req) => call(async () => payProposal(db, req, { delayMs: 600, passkeyApprovedFor: await mockPasskeys.approvePayment(db, req) })),
   getParties: (req) => call(() => getParties(db, req)),
   // C's real location handlers (base44/shared/c/location.ts) on this fakeDb; see mockWorld.ts for the pets' talk.
   updatePresence: (req) => call(() => world.updatePresence(req)),
@@ -101,21 +110,18 @@ export const mockApi: Api = {
   demoWalk: (req) => call(() => world.demoWalk(req)),
   // ---- placeholders: the trusted-checkout, snap-to-list and impact workstreams replace these with the real
   // handlers on the fakeDb (same as the rest of this mock).
-  getTrust: () => call(async () => ({
-    mandate: { maxPriceCents: 5000, monthlyBudgetCents: 10000, categories: [], requirePasskey: false, agentMayPropose: true },
-    spentThisMonthCents: 0, passkeys: [],
-  })),
-  setMandate: (req) => call(async () => ({
-    maxPriceCents: 5000, monthlyBudgetCents: 10000, categories: [], requirePasskey: false, agentMayPropose: true, ...req.mandate,
-  })),
-  passkeyRegisterOptions: () => call(async () => ({})),
-  passkeyRegisterVerify: () => call(async () => ({ ok: true as const, passkeys: [] })),
-  passkeyAuthOptions: () => call(async () => ({})),
-  analyzeItemPhoto: () => call(async () => ({ via: "template" as const })),
-  getImpact: () => call(async () => ({
-    itemsRehomed: 0, tradesCompleted: 0, dollarsSavedCents: 0, dollarsEarnedCents: 0, co2SavedKg: 0, waterSavedL: 0,
-    wasteDivertedKg: 0, points: [], assumptions: [],
-  })),
+  // B5: the real trust handlers (base44/shared/logic/trust.ts) on this fakeDb.
+  getTrust: (ref) => call(() => getTrust(db, ref)),
+  setMandate: (req) => call(() => setMandate(db, req)),
+  // B5 MOCK ONLY: the browser really makes / uses a passkey on localhost, but the signature is NOT verified here (the
+  // challenge, ceremony type, origin and credential id are). The real Base44 functions verify with @simplewebauthn/server.
+  passkeyRegisterOptions: (req) => call(() => mockPasskeys.registerOptions(db, req)),
+  passkeyRegisterVerify: (req) => call(() => mockPasskeys.registerVerify(db, req)),
+  passkeyAuthOptions: (req) => call(() => mockPasskeys.authOptions(db, req)),
+  passkeyRemove: (req) => call(() => removePasskey(db, req)), // B5: no crypto involved, the real handler
+  analyzeItemPhoto: (req) => call(async () => { await wait(900); return (await import("../../base44/shared/logic/snap.ts")).mockItemPhotoGuess(req); }), // B7: no LLM offline: file-name keywords, else a demo pick (via "template")
+  // B9: the real impact handler on this fakeDb (imported here so this line stays self-contained).
+  getImpact: (ref) => call(async () => (await import("../../base44/shared/logic/impact.ts")).getImpact(db, ref ?? {})),
 
   demoClock: (req) => call(() => demoClock(db, req ?? {})),
   demoReset: () => call(() => demoReset(db, {})),

@@ -1,7 +1,9 @@
 // Pure trade-screen helpers: the other party's name loader and "is this proposal gone?" detection.
 import { describe, expect, it, vi } from "vitest";
 import type { MatchProposal } from "../app/types";
-import { confirmedGone, createPartyLoader, missingLive, slimParty, type Party } from "./tradeLogic";
+import {
+  confirmedGone, createPartyLoader, mandateFit, missingLive, ownerSentence, slimParty, tradeBanner, tradeReceipt, type Party,
+} from "./tradeLogic";
 
 const jo: Party = { id: "p_jo", name: "Jo", avatar: { sprite: "parent_b", palette: "mint" }, pet: { sprite: "pet_b", name: "Pip" } };
 const noSleep = () => Promise.resolve();
@@ -102,5 +104,79 @@ describe("gone detection", () => {
     const seenAt = new Map([["a", 1000], ["b", 5000]]);
     expect(confirmedGone(["a", "b"], [], seenAt, 3000)).toEqual(["a"]);   // b arrived after the fetch began: stale, keep it
     expect(confirmedGone(["a", "b"], ["a"], seenAt, 9000)).toEqual(["b"]); // a is listed again
+  });
+});
+
+// ---------------------------------------------------------------- the receipt (trusted checkout)
+
+describe("tradeReceipt", () => {
+  it("2nd owner: 60% of the original, saves the rest", () => {
+    expect(tradeReceipt({ originalPriceCents: 3000, priceCents: 1800, previousOwners: 1 })).toEqual({
+      originalCents: 3000, priceCents: 1800, savedCents: 1200, ownerAfter: 2, pct: 60, finalHome: false,
+    });
+  });
+  it("3rd owner: 40%, and it's the final home", () => {
+    expect(tradeReceipt({ originalPriceCents: 3000, priceCents: 1200, previousOwners: 2 })).toMatchObject({
+      savedCents: 1800, ownerAfter: 3, pct: 40, finalHome: true,
+    });
+  });
+  it("never shows a negative saving", () => {
+    expect(tradeReceipt({ originalPriceCents: 1000, priceCents: 1200, previousOwners: 1 }).savedCents).toBe(0);
+  });
+});
+
+describe("mandateFit", () => {
+  const m = { maxPriceCents: 2500, monthlyBudgetCents: 10000 };
+  it("is within the rules and says what's left after paying", () => {
+    expect(mandateFit(m, 1800, 1800)).toEqual({ ok: true, withinMax: true, withinBudget: true, maxCents: 2500, leftAfterCents: 6400 });
+  });
+  it("flags a price over the per-trade max", () => {
+    expect(mandateFit(m, 0, 3000)).toMatchObject({ ok: false, withinMax: false, withinBudget: true });
+  });
+  it("flags a trade that would blow the monthly budget", () => {
+    expect(mandateFit(m, 9000, 1800)).toMatchObject({ ok: false, withinMax: true, withinBudget: false, leftAfterCents: 0 });
+  });
+  it("after paying, spent already includes this trade", () => {
+    expect(mandateFit(m, 1800, 1800, true)).toMatchObject({ ok: true, leftAfterCents: 8200 });
+  });
+});
+
+// ---------------------------------------------------------------- the promise banner
+
+describe("tradeBanner", () => {
+  it("promises nothing is charged until both accept, while the trade is open", () => {
+    expect(tradeBanner("open", "buyer", "Jo")).toEqual({ text: "Nothing is charged until you both accept.", tone: "promise" });
+    expect(tradeBanner("open", null, "Jo").text).toBe("Nothing is charged until both parents accept.");
+  });
+  it("after both said yes, tells the buyer it's their tap and the seller who pays", () => {
+    expect(tradeBanner("both_accepted", "buyer", "Jo").text).toBe("You both said yes. Nothing is charged until you tap Pay.");
+    expect(tradeBanner("both_accepted", "seller", "Jo").text).toBe("You both said yes. Waiting for Jo to pay.");
+  });
+  it("never repeats the 'until you both accept' promise once it's past", () => {
+    for (const s of ["both_accepted", "paid", "declined", "expired", "payment_failed"] as const) {
+      for (const r of ["buyer", "seller", null] as const) expect(tradeBanner(s, r, "Jo").text).not.toMatch(/until you both accept|until both parents accept/i);
+    }
+  });
+  it("says what happened after the trade ends, in sentence case", () => {
+    expect(tradeBanner("paid", "seller", "Jo")).toEqual({ text: "Paid · demo payment, no real charge", tone: "paid" });
+    expect(tradeBanner("declined", "buyer", "Jo")).toEqual({ text: "No trade · nothing was charged", tone: "ended" });
+    expect(tradeBanner("expired", "seller", "Jo").tone).toBe("ended");
+    expect(tradeBanner("payment_failed", "buyer", "Jo").text).toMatch(/nothing was charged/);
+    for (const s of ["open", "both_accepted", "paid", "declined", "expired", "payment_failed"] as const) {
+      const t = tradeBanner(s, "buyer", "Jo").text;
+      expect(t).not.toBe(t.toUpperCase());
+    }
+  });
+});
+
+describe("ownerSentence", () => {
+  it("future before paying, past after", () => {
+    expect(ownerSentence("both_accepted", "buyer", "Jo", 2)).toBe("You become owner 2 of 3.");
+    expect(ownerSentence("open", "seller", "Jo", 3)).toBe("Jo becomes owner 3 of 3.");
+    expect(ownerSentence("paid", "buyer", "Jo", 2)).toBe("You became owner 2 of 3.");
+    expect(ownerSentence("paid", "seller", "Jo", 2)).toBe("Jo became owner 2 of 3.");
+  });
+  it("a trade that didn't happen", () => {
+    expect(ownerSentence("declined", "buyer", "Jo", 2)).toBe("You would have become owner 2 of 3.");
   });
 });

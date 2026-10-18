@@ -4,6 +4,7 @@
 import type { Db, EntityApi } from "./db.ts";
 import type { Category, Child, ClothingItem, EntityName, ISODate, Listing, Need, Parent, Setting, SizeLabel } from "./types.ts";
 import { predictOutgrow } from "./sizes.ts";
+import { trustReset } from "./logic/trust.ts";
 
 export interface SeedEnv {
   MINA_PHONE?: string; JO_PHONE?: string; SAM_PHONE?: string;
@@ -180,7 +181,8 @@ function oldestFirst<T extends { id: string }>(rows: T[]): T[] {
  * RESET keeps each seeded parent's row (and id) and rewrites it to the seed values, so ids cached by C's agents,
  * PairState keys and open tabs stay valid. Identity bindings survive: an agentAddress registered by an agent
  * (unless a *_AGENT secret overrides it), a phone when no *_PHONE secret is set, Photon ids and the ASI:One claim.
- * Demo state goes: the iMessage conversation (`convo`) restarts. Duplicates and unknown parents are removed.
+ * Demo state goes: the iMessage conversation (`convo`) restarts, and the pet's rules, saved passkeys and passkey
+ * challenge go back to the defaults. Duplicates and unknown parents are removed.
  */
 async function upsertParents(db: Db, seed: SeedPlan["parents"]): Promise<Record<string, string>> {
   const existing = oldestFirst(await db.Parent.list(undefined, 500));
@@ -198,7 +200,8 @@ async function upsertParents(db: Db, seed: SeedPlan["parents"]): Promise<Record<
     const digits = (s?: string) => { const d = (s ?? "").replace(/\D/g, ""); return d.length === 10 ? `1${d}` : d; };
     const newPhone = defined.phone !== undefined && digits(defined.phone) !== digits(row.phone);
     const photonReset = newPhone ? { photonUserId: "", photonSpaceId: "", photonLineUserId: "" } : {};
-    await db.Parent.update(row.id, { ...defined, ...photonReset, convo: { step: "idle" } });
+    // B5: everyone plays the same parents, so RESET also restores the pet's rules and forgets passkeys (trust.ts trustReset).
+    await db.Parent.update(row.id, { ...defined, ...photonReset, convo: { step: "idle", ...(row.convo?.optedOut ? { optedOut: true } : {}) }, ...trustReset() });   // keep STOP
     ids[p.key] = row.id;
   }
   for (const r of existing) if (!kept.has(r.id)) await db.Parent.delete(r.id).catch(() => undefined);

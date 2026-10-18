@@ -127,6 +127,77 @@
           }
         }
       }
+    },
+    "mandate": {
+      "type": "object",
+      "description": "What this parent's pet agent may do on their behalf (trusted checkout). Server-only; read through getTrust.",
+      "properties": {
+        "maxPriceCents": {
+          "type": "integer"
+        },
+        "monthlyBudgetCents": {
+          "type": "integer"
+        },
+        "categories": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "requirePasskey": {
+          "type": "boolean"
+        },
+        "agentMayPropose": {
+          "type": "boolean"
+        }
+      },
+      "rls": {
+        "read": {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        "write": {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      }
+    },
+    "passkeys": {
+      "type": "array",
+      "description": "WebAuthn credentials that approve payments (credential id, public key, counter, transports, label). Server-only.",
+      "items": {
+        "type": "object"
+      },
+      "rls": {
+        "read": {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        "write": {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      }
+    },
+    "passkeyChallenge": {
+      "type": "object",
+      "description": "The one live single-use WebAuthn challenge (5 min). Server-only.",
+      "rls": {
+        "read": {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        "write": {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      }
     }
   },
   "required": [

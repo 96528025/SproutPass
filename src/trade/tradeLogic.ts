@@ -1,5 +1,6 @@
 // OWNER: Agent 2 (B5). Pure helpers behind the trade screens (no React, no api import) so vitest can cover them.
-import type { MatchProposal, PublicParty } from "../app/types";
+import type { MatchProposal, PetMandate, ProposalSnapshot, ProposalStatus, PublicParty } from "../app/types";
+import { RESALE_PCT } from "../../base44/shared/pricing.ts";
 
 // ---------------------------------------------------------------- the other party's public profile
 
@@ -96,4 +97,103 @@ export function missingLive(rows: Record<string, MatchProposal>, meId: string, l
 export function confirmedGone(ids: string[], listed: Iterable<string>, seenAt: Map<string, number>, fetchStartedAt: number): string[] {
   const inCloset = new Set(listed);
   return ids.filter((id) => !inCloset.has(id) && (seenAt.get(id) ?? 0) < fetchStartedAt);
+}
+
+// ---------------------------------------------------------------- the promise banner
+
+export type TradeRole = "buyer" | "seller" | null;
+
+export interface TradeBanner {
+  text: string;
+  /** promise = nothing charged yet; paid = the demo payment went through; ended = no trade, nothing charged. */
+  tone: "promise" | "paid" | "ended";
+}
+
+/**
+ * The sticky line at the top of the trade window. It follows the trade, so the promise never contradicts the
+ * screen: before anyone pays it says what still has to happen; afterwards it says what did (always "nothing
+ * charged" for a trade that didn't happen, and "demo payment, no real charge" for one that did).
+ */
+export function tradeBanner(status: ProposalStatus, role: TradeRole, buyerName: string): TradeBanner {
+  switch (status) {
+    case "open":
+      return { text: role ? "Nothing is charged until you both accept." : "Nothing is charged until both parents accept.", tone: "promise" };
+    case "both_accepted":
+      if (role === "buyer") return { text: "You both said yes. Nothing is charged until you tap Pay.", tone: "promise" };
+      if (role === "seller") return { text: `You both said yes. Waiting for ${buyerName} to pay.`, tone: "promise" };
+      return { text: `Both said yes. Nothing is charged until ${buyerName} pays.`, tone: "promise" };
+    case "paid":
+      return { text: "Paid · demo payment, no real charge", tone: "paid" };
+    case "payment_failed":
+      return { text: "Payment didn't go through · nothing was charged", tone: "ended" };
+    case "declined":
+    case "expired":
+    default:
+      return { text: "No trade · nothing was charged", tone: "ended" };
+  }
+}
+
+/** "You become owner 2 of 3" before paying, "You became owner 2 of 3" after, "would have become" for a trade that didn't happen. */
+export function ownerSentence(status: ProposalStatus, role: TradeRole, buyerName: string, ownerAfter: 2 | 3): string {
+  const who = role === "buyer" ? "You" : buyerName;
+  const verb = status === "paid" ? "became"
+    : status === "declined" || status === "expired" || status === "payment_failed" ? "would have become"
+    : role === "buyer" ? "become" : "becomes";
+  return `${who} ${verb} owner ${ownerAfter} of 3.`;
+}
+
+// ---------------------------------------------------------------- the receipt (trusted checkout)
+
+/** The price rule behind a trade, from the proposal's snapshot (the price itself always comes from the server). */
+export interface TradeReceipt {
+  originalCents: number;
+  priceCents: number;
+  /** What the buyer saves against buying it new. */
+  savedCents: number;
+  /** The buyer becomes owner 2 or owner 3 (of at most 3). */
+  ownerAfter: 2 | 3;
+  /** % of the original the next owner pays: 60 for the 2nd owner, 40 for the 3rd. */
+  pct: number;
+  /** Owner 3 is the item's final home: it can never be listed again. */
+  finalHome: boolean;
+}
+
+export function tradeReceipt(s: Pick<ProposalSnapshot, "originalPriceCents" | "priceCents" | "previousOwners">): TradeReceipt {
+  const ownerAfter: 2 | 3 = s.previousOwners >= 2 ? 3 : 2;
+  return {
+    originalCents: s.originalPriceCents,
+    priceCents: s.priceCents,
+    savedCents: Math.max(0, s.originalPriceCents - s.priceCents),
+    ownerAfter,
+    pct: Math.round(RESALE_PCT[ownerAfter === 3 ? 2 : 1] * 100),
+    finalHome: ownerAfter === 3,
+  };
+}
+
+export interface MandateFit {
+  ok: boolean;
+  withinMax: boolean;
+  withinBudget: boolean;
+  maxCents: number;
+  /** Budget left this month once this trade is paid (0 when over). */
+  leftAfterCents: number;
+}
+
+/**
+ * Is a trade inside the buyer's pet rules? For the receipt only: the server enforces the same rules.
+ * `paid`: spentThisMonthCents already includes this trade.
+ */
+export function mandateFit(
+  m: Pick<PetMandate, "maxPriceCents" | "monthlyBudgetCents">, spentThisMonthCents: number, priceCents: number, paid = false,
+): MandateFit {
+  const spentAfter = Math.max(0, spentThisMonthCents) + (paid ? 0 : priceCents);
+  const withinMax = priceCents <= m.maxPriceCents;
+  const withinBudget = spentAfter <= m.monthlyBudgetCents;
+  return {
+    ok: withinMax && withinBudget,
+    withinMax,
+    withinBudget,
+    maxCents: m.maxPriceCents,
+    leftAfterCents: Math.max(0, m.monthlyBudgetCents - spentAfter),
+  };
 }

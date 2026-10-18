@@ -72,8 +72,14 @@ export async function writeInbox(db: Db, parentId: ID, event: InboxEvent): Promi
   });
 }
 
-/** Strip private fields before returning a Parent to a client. */
-export function publicParent(p: Parent) {
-  const { phone: _phone, photonUserId: _u, photonSpaceId: _s, photonLineUserId: _l, convo: _c, asiAddress: _a, ...rest } = p;
+/**
+ * Strip private fields before returning a Parent to a client. The pet's mandate (spending rules), saved passkeys and
+ * the live passkey challenge are server-only too: the parent reads their own rules through getTrust.
+ */
+export function publicParent(p: Parent & { passkeyChallenge?: unknown }) {
+  const {
+    phone: _phone, photonUserId: _u, photonSpaceId: _s, photonLineUserId: _l, convo: _c, asiAddress: _a,
+    mandate: _m, passkeys: _pk, passkeyChallenge: _pc, ...rest
+  } = p;
   return rest;
 }

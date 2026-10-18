@@ -1,20 +1,25 @@
 // OWNER: Agent 2 (B5). The trade window both phones see: a modal over any screen (TradeWatcher) and the
 // route /trade/:proposalId (Agent 3's TradeRoute renders it with { proposalId, onClose }).
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { api } from "../app/api";
 import { errorCode, errorText, parentRef, useApp } from "../app/store";
 import type { Decision, MatchProposal, ProposalStatus } from "../app/types";
 import { formatCents } from "../app/types";
 import { RESALE_PCT } from "../../base44/shared/pricing.ts";
 import { Chip, DialogBox, Hearts, ItemIcon, Modal, PixelButton, PriceReceipt, Sprite } from "../app/ui";
+import { ApprovalBadge, TrustReceipt } from "../trust/TrustReceipt";
 import { PayButton } from "./PayButton";
 import { useProposals } from "./useProposals";
 import {
-  CONDITION_TEXT, DECISION_TEXT, celebrate, monthDay, newHomeText, sfx, usePublicParent, type Party as PartyInfo,
+  CONDITION_TEXT, DECISION_TEXT, celebrate, monthDayText, newHomeText, sfx, usePublicParent, type Party as PartyInfo,
 } from "./tradeKit";
+import { tradeBanner } from "./tradeLogic";
 import "./trade.css";
+import "../trust/trust.css";
 
-const CLOSE_AFTER_PAID_MS = 1500;
+// A paid trade stays open on its receipt (payment ref, how it was approved) until the person taps DONE;
+// A's Celebration plays over it first.
 const CLOSE_AFTER_DECLINE_MS = 2500;
 
 export function TradeWindow({ proposalId, onClose }: { proposalId: string; onClose: () => void }) {
@@ -37,7 +42,7 @@ export function TradeWindow({ proposalId, onClose }: { proposalId: string; onClo
 export default TradeWindow;
 
 function TradeBody({ proposalId, close }: { proposalId: string; close: () => void }) {
-  const { byId, me, upsert } = useProposals();
+  const { byId, me, upsert, active } = useProposals();
   const p = byId[proposalId];
   const refreshCloset = useApp((s) => s.refreshCloset);
   const toast = useApp((s) => s.toast);
@@ -47,7 +52,7 @@ function TradeBody({ proposalId, close }: { proposalId: string; close: () => voi
   // lists it), RESET re-seeded this parent with a new id, or the server answered not_found. Close it.
   const lastStatus = useRef<ProposalStatus | null>(null);
   const gone = useCallback(() => {
-    if (lastStatus.current !== "paid") toast("THIS TRADE WAS CLEARED · NOTHING CHARGED", "lav");
+    if (lastStatus.current !== "paid") toast("This trade was cleared · nothing was charged", "lav");
     close();
   }, [toast, close]);
   const shown = useRef(false);
@@ -57,6 +62,12 @@ function TradeBody({ proposalId, close }: { proposalId: string; close: () => voi
     if (involved) { shown.current = true; return; }
     if (shown.current && (!p || me)) gone();
   }, [involved, p, me, gone]);
+
+  // A paid receipt stays up until DONE, but never blocks the next trade: when a new one goes live, make way for it.
+  const paidStatus = p?.status;
+  useEffect(() => {
+    if (paidStatus === "paid" && active && active.id !== proposalId) close();
+  }, [paidStatus, active, proposalId, close]);
 
   // Opened by URL before the closet knew about it: refresh once, then give up.
   useEffect(() => {
@@ -89,6 +100,7 @@ function TradeDetails({ p, me, upsert, close, gone }: {
   p: MatchProposal; me: string | null; upsert: (p: MatchProposal) => void; close: () => void; gone: () => void;
 }) {
   const toast = useApp((s) => s.toast);
+  const nav = useNavigate();
   const myPet = useApp((s) => s.closet?.parent.pet ?? null);
   const seller = usePublicParent(p.sellerId);
   const buyer = usePublicParent(p.buyerId);
@@ -114,9 +126,8 @@ function TradeDetails({ p, me, upsert, close, gone }: {
     if (was === p.status) return;
     if (p.status === "paid") {
       if (celebrate(p)) {
-        toast(role === "seller" ? `SOLD TO ${otherName.toUpperCase()} · ${formatCents(s.priceCents)}` : newHomeText(p), "gold");
+        toast(role === "seller" ? `Sold to ${otherName} · ${formatCents(s.priceCents)}` : newHomeText(p), "gold");
       }
-      closeLater(CLOSE_AFTER_PAID_MS);
     } else if (p.status === "declined") {
       if (Date.now() - myClickAt.current > 2000) sfx("decline");
       closeLater(CLOSE_AFTER_DECLINE_MS);
@@ -154,13 +165,16 @@ function TradeDetails({ p, me, upsert, close, gone }: {
   const hearts = Math.max(1, Math.min(3, s.previousOwners)) as 1 | 2 | 3;
   const cond = CONDITION_TEXT[s.condition] ?? CONDITION_TEXT.gently_used;
   const speaker = myPet ?? seller?.pet ?? { name: "PET", sprite: "pet_a" };
+  const buyerName = buyer?.name ?? "the buyer";
+  const banner = tradeBanner(p.status, role, buyerName);
   const petOf = (parentId: string, from: string) =>
     (parentId === p.sellerId ? seller?.pet.name : parentId === p.buyerId ? buyer?.pet.name : undefined)
     ?? (from === "seller_agent" ? "SELLER'S PET" : "BUYER'S PET");
 
   return (
     <div className="t-scroll">
-      <div className="t-banner" role="note">NOTHING IS CHARGED UNTIL YOU BOTH ACCEPT.</div>
+      {/* The promise follows the trade, so it never contradicts the screen (open → both said yes → paid / no trade). */}
+      <div className={`t-banner tr-banner-${banner.tone}`} role="note">{banner.text}</div>
 
       <div className="t-header">
         <PartyCard who={seller} label="SELLER" you={role === "seller"} />
@@ -182,23 +196,25 @@ function TradeDetails({ p, me, upsert, close, gone }: {
           <h2 className="t-item-name">{s.itemName}</h2>
           <Chip tone="cream">{s.size}</Chip>
         </div>
-        <p className="t-label">BOUGHT {monthDay(s.originalPurchaseDate)} · {formatCents(s.originalPriceCents)}</p>
+        <p className="t-label">Bought new {monthDayText(s.originalPurchaseDate)} · {formatCents(s.originalPriceCents)}</p>
         <p className="t-p">
           <span className="t-stars" aria-label={cond.label}>{cond.stars}</span> <span className="t-label">{cond.label}</span>
           {s.conditionNote && <span className="t-note"> · “{s.conditionNote}”</span>}
         </p>
         <div className="t-row">
           <Hearts filled={hearts} />
-          <span className="t-label">{s.previousOwners} PREVIOUS OWNER{s.previousOwners === 1 ? "" : "S"}</span>
+          <span className="t-p">{s.previousOwners} previous owner{s.previousOwners === 1 ? "" : "s"}</span>
         </div>
         <PriceReceipt original={s.originalPriceCents} pct={pct} price={s.priceCents} ownerAfter={ownerAfter} />
+        <TrustReceipt p={p} role={role} sellerName={seller?.name ?? "the seller"} buyerName={buyerName}
+          onEditRules={() => { close(); nav("/bag/pet"); }} />
         <DialogBox inline speaker={{ name: speaker.name, sprite: speaker.sprite }} lines={[p.reason]}
           portrait={<Sprite name={speaker.sprite} fallback="pet_a" anim="talk" scale={3} />} />
         {s.wearWeeksLeft != null && (
-          <div><Chip tone="mint">FITS ~{s.wearWeeksLeft} MORE WEEK{s.wearWeeksLeft === 1 ? "" : "S"}</Chip></div>
+          <div><Chip tone="mint" plain>Fits about {s.wearWeeksLeft} more week{s.wearWeeksLeft === 1 ? "" : "s"}</Chip></div>
         )}
         <details className="t-how">
-          <summary className="t-label">HOW OUR PETS FOUND THIS</summary>
+          <summary className="t-label">How our pets found this</summary>
           {p.transcript?.length ? (
             <ol className="t-transcript">
               {p.transcript.map((t, i) => (
@@ -219,7 +235,7 @@ function TradeDetails({ p, me, upsert, close, gone }: {
       </div>
 
       {p.handover === "later" && (
-        <p className="t-label t-handover">HAND OVER LATER{p.handoverNote ? ` · ${p.handoverNote}` : ""}</p>
+        <p className="t-label t-handover">Hand over later{p.handoverNote ? ` · ${p.handoverNote}` : ""}</p>
       )}
 
       <div className="t-actions-area">
@@ -227,7 +243,7 @@ function TradeDetails({ p, me, upsert, close, gone }: {
           <div className="t-stack">
             <label className="t-check">
               <input type="checkbox" checked={later} onChange={(e) => setLater(e.target.checked)} />
-              <span className="t-label">HAND OVER LATER</span>
+              <span className="t-label">Hand over later</span>
             </label>
             {later && (
               <input className="t-input" value={note} maxLength={80} placeholder="Saturday at the park bench"
@@ -244,42 +260,44 @@ function TradeDetails({ p, me, upsert, close, gone }: {
           </div>
         )}
         {p.status === "open" && myDecision === "accepted" && (
-          <p className="t-wait t-label">YOU ACCEPTED ✓ · WAITING FOR {otherName.toUpperCase()}…</p>
+          <p className="t-wait t-label">You accepted ✓ Waiting for {otherName}…</p>
         )}
-        {p.status === "open" && !role && <p className="t-wait t-label">VIEWING ONLY</p>}
+        {p.status === "open" && !role && <p className="t-wait t-label">Viewing only</p>}
 
         {p.status === "both_accepted" && role === "buyer" && (
-          <PayButton proposal={p} onGone={gone} onDone={(next) => { upsert(next); if (next.status === "paid") closeLater(CLOSE_AFTER_PAID_MS); }} />
+          <PayButton proposal={p} onGone={gone} onDone={upsert} />
         )}
         {p.status === "both_accepted" && role !== "buyer" && (
           <div className="t-stack">
-            <p className="t-wait t-label">BOTH ACCEPTED ✓ · WAITING FOR {(buyer?.name ?? "THE BUYER").toUpperCase()} TO PAY…</p>
-            <Chip tone="cream">DEMO PAYMENT · NO REAL CHARGE</Chip>
+            <p className="t-wait t-label">{role === "seller" ? "You both accepted ✓" : "Both accepted ✓"} Waiting for {buyerName} to pay…</p>
+            <Chip tone="cream" plain>Demo payment · no real charge</Chip>
           </div>
         )}
 
         {p.status === "paid" && (
           <div className="t-final t-final-paid">
-            <p className="t-big">{role === "seller" ? `SOLD · ${formatCents(s.priceCents)}` : newHomeText(p)}</p>
-            <p className="t-label">PAID ✓ {p.paymentRef ?? ""} · DEMO PAYMENT · NO REAL CHARGE</p>
+            <p className="t-big">{role === "seller" ? `Sold · ${formatCents(s.priceCents)}` : newHomeText(p)}</p>
+            <p className="t-label">Paid ✓{p.paymentRef ? ` ${p.paymentRef}` : ""} · demo payment, no real charge</p>
+            <ApprovalBadge p={p} />
+            <PixelButton variant="ghost" onClick={close}>DONE</PixelButton>
           </div>
         )}
         {p.status === "declined" && (
           <div className="t-final t-final-declined">
-            <p className="t-big">NO TRADE · $0 CHARGED</p>
+            <p className="t-big">No trade · $0 charged</p>
             <PixelButton variant="ghost" onClick={close}>CLOSE</PixelButton>
           </div>
         )}
         {p.status === "expired" && (
           <div className="t-final">
-            <p className="t-big">THIS OFFER TIMED OUT</p>
-            <p className="t-label">NOTHING CHARGED</p>
+            <p className="t-big">This offer timed out</p>
+            <p className="t-label">Nothing was charged.</p>
             <PixelButton variant="ghost" onClick={close}>CLOSE</PixelButton>
           </div>
         )}
         {p.status === "payment_failed" && (
           <div className="t-final t-final-declined">
-            <p className="t-big">PAYMENT DIDN'T GO THROUGH · NOTHING CHARGED · TRY AGAIN</p>
+            <p className="t-big">Payment didn't go through · nothing was charged</p>
             <p className="t-p t-muted">The {s.itemName.toLowerCase()} is back on the shelf for the next time your pets meet.</p>
             <PixelButton variant="ghost" onClick={close}>CLOSE</PixelButton>
           </div>
