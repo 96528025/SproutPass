@@ -2,7 +2,7 @@
 // paper ground, soft green parks, sky water, cream blocks, pale road bands. Deliberately NO symbol layers (no street
 // names, POIs or shields) and no boundary layers. Every colour is a literal from src/pixel/tokens.css.
 // Widths are CSS px at MapLibre zoom 16 (= the old Leaflet z17 follow scale, 512-px tiles); stops thin them out below.
-import type { ExpressionSpecification, StyleSpecification } from "maplibre-gl";
+import type { ExpressionSpecification, LayerSpecification, LineLayerSpecification, StyleSpecification } from "maplibre-gl";
 
 export const TILE_JSON = "https://tiles.openfreemap.org/planet";
 export const GLYPHS = "https://tiles.openfreemap.org/fonts/{fontstack}/{range}.pbf";
@@ -25,6 +25,15 @@ function widthAt16(w: number, thin = 4): ExpressionSpecification {
   return ["interpolate", ["linear"], ["zoom"], 6, Math.max(1, w / thin / 2), 10, Math.max(1, w / thin), 13, Math.max(1, w / 2), 16, w];
 }
 
+/** A cream casing (2 px each side) under a --path band, for one group of road classes. */
+function roadPair(id: string, classes: string[], minzoom: number, w: number): LayerSpecification[] {
+  const base: Omit<LineLayerSpecification, "id" | "paint"> = { type: "line", source: SRC, "source-layer": "transportation", minzoom, filter: ["all", isLine, cls(...classes), notTunnel], layout: { "line-cap": "butt", "line-join": "miter" } };
+  return [
+    { ...base, id: `${id}-casing`, paint: { "line-color": CREAM, "line-width": widthAt16(w + 4) } },
+    { ...base, id, paint: { "line-color": PATH, "line-width": widthAt16(w) } },
+  ];
+}
+
 const GREEN_CLASSES = ["grass", "wood", "forest", "scrub", "wetland"];
 const GREEN_LANDUSE = ["park", "cemetery", "pitch", "playground", "garden", "golf_course", "grass", "village_green", "recreation_ground"];
 
@@ -39,7 +48,7 @@ export const mapStyle: StyleSpecification = {
     { id: "background", type: "background", paint: { "background-color": PAPER } },
 
     // greens
-    { id: "landcover-green", type: "fill", source: SRC, "source-layer": "landcover", filter: cls(...GREEN_CLASSES), paint: { "fill-color": GRASS, "fill-opacity": 0.55, "fill-antialias": false } },
+    { id: "landcover-green", type: "fill", source: SRC, "source-layer": "landcover", filter: cls(...GREEN_CLASSES), paint: { "fill-color": GRASS, "fill-opacity": 0.45, "fill-antialias": false } },
     { id: "landuse-green", type: "fill", source: SRC, "source-layer": "landuse", filter: cls(...GREEN_LANDUSE), paint: { "fill-color": GRASS, "fill-opacity": 0.55, "fill-antialias": false } },
     { id: "park", type: "fill", source: SRC, "source-layer": "park", paint: { "fill-color": GRASS, "fill-opacity": 0.55, "fill-antialias": false } },
 
@@ -75,31 +84,13 @@ export const mapStyle: StyleSpecification = {
       type: "line",
       source: SRC,
       "source-layer": "transportation",
-      minzoom: 12,
+      minzoom: 14,
       filter: ["all", isLine, cls("minor", "service", "track", "busway", "raceway"), notTunnel],
       layout: { "line-cap": "butt", "line-join": "miter" },
       paint: { "line-color": PATH, "line-width": widthAt16(4) },
     },
-    {
-      id: "road-major-casing",
-      type: "line",
-      source: SRC,
-      "source-layer": "transportation",
-      minzoom: 8,
-      filter: ["all", isLine, cls("primary", "secondary", "tertiary"), notTunnel],
-      layout: { "line-cap": "butt", "line-join": "miter" },
-      paint: { "line-color": CREAM, "line-width": widthAt16(10) },
-    },
-    {
-      id: "road-major",
-      type: "line",
-      source: SRC,
-      "source-layer": "transportation",
-      minzoom: 8,
-      filter: ["all", isLine, cls("primary", "secondary", "tertiary"), notTunnel],
-      layout: { "line-cap": "butt", "line-join": "miter" },
-      paint: { "line-color": PATH, "line-width": widthAt16(6) },
-    },
+    ...roadPair("road-tertiary", ["secondary", "tertiary"], 13, 6),
+    ...roadPair("road-primary", ["primary"], 9, 6),
     {
       id: "road-motorway-casing",
       type: "line",
