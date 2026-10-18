@@ -41,11 +41,15 @@ export interface FindMatchesInput {
   now: ISODate;
 }
 
-const CONDITION_RANK = { like_new: 3, gently_used: 2, well_loved: 1 } as const;
+export const CONDITION_RANK = { like_new: 3, gently_used: 2, well_loved: 1 } as const;
 
-/** All eligible (listing, need) pairs, best first. TODO(B1): tune ranking; eval table in match.test.ts. */
+/**
+ * All eligible listings for the buyer, best first: more wear weeks left > better condition > newer listing
+ * (listingId breaks exact ties so the order is stable). One candidate per listing: the buyer's first need
+ * (in `needs` order) that passes checkEligibility. `score` mirrors the first two keys for display/logging.
+ */
 export function findMatches(input: FindMatchesInput): MatchCandidate[] {
-  const out: MatchCandidate[] = [];
+  const out: (MatchCandidate & { condition: number; createdAt: number })[] = [];
   for (const listing of input.listings) {
     const item = input.items.find((i) => i.id === listing.itemId);
     if (!item) continue;
@@ -54,16 +58,37 @@ export function findMatches(input: FindMatchesInput): MatchCandidate[] {
       if (!child) continue;
       const e = checkEligibility({ listing, item, need, buyerChild: child, buyerId: input.buyerId, now: input.now });
       if (!e.ok) continue;
-      const score = e.wearWeeksLeft * 10 + CONDITION_RANK[listing.condition] * 3 + new Date(listing.createdAt).getTime() / 1e13;
-      out.push({ listingId: listing.id, needId: need.id, score, wearWeeksLeft: e.wearWeeksLeft,
-        reason: reasonLine(input.buyerName, item, e.wearWeeksLeft) });
+      const condition = CONDITION_RANK[listing.condition] ?? 0;
+      out.push({ listingId: listing.id, needId: need.id, score: e.wearWeeksLeft * 10 + condition, wearWeeksLeft: e.wearWeeksLeft,
+        reason: reasonLine(input.buyerName, item, e.wearWeeksLeft), condition, createdAt: new Date(listing.createdAt).getTime() || 0 });
+      break;
     }
   }
-  return out.sort((a, b) => b.score - a.score);
+  out.sort((a, b) => b.wearWeeksLeft - a.wearWeeksLeft || b.condition - a.condition || b.createdAt - a.createdAt ||
+    (a.listingId < b.listingId ? -1 : a.listingId > b.listingId ? 1 : 0));
+  return out.map(({ condition: _c, createdAt: _t, ...m }) => m);
 }
 
-/** "Jo's little one needs 6-9M, and this romper fits for about 4 more weeks." TODO(B1): nicer variants. */
+/** Small stable string hash (FNV-1a) so wording varies by match but never between calls. */
+function hash(s: string): number {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < s.length; i++) h = Math.imul(h ^ s.charCodeAt(i), 0x01000193);
+  return h >>> 0;
+}
+
+/**
+ * One plain sentence for the Trade window and both agents, e.g.
+ * "Jo's little one needs 6-9M, and the yellow duck romper fits for about 4 more weeks."
+ * Deterministic: the variant is picked by hashing (buyer, item, size, weeks).
+ */
 export function reasonLine(buyerName: string, item: Pick<ClothingItem, "name" | "size">, weeks: number): string {
+  const name = item.name.trim().toLowerCase();
   const fit = weeks >= 1 ? `fits for about ${weeks} more week${weeks === 1 ? "" : "s"}` : "fits right now";
-  return `${buyerName}'s little one needs ${item.size}, and the ${item.name.toLowerCase()} ${fit}.`;
+  const variants = [
+    `${buyerName}'s little one needs ${item.size}, and the ${name} ${fit}.`,
+    `${buyerName} is looking for ${item.size}, and the ${name} ${fit}.`,
+    `The ${name} is ${item.size}, just what ${buyerName} asked for, and it ${fit}.`,
+    `Good timing for ${buyerName}: the ${name} is ${item.size} and ${fit}.`,
+  ];
+  return variants[hash(`${buyerName}|${name}|${item.size}|${weeks}`) % variants.length];
 }

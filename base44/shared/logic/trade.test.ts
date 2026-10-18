@@ -1,0 +1,361 @@
+// Trade state machine on fakeDb (delayMs: 0). Every rule trade.ts enforces has a case here.
+import { beforeEach, describe, expect, it } from "vitest";
+import { createFakeDb, type FakeDb } from "../testing/fakeDb.ts";
+import { applySeed, seedPlan, DEMO_DATES } from "../seed.ts";
+import { priceFor } from "../pricing.ts";
+import type { AgentInbox, ClothingItem, Encounter, InboxEvent, Listing } from "../types.ts";
+import { createProposal, decideProposal, payProposal, PROPOSAL_TTL_MS } from "./trade.ts";
+
+let db: FakeDb;
+let ids: { mina: string; jo: string; sam: string };
+let romper: ClothingItem;
+let listing: Listing;
+
+async function setClock(now: string) {
+  const [s] = await db.Setting.filter({ key: "demo" });
+  await db.Setting.update(s.id, { now });
+}
+
+/** List an item directly (listItem belongs to closet.ts), the way the seller's SELL flow leaves it. */
+async function listDirect(item: ClothingItem, extra: Partial<Listing> = {}): Promise<Listing> {
+  await db.ClothingItem.update(item.id, { status: "listed", photos: ["romper.jpg", ...item.photos] });
+  return db.Listing.create({
+    itemId: item.id, sellerId: item.currentOwnerId, condition: "gently_used", conditionNote: "tiny stain on the cuff",
+    priceCents: priceFor(item) ?? 0, shared: true, status: "active", createdAt: DEMO_DATES.nudge, ...extra,
+  });
+}
+
+const propose = (extra: Record<string, unknown> = {}) =>
+  createProposal(db, { listingId: listing.id, buyerId: ids.jo, reason: "", transcript: [], source: "local", ...extra });
+
+const item = () => db.ClothingItem.get(romper.id);
+const events = async (parentId: string): Promise<InboxEvent[]> =>
+  (await db.AgentInbox.filter({ parentId })).map((r: AgentInbox) => r.payload as unknown as InboxEvent);
+
+beforeEach(async () => {
+  db = createFakeDb();
+  const { parentIds } = await applySeed(db, seedPlan());
+  ids = parentIds as typeof ids;
+  [romper] = await db.ClothingItem.filter({ name: "Yellow duck romper" });
+  await setClock(DEMO_DATES.nudge);
+  listing = await listDirect(romper);
+  await setClock(DEMO_DATES.meet);
+});
+
+describe("createProposal", () => {
+  it("creates an open proposal with the snapshot and takes the item off the market", async () => {
+    const p = await propose();
+    expect(p).toMatchObject({
+      status: "open", sellerDecision: "pending", buyerDecision: "pending", handover: "now",
+      sellerId: ids.mina, buyerId: ids.jo, listingId: listing.id, itemId: romper.id, source: "local",
+      createdAt: DEMO_DATES.meet,
+    });
+    expect(new Date(p.expiresAt).getTime() - new Date(p.createdAt).getTime()).toBe(PROPOSAL_TTL_MS);
+    expect(p.snapshot).toMatchObject({
+      itemName: "Yellow duck romper", icon: "item_romper", photo: "romper.jpg", size: "6-9M",
+      originalPriceCents: 3000, previousOwners: 1, priceCents: 1800, wearWeeksLeft: 4, condition: "gently_used",
+    });
+    expect(p.reason).toMatch(/Jo/);
+    expect((await item()).status).toBe("pending_trade");
+  });
+
+  it("keeps the agent's reason and transcript", async () => {
+    const turn = { from: "buyer_agent" as const, parentId: ids.jo, kind: "looking_for" as const, text: "6-9M?", at: DEMO_DATES.meet };
+    const p = await propose({ reason: "Pea needs a romper.", transcript: [turn], source: "fetch" });
+    expect(p.reason).toBe("Pea needs a romper.");
+    expect(p.transcript).toEqual([turn]);
+    expect(p.source).toBe("fetch");
+  });
+
+  it("ignores the caller's wearWeeksLeft (server re-checks)", async () => {
+    const p = await propose({ wearWeeksLeft: 99 });
+    expect(p.snapshot.wearWeeksLeft).toBe(4);
+  });
+
+  it("is idempotent for the same buyer, 409 already_open for a different buyer", async () => {
+    const a = await propose();
+    const b = await propose();
+    expect(b.id).toBe(a.id);
+    expect(await db.MatchProposal.list()).toHaveLength(1);
+    await expect(createProposal(db, { listingId: listing.id, buyerId: ids.sam, reason: "", transcript: [], source: "local" }))
+      .rejects.toMatchObject({ code: "already_open", status: 409 });
+  });
+
+  it("a third-owner item can't be proposed", async () => {
+    const [cardigan] = await db.ClothingItem.filter({ name: "Oatmeal knit cardigan" });
+    const forced = await listDirect(cardigan, { priceCents: 1600 });
+    await expect(createProposal(db, { listingId: forced.id, buyerId: ids.jo, reason: "", transcript: [], source: "local" }))
+      .rejects.toMatchObject({ code: "not_eligible", status: 409, message: "item already has 3 owners" });
+  });
+
+  it("not_eligible with checkEligibility's reason", async () => {
+    await db.Listing.update(listing.id, { shared: false });
+    await expect(propose()).rejects.toMatchObject({ code: "not_eligible", message: "listing not shared" });
+    await db.Listing.update(listing.id, { shared: true });
+    await expect(createProposal(db, { listingId: listing.id, buyerId: ids.mina, reason: "", transcript: [], source: "local" }))
+      .rejects.toMatchObject({ code: "not_eligible" });
+  });
+
+  it("not_eligible when the buyer has no shared need", async () => {
+    const [need] = await db.Need.filter({ parentId: ids.jo });
+    await db.Need.update(need.id, { shared: false });
+    await expect(propose()).rejects.toMatchObject({ code: "not_eligible", message: "buyer has no shared need" });
+  });
+
+  it("tries each shared need until one passes", async () => {
+    const [joChild] = await db.Child.filter({ parentId: ids.jo });
+    await db.Need.create({ parentId: ids.jo, childId: joChild.id, sizes: ["2T"], shared: true, createdAt: "2026-01-01T00:00:00.000Z" });
+    const p = await propose();
+    expect(p.status).toBe("open");
+  });
+
+  it("validates the encounter and marks it proposed", async () => {
+    const turn = { from: "seller_agent" as const, parentId: ids.mina, kind: "have" as const, text: "romper!", at: DEMO_DATES.meet };
+    const enc = await db.Encounter.create({ aId: ids.jo, bId: ids.mina, band: "<25m", simulated: true, status: "talking",
+      startedAt: DEMO_DATES.meet, transcript: [turn] });
+    const p = await propose({ encounterId: enc.id });
+    expect(p.encounterId).toBe(enc.id);
+    expect(p.transcript).toEqual([turn]);
+    const after: Encounter = await db.Encounter.get(enc.id);
+    expect(after.status).toBe("proposed");
+  });
+
+  it("rejects an encounter between other parents or one that isn't talking", async () => {
+    const other = await db.Encounter.create({ aId: ids.jo, bId: ids.sam, band: "<25m", simulated: true, status: "talking",
+      startedAt: DEMO_DATES.meet, transcript: [] });
+    await expect(propose({ encounterId: other.id })).rejects.toMatchObject({ code: "forbidden" });
+    const done = await db.Encounter.create({ aId: ids.jo, bId: ids.mina, band: "<25m", simulated: true, status: "no_match",
+      startedAt: DEMO_DATES.meet, transcript: [] });
+    await expect(propose({ encounterId: done.id })).rejects.toMatchObject({ code: "invalid_transition" });
+    await expect(propose({ encounterId: "nope" })).rejects.toMatchObject({ code: "not_found" });
+    expect((await item()).status).toBe("listed");
+  });
+
+  it("writes proposal:new for both sides", async () => {
+    const p = await propose();
+    expect(await events(ids.mina)).toContainEqual({ type: "proposal:new", proposalId: p.id, role: "seller" });
+    expect(await events(ids.jo)).toContainEqual({ type: "proposal:new", proposalId: p.id, role: "buyer" });
+  });
+
+  it("expires a stale open proposal and proposes again", async () => {
+    const old = await propose();
+    await setClock(new Date(new Date(DEMO_DATES.meet).getTime() + PROPOSAL_TTL_MS + 60_000).toISOString());
+    const fresh = await propose();
+    expect(fresh.id).not.toBe(old.id);
+    expect((await db.MatchProposal.get(old.id)).status).toBe("expired");
+  });
+
+  it("requires listingId and buyerId", async () => {
+    await expect(createProposal(db, { buyerId: ids.jo } as never)).rejects.toMatchObject({ code: "bad_request" });
+    await expect(createProposal(db, { listingId: listing.id } as never)).rejects.toMatchObject({ code: "bad_request" });
+  });
+});
+
+describe("happy path", () => {
+  it("both accept → pay → Jo owns the romper, ownerCount 2, listing sold", async () => {
+    const p = await propose();
+    const a = await decideProposal(db, { parentKey: "mina", proposalId: p.id, decision: "accepted" });
+    expect(a).toMatchObject({ status: "open", sellerDecision: "accepted", buyerDecision: "pending" });
+    const b = await decideProposal(db, { parentKey: "jo", proposalId: p.id, decision: "accepted" });
+    expect(b).toMatchObject({ status: "both_accepted", sellerDecision: "accepted", buyerDecision: "accepted" });
+
+    const res = await payProposal(db, { parentKey: "jo", proposalId: p.id }, { delayMs: 0 });
+    expect(res.proposal.status).toBe("paid");
+    expect(res.proposal.paymentRef).toMatch(/^DEMO-[A-Z0-9]{6}$/);
+    const [joChild] = await db.Child.filter({ parentId: ids.jo });
+    expect(res.item).toMatchObject({ ownerCount: 2, currentOwnerId: ids.jo, childId: joChild.id, status: "in_closet" });
+    expect(res.item.predictedOutgrowDate?.slice(0, 10)).toBe("2026-11-17");
+    expect(res.item.ownershipHistory).toEqual([
+      { ownerId: ids.mina, from: romper.originalPurchaseDate, to: DEMO_DATES.meet },
+      { ownerId: ids.jo, from: DEMO_DATES.meet, priceCents: 1800 },
+    ]);
+    expect(await item()).toEqual(res.item);
+    expect((await db.Listing.get(listing.id)).status).toBe("sold");
+    expect((await db.MatchProposal.get(p.id)).status).toBe("paid");
+
+    const welcome = await db.AgentNudge.filter({ parentId: ids.jo, kind: "new_owner_welcome" });
+    expect(welcome).toHaveLength(1);
+    expect(welcome[0]).toMatchObject({ itemId: romper.id, resolved: false, createdAt: DEMO_DATES.meet });
+  });
+
+  it("either side may set handover later + note", async () => {
+    const p = await propose();
+    const a = await decideProposal(db, { parentKey: "jo", proposalId: p.id, decision: "accepted", handover: "later", handoverNote: "Saturday at the park" });
+    expect(a).toMatchObject({ handover: "later", handoverNote: "Saturday at the park" });
+    const b = await decideProposal(db, { parentKey: "mina", proposalId: p.id, decision: "accepted" });
+    expect(b).toMatchObject({ status: "both_accepted", handover: "later", handoverNote: "Saturday at the park" });
+  });
+});
+
+describe("decline", () => {
+  it("charges nothing and re-lists the item", async () => {
+    const p = await propose();
+    await decideProposal(db, { parentKey: "mina", proposalId: p.id, decision: "accepted" });
+    const d = await decideProposal(db, { parentKey: "jo", proposalId: p.id, decision: "declined" });
+    expect(d).toMatchObject({ status: "declined", buyerDecision: "declined" });
+    expect(d.paymentRef).toBeUndefined();
+    const it2 = await item();
+    expect(it2).toMatchObject({ status: "listed", currentOwnerId: ids.mina, ownerCount: 1 });
+    expect(it2.ownershipHistory).toHaveLength(1);
+    expect((await db.Listing.get(listing.id)).status).toBe("active");
+    await expect(payProposal(db, { parentKey: "jo", proposalId: p.id }, { delayMs: 0 }))
+      .rejects.toMatchObject({ code: "invalid_transition", status: 409 });
+    expect((await db.MatchProposal.get(p.id)).paymentRef).toBeUndefined();
+  });
+
+  it("the seller can decline too, and the item can be proposed again", async () => {
+    const p = await propose();
+    await decideProposal(db, { parentKey: "mina", proposalId: p.id, decision: "declined" });
+    const again = await propose();
+    expect(again.id).not.toBe(p.id);
+    expect(again.status).toBe("open");
+  });
+});
+
+describe("guards", () => {
+  it("pay before both accept → 409", async () => {
+    const p = await propose();
+    await expect(payProposal(db, { parentKey: "jo", proposalId: p.id }, { delayMs: 0 }))
+      .rejects.toMatchObject({ code: "invalid_transition", status: 409 });
+    await decideProposal(db, { parentKey: "mina", proposalId: p.id, decision: "accepted" });
+    await expect(payProposal(db, { parentKey: "jo", proposalId: p.id }, { delayMs: 0 }))
+      .rejects.toMatchObject({ code: "invalid_transition", status: 409 });
+    expect((await item()).currentOwnerId).toBe(ids.mina);
+  });
+
+  it("only the buyer can pay", async () => {
+    const p = await propose();
+    await decideProposal(db, { parentKey: "mina", proposalId: p.id, decision: "accepted" });
+    await decideProposal(db, { parentKey: "jo", proposalId: p.id, decision: "accepted" });
+    await expect(payProposal(db, { parentKey: "mina", proposalId: p.id }, { delayMs: 0 })).rejects.toMatchObject({ code: "forbidden", status: 403 });
+    await expect(payProposal(db, { parentKey: "sam", proposalId: p.id }, { delayMs: 0 })).rejects.toMatchObject({ code: "forbidden" });
+  });
+
+  it("double accept is idempotent", async () => {
+    const p = await propose();
+    const a = await decideProposal(db, { parentKey: "mina", proposalId: p.id, decision: "accepted" });
+    const inboxBefore = (await db.AgentInbox.list()).length;
+    const again = await decideProposal(db, { parentKey: "mina", proposalId: p.id, decision: "accepted" });
+    expect(again).toEqual(a);
+    expect((await db.AgentInbox.list()).length).toBe(inboxBefore);
+    await decideProposal(db, { parentKey: "jo", proposalId: p.id, decision: "accepted" });
+    const third = await decideProposal(db, { parentKey: "jo", proposalId: p.id, decision: "accepted" });
+    expect(third.status).toBe("both_accepted");
+  });
+
+  it("a changed decision after accept → invalid_transition", async () => {
+    const p = await propose();
+    await decideProposal(db, { parentKey: "mina", proposalId: p.id, decision: "accepted" });
+    await expect(decideProposal(db, { parentKey: "mina", proposalId: p.id, decision: "declined" }))
+      .rejects.toMatchObject({ code: "invalid_transition" });
+    await decideProposal(db, { parentKey: "jo", proposalId: p.id, decision: "accepted" });
+    await expect(decideProposal(db, { parentKey: "jo", proposalId: p.id, decision: "declined" }))
+      .rejects.toMatchObject({ code: "invalid_transition" });
+  });
+
+  it("double pay transfers once (sequential and concurrent)", async () => {
+    const p = await propose();
+    await decideProposal(db, { parentKey: "mina", proposalId: p.id, decision: "accepted" });
+    await decideProposal(db, { parentKey: "jo", proposalId: p.id, decision: "accepted" });
+    const [x, y] = await Promise.all([
+      payProposal(db, { parentKey: "jo", proposalId: p.id }, { delayMs: 0 }),
+      payProposal(db, { parentKey: "jo", proposalId: p.id }, { delayMs: 0 }),
+    ]);
+    const z = await payProposal(db, { parentKey: "jo", proposalId: p.id }, { delayMs: 0 });
+    for (const r of [x, y, z]) expect(r.proposal.status).toBe("paid");
+    expect(new Set([x, y, z].map((r) => r.proposal.paymentRef)).size).toBe(1);
+    const it2 = await item();
+    expect(it2.ownerCount).toBe(2);
+    expect(it2.ownershipHistory).toHaveLength(2);
+    expect(await db.AgentNudge.filter({ parentId: ids.jo, kind: "new_owner_welcome" })).toHaveLength(1);
+    expect((await events(ids.jo)).filter((e) => e.type === "trade:completed")).toHaveLength(1);
+  });
+
+  it("a crash after the transfer doesn't transfer twice on retry", async () => {
+    const p = await propose();
+    await decideProposal(db, { parentKey: "mina", proposalId: p.id, decision: "accepted" });
+    await decideProposal(db, { parentKey: "jo", proposalId: p.id, decision: "accepted" });
+    // Simulate step 1 done, then a crash: the item already belongs to Jo but the proposal is still both_accepted.
+    const before = await item();
+    const [joChild] = await db.Child.filter({ parentId: ids.jo });
+    await db.ClothingItem.update(romper.id, {
+      currentOwnerId: ids.jo, childId: joChild.id, ownerCount: 2, status: "in_closet",
+      ownershipHistory: [{ ...before.ownershipHistory[0], to: DEMO_DATES.meet }, { ownerId: ids.jo, from: DEMO_DATES.meet, priceCents: 1800 }],
+    });
+    const res = await payProposal(db, { parentKey: "jo", proposalId: p.id }, { delayMs: 0 });
+    expect(res.proposal.status).toBe("paid");
+    expect(res.item.ownerCount).toBe(2);
+    expect(res.item.ownershipHistory).toHaveLength(2);
+  });
+
+  it("a non-party can't decide", async () => {
+    const p = await propose();
+    await expect(decideProposal(db, { parentKey: "sam", proposalId: p.id, decision: "accepted" }))
+      .rejects.toMatchObject({ code: "forbidden", status: 403 });
+  });
+
+  it("an expired proposal can't be accepted, and the item is re-listed", async () => {
+    const p = await propose();
+    await setClock(new Date(new Date(DEMO_DATES.meet).getTime() + PROPOSAL_TTL_MS + 1000).toISOString());
+    await expect(decideProposal(db, { parentKey: "jo", proposalId: p.id, decision: "accepted" }))
+      .rejects.toMatchObject({ code: "expired" });
+    expect((await db.MatchProposal.get(p.id)).status).toBe("expired");
+    expect((await item()).status).toBe("listed");
+    await expect(decideProposal(db, { parentKey: "mina", proposalId: p.id, decision: "accepted" }))
+      .rejects.toMatchObject({ code: "expired" });
+  });
+
+  it("validates decision, handover and ids", async () => {
+    const p = await propose();
+    await expect(decideProposal(db, { parentKey: "jo", proposalId: p.id, decision: "maybe" as never })).rejects.toMatchObject({ code: "bad_request" });
+    await expect(decideProposal(db, { parentKey: "jo", proposalId: p.id, decision: "accepted", handover: "tuesday" as never })).rejects.toMatchObject({ code: "bad_request" });
+    await expect(decideProposal(db, { parentKey: "jo", proposalId: "nope", decision: "accepted" })).rejects.toMatchObject({ code: "not_found" });
+    await expect(decideProposal(db, { proposalId: p.id, decision: "accepted" })).rejects.toMatchObject({ code: "bad_request" });
+  });
+});
+
+describe("payment failure", () => {
+  it("fail: true → payment_failed, item re-listed, nothing moved", async () => {
+    const p = await propose();
+    await decideProposal(db, { parentKey: "mina", proposalId: p.id, decision: "accepted" });
+    await decideProposal(db, { parentKey: "jo", proposalId: p.id, decision: "accepted" });
+    const res = await payProposal(db, { parentKey: "jo", proposalId: p.id, fail: true }, { delayMs: 0 });
+    expect(res.proposal.status).toBe("payment_failed");
+    expect(res.item).toMatchObject({ status: "listed", currentOwnerId: ids.mina, ownerCount: 1 });
+    expect((await db.Listing.get(listing.id)).status).toBe("active");
+    expect(await db.AgentNudge.filter({ kind: "new_owner_welcome" })).toHaveLength(0);
+    for (const [pid, role] of [[ids.mina, "seller"], [ids.jo, "buyer"]] as const) {
+      expect(await events(pid)).toContainEqual(expect.objectContaining({ type: "proposal:updated", proposalId: p.id, role, status: "payment_failed" }));
+    }
+    await expect(payProposal(db, { parentKey: "jo", proposalId: p.id }, { delayMs: 0 })).rejects.toMatchObject({ code: "invalid_transition" });
+  });
+});
+
+describe("inbox", () => {
+  it("events are written for both sides through the whole trade", async () => {
+    const p = await propose();
+    await decideProposal(db, { parentKey: "mina", proposalId: p.id, decision: "accepted" });
+    await decideProposal(db, { parentKey: "jo", proposalId: p.id, decision: "accepted" });
+    await payProposal(db, { parentKey: "jo", proposalId: p.id }, { delayMs: 0 });
+
+    const mina = await events(ids.mina);
+    const jo = await events(ids.jo);
+    const both = { proposalId: p.id, status: "both_accepted", sellerDecision: "accepted", buyerDecision: "accepted" };
+    expect(mina).toContainEqual({ type: "proposal:updated", role: "seller", ...both });
+    expect(jo).toContainEqual({ type: "proposal:updated", role: "buyer", ...both });
+    expect(mina).toContainEqual({ type: "trade:completed", role: "seller", proposalId: p.id, itemId: romper.id, priceCents: 1800 });
+    expect(jo).toContainEqual({ type: "trade:completed", role: "buyer", proposalId: p.id, itemId: romper.id, priceCents: 1800 });
+    expect(jo).toContainEqual(expect.objectContaining({ type: "nudge:new", itemId: romper.id, kind: "new_owner_welcome" }));
+    expect(mina.some((e) => e.type === "nudge:new")).toBe(false);
+    const rows = await db.AgentInbox.list();
+    expect(rows.every((r) => r.type === "event" && r.status === "pending")).toBe(true);
+  });
+
+  it("decline writes proposal:updated for both with $0", async () => {
+    const p = await propose();
+    await decideProposal(db, { parentKey: "jo", proposalId: p.id, decision: "declined" });
+    expect(await events(ids.mina)).toContainEqual(expect.objectContaining({ type: "proposal:updated", role: "seller", status: "declined", buyerDecision: "declined" }));
+    expect(await events(ids.jo)).toContainEqual(expect.objectContaining({ type: "proposal:updated", role: "buyer", status: "declined" }));
+    expect((await events(ids.jo)).some((e) => e.type === "trade:completed")).toBe(false);
+  });
+});
