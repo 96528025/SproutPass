@@ -12,7 +12,7 @@
 // deno-lint-ignore-file no-explicit-any
 import { sendToParent } from "./imessage.ts";
 import { parseCondition, parseIntent, shortDate, t } from "./wording.ts";
-import { getSetting } from "./auth.ts";
+import { getSetting, secret } from "./auth.ts";
 import { suggestCondition } from "./condition.ts";
 import { callB } from "../cbridge.ts";
 
@@ -20,7 +20,7 @@ export const FALLBACK_AFTER_MS = 5_000;
 
 /** The app's ?as= takes the parent's seed key ("mina"), not its id. */
 function tradeLink(prop: any, parent: any): string {
-  return `https://${Deno.env.get("APP_HOST") ?? "app"}/trade/${prop.id}?as=${parent?.key ?? parent?.id ?? ""}`;
+  return `https://${secret("APP_HOST") || "app"}/trade/${prop.id}?as=${parent?.key ?? parent?.id ?? ""}`;
 }
 
 export async function sweepInbox(base44: any, db: any, parentId?: string): Promise<{ handled: number }> {
@@ -106,7 +106,7 @@ async function handleRow(base44: any, db: any, row: any) {
       case "trade:completed": {
         const prop = await db.MatchProposal.get(p.proposalId).catch(() => null);
         const s = prop?.snapshot ?? {};
-        const gif = p.flowersUrl ?? `https://${Deno.env.get("APP_HOST") ?? "app"}/fx/flowers.gif`;
+        const gif = p.flowersUrl ?? `https://${secret("APP_HOST") || "app"}/fx/flowers.gif`;
         if (prop?.buyerId === row.parentId) {
           const item = p.itemId ? await db.ClothingItem.get(p.itemId).catch(() => null) : null;
           await say(t.completed(s.itemName ?? "new item", shortDate(item?.predictedOutgrowDate ?? "")), gif);
