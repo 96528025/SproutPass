@@ -65,6 +65,7 @@ export const realApi: Api = {
   passkeyRegisterOptions: (req) => fn("passkeyRegisterOptions", req),
   passkeyRegisterVerify: (req) => fn("passkeyRegisterVerify", req),
   passkeyAuthOptions: (req) => fn("passkeyAuthOptions", req),
+  passkeyRemove: (req) => fn("passkeyRemove", req),
   analyzeItemPhoto: (req) => fn("analyzeItemPhoto", req),
   getImpact: (ref) => fn("getImpact", ref ?? {}),
   demoClock: (req) => fn("demoClock", req ?? {}),
