@@ -1,0 +1,196 @@
+/* A5 EncounterScene styles. Everything moves with steps(); no tweens, no blur, no opacity fades. */
+.enc {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-overlay);
+  overflow: hidden;
+  background: var(--grass) url(/sprites/tile_grass.png) 0 0 / 48px 48px repeat;
+  image-rendering: pixelated;
+}
+
+/* ---- flash: two 80 ms white frames ---- */
+.enc__flash {
+  position: absolute;
+  inset: 0;
+  z-index: 8;
+  background: var(--white);
+  visibility: hidden;
+  pointer-events: none;
+  animation: enc-flash 240ms steps(1, end) 1;
+}
+@keyframes enc-flash {
+  0%    { visibility: visible; }
+  33.3% { visibility: hidden; }
+  66.6% { visibility: visible; }
+  100%  { visibility: hidden; }
+}
+
+/* ---- stage: anchor at screen centre, 56 % down; children are placed from it in px ---- */
+.enc__stage {
+  position: absolute;
+  left: 50%;
+  top: 56%;
+  width: 0;
+  height: 0;
+}
+/* a 48-px tile_path strip under the parents' feet */
+.enc__path {
+  position: absolute;
+  left: -200px;
+  width: 400px;
+  top: -8px;
+  height: 144px;
+  background: url(/sprites/tile_path.png) 0 0 / 48px 48px repeat;
+  image-rendering: pixelated;
+}
+
+/* ---- parents ---- */
+.enc__parent {
+  position: absolute;
+  z-index: 3;
+  left: calc(var(--parent-h) / -2);
+  top: calc(var(--parent-h) * -1);
+  width: var(--parent-h);
+  height: var(--parent-h);
+  transform: translateX(var(--from));
+}
+.enc__parent--me   { --from: var(--me-from);   --to: var(--me-to);   --steps: var(--me-steps); }
+.enc__parent--peer { --from: var(--peer-from); --to: var(--peer-to); --steps: var(--peer-steps); }
+.enc__parent.is-out {
+  transform: translateX(var(--to));
+  transition: transform 1000ms steps(var(--steps), end);
+}
+.enc__name {
+  position: absolute;
+  left: 50%;
+  top: 100%;
+  transform: translateX(-50%);
+  white-space: nowrap;
+  padding: 0 4px;
+  background: var(--ink);
+  color: var(--paper);
+}
+.enc__name--pet { top: calc(100% + 4px); background: var(--paper); color: var(--ink); border: 4px solid var(--ink); line-height: 12px; }
+
+/* "!" bubble 8 px above the head: pops scale 2 -> 4 -> 3 in three hard frames */
+.enc__alert {
+  position: absolute;
+  left: 50%;
+  top: -24px;
+  width: 16px;
+  height: 16px;
+  margin-left: -8px;
+  transform-origin: 50% 100%;
+  transform: scale(3);
+  animation: enc-pop 240ms steps(1, end) 1;
+}
+@keyframes enc-pop {
+  0%    { transform: scale(2); }
+  33.3% { transform: scale(4); }
+  66.6% { transform: scale(3); }
+  100%  { transform: scale(3); }
+}
+
+/* ---- pets: hop out from behind the parents ---- */
+.enc__pet {
+  position: absolute;
+  z-index: 2;
+  left: calc(var(--pet-h) / -2);
+  top: calc(var(--pet-h) / -2);
+  width: var(--pet-h);
+  height: var(--pet-h);
+  visibility: hidden;
+}
+.enc__pet--me   { --px: var(--me-pet-x);   --start-x: var(--me-to); }
+.enc__pet--peer { --px: var(--peer-pet-x); --start-x: var(--peer-to); }
+.enc__pet {
+  transform: translate(var(--start-x), 0px);
+}
+.enc__pet.is-out {
+  visibility: visible;
+  transform: translate(var(--px), var(--pet-y));
+  transition: transform 800ms steps(var(--pet-steps), end);
+}
+.enc__shrug > .spr {
+  animation: enc-shrug 1200ms steps(1, end) infinite;
+}
+@keyframes enc-shrug {
+  0%   { transform: rotate(0deg); }
+  50%  { transform: rotate(-12deg); }
+  100% { transform: rotate(0deg); }
+}
+.enc__pet--peer .enc__shrug > .spr { animation-name: enc-shrug-r; }
+.enc__pet--peer .enc__shrug > .spr { transform: scaleX(-1); }
+@keyframes enc-shrug-r {
+  0%   { transform: scaleX(-1) rotate(0deg); }
+  50%  { transform: scaleX(-1) rotate(-12deg); }
+  100% { transform: scaleX(-1) rotate(0deg); }
+}
+
+/* ---- C's bubbles slot: centred above the parents' heads ---- */
+.enc__bubbles {
+  position: absolute;
+  z-index: 4;
+  left: -179px;
+  width: 358px;
+  bottom: calc(var(--parent-h) + 16px);
+}
+
+/* ---- TRADE PROPOSAL! banner ---- */
+.enc__banner {
+  position: absolute;
+  z-index: 6;
+  top: 88px;
+  left: 50%;
+  margin-left: -140px;
+  width: 280px;
+  padding: 12px 0;
+  text-align: center;
+  font-size: 16px;
+  line-height: 20px;
+  background: var(--ink);
+  color: var(--gold);
+  border: 4px solid var(--gold);
+  box-shadow: var(--shadow-hard);
+  animation: enc-slam 400ms steps(40, end) 1, enc-jolt 160ms steps(1, end) 400ms 1;
+}
+@keyframes enc-slam {
+  from { transform: translateY(-160px); }
+  to   { transform: translateY(0); }
+}
+@keyframes enc-jolt {
+  0%   { transform: translateY(4px); }
+  50%  { transform: translateY(0); }
+  100% { transform: translateY(0); }
+}
+
+/* ---- ghost × ---- */
+.enc__close {
+  position: absolute;
+  z-index: 9;
+  top: calc(8px + env(safe-area-inset-top, 0px));
+  left: 8px;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 4px solid var(--ink);
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--font-label);
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+  opacity: 1;
+}
+.enc__close:active { transform: translate(2px, 2px); }
+.enc__close:focus-visible { outline: 4px solid var(--sky); outline-offset: 0; }
+
+@media (prefers-reduced-motion: reduce) {
+  .enc__flash { display: none; }
+  .enc__alert, .enc__banner, .enc__shrug > .spr { animation: none; }
+  .enc__parent.is-out, .enc__pet.is-out { transition: none; }
+}
+
+/* keep the two pet name tags from touching: push each outward */
+.enc__pet--me .enc__name--pet { transform: translateX(-72%); }
+.enc__pet--peer .enc__name--pet { transform: translateX(-28%); }
