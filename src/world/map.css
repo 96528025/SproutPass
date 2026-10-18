@@ -35,7 +35,7 @@
 }
 .map .leaflet-zoom-animated { transition: none; }
 
-/* the 10-minute zone */
+/* the Los Angeles zone (the 4-px dashed outline stays 4 px at any zoom) */
 .map .map__zone {
   stroke: var(--ink);
   stroke-width: 4px;

@@ -127,7 +127,7 @@ export function WorldScreen() {
       {/* row 1 is exactly 40px and its right 52px belong to A3's MuteToggle; the stale-GPS chip takes the GPS chip's slot */}
       <div className="ws__chips">
         {gps.paused ? <Chip tone="gold">SCREEN LOCKED? GPS PAUSED</Chip> : gpsChip}
-        {inside !== null && (inside ? <Chip tone="mint">IN UCLA 10-MIN ZONE</Chip> : <Chip tone="gold">OUTSIDE ZONE</Chip>)}
+        {inside !== null && (inside ? <Chip tone="mint">IN LOS ANGELES</Chip> : <Chip tone="gold">OUTSIDE LA</Chip>)}
       </div>
       <div className="ws__disc">
         <PixelButton small variant={discoverable ? "primary" : "ghost"} aria-pressed={discoverable} onClick={() => setDiscoverable((d) => !d)}>

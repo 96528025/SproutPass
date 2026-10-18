@@ -1,5 +1,5 @@
-// The UCLA 10-minute-drive zone: loads the committed isochrone (public/map/ucla-10min.json, fetched once offline by
-// tools/map/fetch-isochrone.ts; the app never calls Valhalla) and answers "is this point inside?".
+// The City of Los Angeles zone: loads the committed boundary (public/map/la.json, fetched once offline by
+// tools/map/fetch-la-boundary.ts; the app never calls Nominatim. ucla-10min.json is kept in the repo but unused) and answers "is this point inside?".
 // Every polygon component and ring is kept; a point inside a hole counts as outside.
 import { useEffect, useState } from "react";
 
@@ -46,7 +46,7 @@ function boundsOf(polygons: PolygonCoords[]): ZoneData["bounds"] {
 }
 
 export function loadZone(): Promise<ZoneData> {
-  cache ??= fetch("/map/ucla-10min.json")
+  cache ??= fetch("/map/la.json")
     .then((r) => {
       if (!r.ok) throw new Error(`zone json ${r.status}`);
       return r.json() as Promise<GeoJSON.FeatureCollection>;

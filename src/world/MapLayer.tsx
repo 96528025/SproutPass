@@ -1,5 +1,5 @@
 // The pixelated real map behind the radar: Leaflet + OpenStreetMap tiles (z-1 tiles shown at ×2 so every source pixel
-// is a 2×2 block), the UCLA 10-minute zone on top. Follow mode is locked to me at zoom 17 and pans in 4-px steps;
+// is a 2×2 block), the Los Angeles city boundary on top. Follow mode is locked to me at zoom 17 and pans in 4-px steps;
 // zone mode is a fixed zoomed-out fit of the polygon. Leaflet's own controls and attribution are off.
 import { useEffect, useRef, useState } from "react";
 import { GeoJSON, MapContainer, TileLayer, useMap, useMapEvents } from "react-leaflet";
@@ -120,7 +120,7 @@ export function MapLayer({ me, zoomedOut, zone, avatar, noFix }: MapLayerProps) 
           className="map__leaflet"
           center={start}
           zoom={FOLLOW_ZOOM}
-          minZoom={11}
+          minZoom={8}
           maxZoom={FOLLOW_ZOOM}
           zoomControl={false}
           attributionControl={false}
