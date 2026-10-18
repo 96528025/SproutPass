@@ -5,7 +5,7 @@
 import type { Db, EntityApi } from "../db.ts";
 import { getNow, mustGet, publicParent, resolveParent, writeInbox } from "../db.ts";
 import type {
-  Child, ClothingItem, CreateProposalReq, DecideProposalReq, GetPartiesReq, ID, ISODate, MatchProposal, PayProposalReq,
+  Child, ClothingItem, CreateProposalReq, DecideProposalReq, GetPartiesReq, ID, ISODate, MatchProposal, Parent, PayProposalReq,
   PayProposalRes, ProposalStatus, PublicParty,
 } from "../types.ts";
 import { bad, forbidden, HttpError, invalid } from "../errors.ts";
@@ -31,10 +31,25 @@ function roleOf(p: MatchProposal, parentId: ID): "buyer" | "seller" | null {
   return null;
 }
 
-async function notifyUpdated(db: Db, p: MatchProposal): Promise<void> {
+/** Parents by id: `known` rows are reused, the rest read once each (a missing row → absent, never an error). */
+async function partiesOf(db: Db, ids: ID[], known: (Parent | null | undefined)[] = []): Promise<Map<ID, Parent>> {
+  const out = new Map<ID, Parent>();
+  for (const k of known) if (k && ids.includes(k.id)) out.set(k.id, k);
+  await Promise.all(ids.filter((id) => !out.has(id)).map(async (id) => {
+    const p = await db.Parent.get(id).catch(() => null);
+    if (p) out.set(id, p);
+  }));
+  return out;
+}
+
+/** Only set when present, so an event never carries `undefined`. */
+const opt = <K extends string, V>(key: K, v: V | null | undefined) => (v == null || v === "" ? {} : { [key]: v }) as { [P in K]?: V };
+
+async function notifyUpdated(db: Db, p: MatchProposal, known: (Parent | null | undefined)[] = []): Promise<void> {
   const base = { proposalId: p.id, status: p.status, sellerDecision: p.sellerDecision, buyerDecision: p.buyerDecision };
-  await writeInbox(db, p.sellerId, { type: "proposal:updated", role: "seller", ...base });
-  await writeInbox(db, p.buyerId, { type: "proposal:updated", role: "buyer", ...base });
+  const parties = await partiesOf(db, [p.sellerId, p.buyerId], known);
+  await writeInbox(db, p.sellerId, { type: "proposal:updated", role: "seller", ...base, ...opt("otherName", parties.get(p.buyerId)?.name) });
+  await writeInbox(db, p.buyerId, { type: "proposal:updated", role: "buyer", ...base, ...opt("otherName", parties.get(p.sellerId)?.name) });
 }
 
 /**
@@ -129,9 +144,10 @@ export async function createProposal(db: Db, body: CreateProposalReq): Promise<M
   await db.ClothingItem.update(item.id, { status: "pending_trade" });
   // 3. Encounter → proposed.
   if (body.encounterId) await markEncounterProposed(db, body.encounterId, transcript);
-  // 4. Tell both agents.
-  await writeInbox(db, proposal.sellerId, { type: "proposal:new", proposalId: proposal.id, role: "seller" });
-  await writeInbox(db, proposal.buyerId, { type: "proposal:new", proposalId: proposal.id, role: "buyer" });
+  // 4. Tell both agents (peerPet = the other side's pet, for the agent's first line).
+  const seller = (await partiesOf(db, [proposal.sellerId])).get(proposal.sellerId);
+  await writeInbox(db, proposal.sellerId, { type: "proposal:new", proposalId: proposal.id, role: "seller", ...opt("peerPet", buyer.pet?.name) });
+  await writeInbox(db, proposal.buyerId, { type: "proposal:new", proposalId: proposal.id, role: "buyer", ...opt("peerPet", seller?.pet?.name) });
   return proposal;
 }
 
@@ -172,14 +188,14 @@ export async function decideProposal(db: Db, body: DecideProposalReq): Promise<M
     // Proposal first so nothing can be paid, then the item goes back on the market. No payment is created.
     const next = await patch(db.MatchProposal, p, { [key]: "declined", status: "declined", ...handoverPatch } as Partial<MatchProposal>);
     await relist(db, next);
-    await notifyUpdated(db, next);
+    await notifyUpdated(db, next, [parent]);
     return next;
   }
 
   const other = role === "seller" ? p.buyerDecision : p.sellerDecision;
   const status: ProposalStatus = other === "accepted" ? "both_accepted" : "open";
   const next = await patch(db.MatchProposal, p, { [key]: "accepted", status, ...handoverPatch } as Partial<MatchProposal>);
-  await notifyUpdated(db, next);
+  await notifyUpdated(db, next, [parent]);
   return next;
 }
 
@@ -218,7 +234,7 @@ export async function payProposal(db: Db, body: PayProposalReq, opts: { delayMs?
   if (body.fail) {
     const next = await patch(db.MatchProposal, p, { status: "payment_failed" });
     await relist(db, next);
-    await notifyUpdated(db, next);
+    await notifyUpdated(db, next, [parent]);
     return current(db, next);
   }
 
@@ -255,8 +271,11 @@ export async function payProposal(db: Db, body: PayProposalReq, opts: { delayMs?
       outgrowDate: item.predictedOutgrowDate }),
     createdAt: now, resolved: false,
   });
-  // 5. Tell both agents.
-  const done = { type: "trade:completed" as const, proposalId: paid.id, itemId: item.id, priceCents: paid.snapshot.priceCents };
+  // 5. Tell both agents (C's agents word the "sold" / "welcome" lines from the snapshot, no extra reads).
+  const done = {
+    type: "trade:completed" as const, proposalId: paid.id, itemId: item.id, priceCents: paid.snapshot.priceCents,
+    buyerId: paid.buyerId, sellerId: paid.sellerId, snapshot: paid.snapshot, ...opt("predictedOutgrowDate", item.predictedOutgrowDate),
+  };
   await writeInbox(db, paid.sellerId, { ...done, role: "seller" });
   await writeInbox(db, paid.buyerId, { ...done, role: "buyer" });
   if (!existing.length) {

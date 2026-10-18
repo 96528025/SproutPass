@@ -74,6 +74,49 @@ export function stepToward(from: LatLng, to: LatLng, stepM: number): LatLng {
   return { lat: toDeg(la2), lng: ((toDeg(lo2) + 540) % 360) - 180 };
 }
 
+/** The point `distM` metres from `from` along initial bearing `deg` (0 = north, clockwise). */
+export function destination(from: LatLng, deg: number, distM: number): LatLng {
+  if (!distM) return { lat: from.lat, lng: from.lng };
+  const brg = toRad(deg);
+  const la1 = toRad(from.lat);
+  const lo1 = toRad(from.lng);
+  const ad = distM / R;
+  const la2 = Math.asin(Math.sin(la1) * Math.cos(ad) + Math.cos(la1) * Math.sin(ad) * Math.cos(brg));
+  const lo2 = lo1 + Math.atan2(Math.sin(brg) * Math.sin(ad) * Math.cos(la1), Math.cos(ad) - Math.sin(la1) * Math.sin(la2));
+  return { lat: toDeg(la2), lng: ((toDeg(lo2) + 540) % 360) - 180 };
+}
+
+/** Bearing rounded to 5° (0–355) so it can't be inverted into a position (rule 3). */
+export const roundBearing = (deg: number): number => (Math.round(deg / 5) * 5) % 360;
+
+/** Demo-only distance for A's "WALKING… 85 M" label: rounded to 5 m. */
+export const roundDemoDistance = (m: number): number => Math.round(m / 5) * 5;
+
+// ---------------------------------------------------------------- demo (simulated) positions
+// A simulated presence is SERVER-OWNED: ?demo=1 tabs all report the same fake fix, so the server ignores
+// it and parks each parent on its own spot around a pixel lawn in Westwood; demoWalk is the only thing
+// that moves a simulated parent. Spots are far enough apart that opening two demo tabs never "meets".
+
+export const DEMO_LAWN: LatLng = { lat: 34.0709, lng: -118.4446 };
+export const DEMO_START_M = 120; // demo walk start: 120 m due north of the target
+export const DEMO_ACCURACY_M = 5;
+
+const DEMO_SPOTS: Record<string, { m: number; deg: number }> = {
+  mina: { m: 0, deg: 0 }, // on the lawn
+  jo: { m: DEMO_START_M, deg: 0 }, // where Jo's walk toward Mina starts
+  sam: { m: 200, deg: 90 }, // off to the east, on the radar but out of the way
+};
+
+/** Where a parent's simulated presence appears before any demo walk. */
+export function demoHome(parent: { id: string; key?: string }): LatLng {
+  const spot = (parent.key && DEMO_SPOTS[parent.key]) || (() => {
+    let h = 0;
+    for (const ch of parent.id) h = (h * 31 + ch.charCodeAt(0)) | 0;
+    return { m: 250, deg: Math.abs(h) % 360 };
+  })();
+  return destination(DEMO_LAWN, spot.deg, spot.m);
+}
+
 /** Stable key for an unordered pair, so (a,b) and (b,a) share one record. */
 export function pairKey(a: string, b: string): string {
   return a < b ? `${a}|${b}` : `${b}|${a}`;

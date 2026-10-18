@@ -156,11 +156,18 @@ export interface AgentNudge {
   resolved: boolean;
 }
 
+// Optional fields (C's NEEDS "Event payloads"): what C's agents / iMessage fallback read so they don't have to
+// re-read rows that getCloset no longer returns (a declined or paid proposal) — and fewer reads under the rate limit.
 export type InboxEvent =
   | { type: "nudge:new"; nudgeId: ID; itemId: ID; kind: NudgeKind; message: string }
-  | { type: "proposal:new"; proposalId: ID; role: "buyer" | "seller" }
-  | { type: "proposal:updated"; proposalId: ID; role: "buyer" | "seller"; status: ProposalStatus; sellerDecision: Decision; buyerDecision: Decision }
-  | { type: "trade:completed"; proposalId: ID; role: "buyer" | "seller"; itemId: ID; priceCents: number };
+  | { type: "proposal:new"; proposalId: ID; role: "buyer" | "seller";
+      peerPet?: string }               // the other side's pet name
+  | { type: "proposal:updated"; proposalId: ID; role: "buyer" | "seller"; status: ProposalStatus; sellerDecision: Decision; buyerDecision: Decision;
+      otherName?: string }             // the other parent's name
+  | { type: "trade:completed"; proposalId: ID; role: "buyer" | "seller"; itemId: ID; priceCents: number;
+      buyerId?: ID; sellerId?: ID;
+      snapshot?: ProposalSnapshot;     // the proposal's snapshot (itemName, size, price…)
+      predictedOutgrowDate?: ISODate }; // the item's new date, for the buyer's child
 
 export interface AgentInbox {
   id: ID;

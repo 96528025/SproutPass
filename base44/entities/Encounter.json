@@ -28,6 +28,13 @@
       "type": "string",
       "format": "date-time"
     },
+    "proposalId": {
+      "type": "string"
+    },
+    "rearmedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
     "transcript": {
       "type": "array",
       "items": {

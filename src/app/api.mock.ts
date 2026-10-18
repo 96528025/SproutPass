@@ -11,8 +11,10 @@ import { getCloset, listItem, recordPurchase, resolveNudge, upsertNeed, withdraw
 import { createProposal, decideProposal, getParties, payProposal } from "../../base44/shared/logic/trade.ts";
 import { demoClock, demoReset, getStats, selfTest } from "../../base44/shared/logic/demo.ts";
 import { toSmallDataUrl } from "./photo";
+import { createMockWorld } from "./mockWorld";
 
 const db = createFakeDb();
+const world = createMockWorld(db); // C's presence / radar / demo walk / encounters on this fakeDb
 const inBrowser = typeof window !== "undefined";
 
 // ---------------------------------------------------------------- shared world across tabs
@@ -93,10 +95,10 @@ export const mockApi: Api = {
   decideProposal: (req) => call(() => decideProposal(db, req)),
   payProposal: (req) => call(() => payProposal(db, req, { delayMs: 600 })),
   getParties: (req) => call(() => getParties(db, req)),
-  // Placeholders until the C-mock workstream simulates presence / encounters on the fakeDb.
-  updatePresence: () => call(async () => ({ ok: true as const, encounters: [], fallback: [] })),
-  listNearby: () => call(async () => ({ me: null, nearby: [] })),
-  demoWalk: () => call(async () => ({ ok: true as const, distanceM: 120, encounters: [], fallback: [] })),
+  // C's real location handlers (base44/shared/c/location.ts) on this fakeDb; see mockWorld.ts for the pets' talk.
+  updatePresence: (req) => call(() => world.updatePresence(req)),
+  listNearby: (req) => call(() => world.listNearby(req)),
+  demoWalk: (req) => call(() => world.demoWalk(req)),
 
   demoClock: (req) => call(() => demoClock(db, req ?? {})),
   demoReset: () => call(() => demoReset(db, {})),

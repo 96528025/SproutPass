@@ -133,8 +133,9 @@ describe("createProposal", () => {
 
   it("writes proposal:new for both sides", async () => {
     const p = await propose();
-    expect(await events(ids.mina)).toContainEqual({ type: "proposal:new", proposalId: p.id, role: "seller" });
-    expect(await events(ids.jo)).toContainEqual({ type: "proposal:new", proposalId: p.id, role: "buyer" });
+    // peerPet = the other side's pet (C's agents: "Pip found a buyer…"): Mina's Button, Jo's Pip.
+    expect(await events(ids.mina)).toContainEqual({ type: "proposal:new", proposalId: p.id, role: "seller", peerPet: "Pip" });
+    expect(await events(ids.jo)).toContainEqual({ type: "proposal:new", proposalId: p.id, role: "buyer", peerPet: "Button" });
   });
 
   it("expires a stale open proposal and proposes again", async () => {
@@ -341,14 +342,48 @@ describe("inbox", () => {
     const mina = await events(ids.mina);
     const jo = await events(ids.jo);
     const both = { proposalId: p.id, status: "both_accepted", sellerDecision: "accepted", buyerDecision: "accepted" };
-    expect(mina).toContainEqual({ type: "proposal:updated", role: "seller", ...both });
-    expect(jo).toContainEqual({ type: "proposal:updated", role: "buyer", ...both });
-    expect(mina).toContainEqual({ type: "trade:completed", role: "seller", proposalId: p.id, itemId: romper.id, priceCents: 1800 });
-    expect(jo).toContainEqual({ type: "trade:completed", role: "buyer", proposalId: p.id, itemId: romper.id, priceCents: 1800 });
+    expect(mina).toContainEqual({ type: "proposal:updated", role: "seller", ...both, otherName: "Jo" });
+    expect(jo).toContainEqual({ type: "proposal:updated", role: "buyer", ...both, otherName: "Mina" });
+    const moved = await item();
+    const done = {
+      proposalId: p.id, itemId: romper.id, priceCents: 1800, buyerId: ids.jo, sellerId: ids.mina,
+      snapshot: p.snapshot, predictedOutgrowDate: moved.predictedOutgrowDate,
+    };
+    expect(mina).toContainEqual({ type: "trade:completed", role: "seller", ...done });
+    expect(jo).toContainEqual({ type: "trade:completed", role: "buyer", ...done });
     expect(jo).toContainEqual(expect.objectContaining({ type: "nudge:new", itemId: romper.id, kind: "new_owner_welcome" }));
     expect(mina.some((e) => e.type === "nudge:new")).toBe(false);
     const rows = await db.AgentInbox.list();
     expect(rows.every((r) => r.type === "event" && r.status === "pending")).toBe(true);
+  });
+
+  it("trade:completed carries what C's agents read without a second lookup (NEEDS: snapshot, buyer/seller, new date)", async () => {
+    const p = await propose();
+    await decideProposal(db, { parentKey: "mina", proposalId: p.id, decision: "accepted" });
+    await decideProposal(db, { parentKey: "jo", proposalId: p.id, decision: "accepted" });
+    await payProposal(db, { parentKey: "jo", proposalId: p.id }, { delayMs: 0 });
+    const done = (await events(ids.jo)).find((e) => e.type === "trade:completed");
+    if (done?.type !== "trade:completed") throw new Error("no trade:completed for Jo");
+    expect(done.snapshot).toMatchObject({ itemName: "Yellow duck romper", size: "6-9M", priceCents: 1800, previousOwners: 1 });
+    expect(done).toMatchObject({ buyerId: ids.jo, sellerId: ids.mina });
+    // the buyer's child's date, not the seller's: Jo's Pea is younger than Mina's Bean
+    expect(done.predictedOutgrowDate).toBe((await item()).predictedOutgrowDate);
+    expect(done.predictedOutgrowDate).not.toBe(romper.predictedOutgrowDate);
+  });
+
+  it("proposal:updated names the other parent for each side (seller hears the buyer's name and vice versa)", async () => {
+    const p = await propose();
+    await decideProposal(db, { parentKey: "mina", proposalId: p.id, decision: "accepted" });
+    expect(await events(ids.mina)).toContainEqual(expect.objectContaining({ type: "proposal:updated", role: "seller", status: "open", otherName: "Jo" }));
+    expect(await events(ids.jo)).toContainEqual(expect.objectContaining({ type: "proposal:updated", role: "buyer", status: "open", otherName: "Mina" }));
+  });
+
+  it("an expired proposal's proposal:updated still names the other parent", async () => {
+    const p = await propose();
+    await setClock(new Date(new Date(DEMO_DATES.meet).getTime() + PROPOSAL_TTL_MS + 1000).toISOString());
+    await expect(decideProposal(db, { parentKey: "jo", proposalId: p.id, decision: "accepted" })).rejects.toMatchObject({ code: "expired" });
+    expect(await events(ids.jo)).toContainEqual(expect.objectContaining({ type: "proposal:updated", status: "expired", otherName: "Mina" }));
+    expect(await events(ids.mina)).toContainEqual(expect.objectContaining({ type: "proposal:updated", status: "expired", otherName: "Jo" }));
   });
 
   it("decline writes proposal:updated for both with $0", async () => {
