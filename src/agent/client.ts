@@ -2,7 +2,8 @@
 // B's in-browser fakeDb (mockDev.db), so the pet sees the same nudges and proposals as the bag.
 // (src/mocks/c.ts is still there for A to build the EncounterScene fully offline.)
 import { USE_MOCK } from "../app/api";
-import { mockDev } from "../app/api.mock";
+import { mockApi, mockDev } from "../app/api.mock";
+import type { EntityName } from "../app/types";
 import { base44 as real } from "../api/base44Client";
 
 type Row = Record<string, unknown> & { id: string };
@@ -21,10 +22,11 @@ function mockClient(): any {
       list: (sort?: string, limit?: number) => table(name).list(sort, limit),
       filter: (q: object, sort?: string, limit?: number) => table(name).filter(q, sort, limit),
       get: (id: string) => table(name).get(id),
+      // B's mock subscribe hears this tab's writes AND the other tabs' (BroadcastChannel), like Base44 realtime;
+      // db._on alone misses the other tab's encounter, so its scene would wait for the 10 s poll.
       subscribe: (cb: (e: SubEvent) => void) =>
-        db._on((e: { entity: string; type: SubEvent["type"]; id: string; data: Row }) => {
-          if (e.entity === name) cb({ type: e.type, id: e.id, data: e.data, timestamp: new Date().toISOString() });
-        }),
+        mockApi.subscribe<Row>(name as EntityName, (e) =>
+          cb({ type: e.type, id: e.id, data: e.data, timestamp: new Date().toISOString() })),
     }),
   });
   return { entities };

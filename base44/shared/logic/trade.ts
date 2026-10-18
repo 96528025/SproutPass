@@ -18,6 +18,12 @@ import { enforceMandate, passkeyRequired } from "./trust.ts";
 export const PROPOSAL_TTL_MS = 30 * 60_000;
 const LIVE: ProposalStatus[] = ["open", "both_accepted"];
 const isLive = (p: MatchProposal) => LIVE.includes(p.status);
+/** The first-created row: Base44's created_date (id breaks a tie), else list position (fakeDb lists in insertion order). */
+function firstCreated<T extends { id: ID }>(rows: T[]): T | undefined {
+  const real = (r: T) => (r as T & { created_date?: string }).created_date ?? "";
+  return rows.map((r, i) => ({ r, i }))
+    .sort((a, b) => real(a.r).localeCompare(real(b.r)) || (real(a.r) ? a.r.id.localeCompare(b.r.id) : a.i - b.i))[0]?.r;
+}
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 /** Update a row and return the merged result (works whether or not the backend returns the full row). */
@@ -144,6 +150,16 @@ export async function createProposal(db: Db, body: CreateProposalReq): Promise<M
     sellerDecision: "pending", buyerDecision: "pending", status: "open", handover: "now",
     createdAt: now, expiresAt: new Date(new Date(now).getTime() + PROPOSAL_TTL_MS).toISOString(),
   });
+  // 1b. Two callers can pass the check above together (the agents and the local fallback, or two encounters), and
+  // Base44 has no unique constraint: the first-created live proposal for the listing wins. A later one deletes itself
+  // before it touches the item or tells anyone, then answers the way the check above does.
+  const first = firstCreated((await db.MatchProposal.filter({ listingId: listing.id })).filter(isLive));
+  if (first && first.id !== proposal.id) {
+    await db.MatchProposal.delete(proposal.id);
+    if (first.buyerId !== buyer.id) throw new HttpError("already_open", "This item already has an open trade.", 409);
+    if (body.encounterId && first.encounterId === body.encounterId) await markEncounterProposed(db, body.encounterId, first.transcript);
+    return first;
+  }
   // 2. Item off the market.
   await db.ClothingItem.update(item.id, { status: "pending_trade" });
   // 3. Encounter → proposed.
