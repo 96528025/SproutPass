@@ -1,10 +1,19 @@
 """RelayProtocol — what two closet agents say to each other when their parents meet.
 
-Privacy (rule 3): the models below carry only shared listings, shared needs and
-the child's age in months. No names, phones, birth dates or coordinates.
+Privacy (rule 3): the models below carry only shared listings, shared needs,
+the child's age in months and the speaking pet's bubble line. No names,
+phones, birth dates or coordinates.
 
-Flow (buyer side opens, see closet_agent.py):
+Flow (the encounter's "buyer" side opens, see closet_agent.py):
     LookingFor  →  HaveListings | NoFit  →  ProposeTrade  →  TradeAck
+
+C's encounter picks the "buyer" by comparing parent ids, not by who needs what.
+So an agent that has nothing for the other side but has its own shared needs
+answers a LookingFor with its own LookingFor (the roles swap once); NoFit only
+comes back when neither direction fits.
+
+`line` is the sender's bubble ("Pip: Looking for 6-9M onesie!"), so the agent
+that creates the proposal can hand B the whole two-sided transcript.
 """
 
 from __future__ import annotations
@@ -14,7 +23,7 @@ from typing import List, Optional
 from uagents import Model, Protocol
 
 PROTOCOL_NAME = "HandMeDownRelay"
-PROTOCOL_VERSION = "0.1.0"
+PROTOCOL_VERSION = "0.2.0"
 
 
 class Need(Model):
@@ -27,6 +36,7 @@ class LookingFor(Model):
     encounter_id: str
     needs: List[Need]
     child_age_months: Optional[int] = None
+    line: str = ""
 
 
 class ListingCard(Model):
@@ -44,11 +54,13 @@ class ListingCard(Model):
 class HaveListings(Model):
     encounter_id: str
     listings: List[ListingCard]
+    line: str = ""
 
 
 class NoFit(Model):
     encounter_id: str
     reason: str = "Nothing in my closet fits today."
+    line: str = ""
 
 
 class ProposeTrade(Model):
@@ -57,6 +69,7 @@ class ProposeTrade(Model):
     price_cents: int
     reason: str
     wear_weeks_left: Optional[int] = None
+    line: str = ""
 
 
 class TradeAck(Model):
@@ -64,6 +77,10 @@ class TradeAck(Model):
     listing_id: str
     ok: bool
     reason: str = ""
+    line: str = ""
+
+
+RELAY_MODELS = (LookingFor, HaveListings, NoFit, ProposeTrade, TradeAck)
 
 
 # One Protocol object per agent process; the handlers are attached in closet_agent.py

@@ -29,9 +29,10 @@ def short_date(iso: Optional[str]) -> str:
     if not iso:
         return "soon"
     try:
-        return datetime.fromisoformat(iso.replace("Z", "+00:00")).strftime("%b %-d")
+        d = datetime.fromisoformat(iso.replace("Z", "+00:00"))
     except ValueError:
         return iso
+    return f"{d:%b} {d.day}"  # not strftime("%-d"): Windows has no "%-d"
 
 
 def hearts(owner_count: int) -> str:
@@ -88,6 +89,38 @@ def both_accepted(pay_link: str) -> str:
 
 def declined() -> str:
     return "Declined — $0 charged, and the listing is back up."
+
+
+def expired() -> str:
+    return "That trade timed out — $0 charged, and the listing is back up."
+
+
+def payment_failed() -> str:
+    return "The demo payment didn't go through — $0 charged, and the listing is back up."
+
+
+def not_yet() -> str:
+    return "Both of you need to accept first — nothing is charged until then."
+
+
+def in_trade(item: str) -> str:
+    return f"The {item} already has a trade open — answer that one first."
+
+
+def already_listed(item: str, price_cents: int) -> str:
+    return f"The {item} is already listed at {dollars(price_cents)}. I'll tell you when a friend's pet wants it."
+
+
+def list_failed(item: str) -> str:
+    return f"I couldn't list the {item} just now — try again from the bag."
+
+
+def busy() -> str:
+    return "The app is busy right now — give me a minute and try again."
+
+
+def t_hello(pet: str) -> str:
+    return f"{pet}: Hi! Anything on your list for your little one?"
 
 
 def completed(item: str, until: str) -> str:
@@ -153,6 +186,10 @@ def t_propose(pet: str, price_cents: int) -> str:
 
 def t_ack(pet: str) -> str:
     return f"{pet}: Sounds good — over to the humans!"
+
+
+def t_not_needed(pet: str) -> str:
+    return f"{pet}: Thanks, but that won't fit my little one."
 
 
 def t_decline(pet: str, why: str) -> str:
