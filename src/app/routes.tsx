@@ -19,6 +19,11 @@ export const WorldScreen = optional("../world/WorldScreen.tsx", "WorldScreen", W
 const KitPage = optional("../world/KitPage.tsx", "KitPage", DevPagePlaceholder, loading);
 const ArtPage = optional("../world/ArtPage.tsx", "ArtPage", DevPagePlaceholder, loading);
 const EncounterDev = optional("../world/EncounterDev.tsx", "EncounterDev", DevPagePlaceholder, loading);
+// Hackathon upgrades (lazy; a placeholder until the file exists or if it crashes).
+const AgentConsole = optional("../console/AgentConsole.tsx", "AgentConsole", DevPagePlaceholder, loading);
+const ImpactScreen = optional("../impact/ImpactScreen.tsx", "ImpactScreen", DevPagePlaceholder, loading);
+const PetMandate = optional("../trust/PetMandate.tsx", "PetMandate", DevPagePlaceholder, loading);
+const SnapToList = optional("../closet/SnapToList.tsx", "SnapToList", DevPagePlaceholder, loading);
 export const TradeWindow = optional<{ proposalId: string; onClose: () => void }>(
   "../trade/TradeWindow.tsx", "TradeWindow", TradeWindowPlaceholder);
 export const RelayLog = optional("../trade/RelayLog.tsx", "RelayLog", RelayLogPlaceholder, loading);
@@ -47,6 +52,10 @@ export function AppRoutes() {
       <Route path="/bag" element={<Bag />} />
       <Route path="/bag/needs" element={<NeedsScreen />} />
       <Route path="/bag/list/:itemId" element={<ListingFlow />} />
+      <Route path="/bag/add" element={<SnapToList />} />
+      <Route path="/bag/pet" element={<PetMandate />} />
+      <Route path="/agents" element={<AgentConsole />} />
+      <Route path="/impact" element={<ImpactScreen />} />
       <Route path="/trade/:proposalId" element={<TradeRoute />} />
       <Route path="/log" element={<RelayLog />} />
       <Route path="/kit" element={<KitPage />} />
@@ -61,4 +70,4 @@ export function AppRoutes() {
  * Routes that render without a parent picked: the projector end card, A's title screen (it has its own
  * "WHO ARE YOU?" step with B's ParentPicker) and A's dev pages.
  */
-export const PUBLIC_PATHS = ["/", "/log", "/kit", "/dev/art", "/dev/encounter"];
+export const PUBLIC_PATHS = ["/", "/log", "/agents", "/impact", "/kit", "/dev/art", "/dev/encounter"];

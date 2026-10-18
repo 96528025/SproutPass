@@ -99,6 +99,23 @@ export const mockApi: Api = {
   updatePresence: (req) => call(() => world.updatePresence(req)),
   listNearby: (req) => call(() => world.listNearby(req)),
   demoWalk: (req) => call(() => world.demoWalk(req)),
+  // ---- placeholders: the trusted-checkout, snap-to-list and impact workstreams replace these with the real
+  // handlers on the fakeDb (same as the rest of this mock).
+  getTrust: () => call(async () => ({
+    mandate: { maxPriceCents: 5000, monthlyBudgetCents: 10000, categories: [], requirePasskey: false, agentMayPropose: true },
+    spentThisMonthCents: 0, passkeys: [],
+  })),
+  setMandate: (req) => call(async () => ({
+    maxPriceCents: 5000, monthlyBudgetCents: 10000, categories: [], requirePasskey: false, agentMayPropose: true, ...req.mandate,
+  })),
+  passkeyRegisterOptions: () => call(async () => ({})),
+  passkeyRegisterVerify: () => call(async () => ({ ok: true as const, passkeys: [] })),
+  passkeyAuthOptions: () => call(async () => ({})),
+  analyzeItemPhoto: () => call(async () => ({ via: "template" as const })),
+  getImpact: () => call(async () => ({
+    itemsRehomed: 0, tradesCompleted: 0, dollarsSavedCents: 0, dollarsEarnedCents: 0, co2SavedKg: 0, waterSavedL: 0,
+    wasteDivertedKg: 0, points: [], assumptions: [],
+  })),
 
   demoClock: (req) => call(() => demoClock(db, req ?? {})),
   demoReset: () => call(() => demoReset(db, {})),

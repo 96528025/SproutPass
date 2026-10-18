@@ -12,6 +12,11 @@ const FILES: Record<string, Loader> = {
   ...import.meta.glob<Record<string, unknown>>("../trade/{TradeWindow,TradeWatcher,RelayLog}.tsx"),
   ...import.meta.glob<Record<string, unknown>>("../world/{TitleScreen,WorldScreen,KitPage,ArtPage,EncounterDev}.tsx"),
   ...import.meta.glob<Record<string, unknown>>("../agent/AgentPet.tsx"),
+  // Hackathon upgrades: each screen appears as soon as its workstream creates the file.
+  ...import.meta.glob<Record<string, unknown>>("../console/AgentConsole.tsx"),
+  ...import.meta.glob<Record<string, unknown>>("../impact/ImpactScreen.tsx"),
+  ...import.meta.glob<Record<string, unknown>>("../trust/PetMandate.tsx"),
+  ...import.meta.glob<Record<string, unknown>>("../closet/SnapToList.tsx"),
 };
 
 /** Error boundary: renders `fallback` instead of blanking the whole app when a child throws. */

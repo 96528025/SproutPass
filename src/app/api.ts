@@ -5,7 +5,8 @@ import type {
   MatchProposal, Need, ParentRef, PayProposalReq, PayProposalRes, RecordPurchaseReq, RelayStats,
   ResolveNudgeReq, ResolveNudgeRes, SelfTestRes, UpsertNeedReq, WithdrawListingReq, ClothingItem,
   GetPartiesReq, PublicParty, UpdatePresenceReq, UpdatePresenceRes, ListNearbyReq, ListNearbyRes, DemoWalkReq,
-  DemoWalkRes,
+  DemoWalkRes, TrustView, SetMandateReq, PetMandate, PasskeyOptionsReq, PasskeyVerifyReq, AnalyzeItemPhotoReq,
+  ItemPhotoGuess, ImpactView,
 } from "./types";
 import { mockApi } from "./api.mock";
 import { realApi } from "./api.real";
@@ -42,6 +43,17 @@ export interface Api {
   updatePresence(req: UpdatePresenceReq): Promise<UpdatePresenceRes>;
   listNearby(req: ListNearbyReq): Promise<ListNearbyRes>;
   demoWalk(req: DemoWalkReq): Promise<DemoWalkRes>;
+  // Trusted checkout (Visa track): the pet's spending rules + passkey (Face ID) approval of payments.
+  // WebAuthn options/responses are the JSON shapes of @simplewebauthn (PublicKeyCredential*OptionsJSON / *ResponseJSON).
+  getTrust(ref: ParentRef): Promise<TrustView>;
+  setMandate(req: SetMandateReq): Promise<PetMandate>;
+  passkeyRegisterOptions(req: PasskeyOptionsReq): Promise<Record<string, unknown>>;
+  passkeyRegisterVerify(req: PasskeyVerifyReq): Promise<{ ok: true; passkeys: TrustView["passkeys"] }>;
+  passkeyAuthOptions(req: PasskeyOptionsReq): Promise<Record<string, unknown>>;
+  // AI snap-to-list: a photo of the item (or its tag) → what the AI thinks it is.
+  analyzeItemPhoto(req: AnalyzeItemPhotoReq): Promise<ItemPhotoGuess>;
+  // Impact + rewards for everyone (and `me` when a parent is given).
+  getImpact(ref?: ParentRef): Promise<ImpactView>;
   // Base44 platform
   uploadPhoto(file: File): Promise<{ url: string }>;
   subscribe<T = unknown>(entity: EntityName, cb: (e: EntityEvent<T>) => void): Unsubscribe;

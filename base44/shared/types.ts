@@ -25,6 +25,8 @@ export interface Parent {
   photonLineUserId?: string;         // C: the Photon iMessage line this parent texts; their pet replies from it
   convo?: Record<string, unknown>;   // C's iMessage fallback conversation state (server-only)
   asiAddress?: string;               // C: ASI:One user bound with "claim mina-1234" (server-only)
+  mandate?: PetMandate;              // what this parent's pet agent may do on their behalf (trusted checkout)
+  passkeys?: unknown[];              // WebAuthn credentials for payment approval (server-only)
 }
 
 export interface Child {
@@ -105,6 +107,19 @@ export interface Encounter {         // C owns the logic
   status: "talking" | "proposed" | "no_match";
   startedAt: ISODate;
   transcript: AgentTurn[];
+  agentLog?: AgentLogEntry[];        // the agents' protocol messages, for the Agent Console (C writes it)
+  negotiatedBy?: "fetch" | "local";  // Fetch.ai agents, or C's local fallback matcher
+}
+
+/** One protocol message between two closet agents (Fetch.ai uAgents), shown live in the Agent Console. */
+export interface AgentLogEntry {
+  at: ISODate;                       // real time
+  from: string;                      // "agent1q…" (Fetch address) or "fallback" / "mock"
+  to: string;
+  type: string;                      // LookingFor | HaveListings | NoFit | ProposeTrade | TradeAck | Decline | …
+  summary: string;                   // one plain sentence of what was said (no private data)
+  ms?: number;                       // latency since the previous message
+  by: "fetch" | "fallback" | "mock";
 }
 
 export type Decision = "pending" | "accepted" | "declined";
@@ -221,7 +236,46 @@ export interface CreateProposalReq {   // internal: x-agent-key (C's agentApi / 
   transcript: AgentTurn[]; source: "fetch" | "local";
 }
 export interface DecideProposalReq extends ParentRef { proposalId: ID; decision: "accepted" | "declined"; handover?: "now" | "later"; handoverNote?: string }
-export interface PayProposalReq extends ParentRef { proposalId: ID; fail?: boolean }
+export interface PayProposalReq extends ParentRef {
+  proposalId: ID; fail?: boolean;
+  passkey?: Record<string, unknown>;  // WebAuthn AuthenticationResponseJSON when the buyer approves with Face ID / passkey
+}
+
+// ---------------------------------------------------------------- trusted checkout (Visa track)
+/** The buyer's rules for their pet agent. Enforced on the server (createProposal / payProposal). */
+export interface PetMandate {
+  maxPriceCents: number;             // the pet never proposes a trade above this
+  monthlyBudgetCents: number;        // total paid trades per calendar month (demo clock)
+  categories: Category[];            // empty = any
+  requirePasskey: boolean;           // payment needs Face ID / passkey approval
+  agentMayPropose: boolean;          // false = the pet only tells you, never proposes
+}
+export interface TrustView {
+  mandate: PetMandate;
+  spentThisMonthCents: number;
+  passkeys: { id: string; createdAt: ISODate; label: string }[];
+}
+export interface SetMandateReq extends ParentRef { mandate: Partial<PetMandate> }
+export interface PasskeyOptionsReq extends ParentRef { proposalId?: ID }
+export interface PasskeyVerifyReq extends ParentRef { response: Record<string, unknown>; label?: string }
+
+// ---------------------------------------------------------------- AI snap-to-list
+export interface AnalyzeItemPhotoReq { imageUrl: string }
+export interface ItemPhotoGuess {
+  name?: string; category?: Category; size?: SizeLabel; condition?: Condition; note?: string; icon?: string;
+  estimatedRetailCents?: number; confidence?: number; via: "llm" | "template";
+}
+
+// ---------------------------------------------------------------- impact + rewards
+export interface ImpactView {
+  itemsRehomed: number; tradesCompleted: number;
+  dollarsSavedCents: number;         // buyers paid this much less than new
+  dollarsEarnedCents: number;        // sellers got back
+  co2SavedKg: number; waterSavedL: number; wasteDivertedKg: number;
+  points: { parentId: ID; name: string; points: number; badges: string[] }[];
+  me?: { parentId: ID; points: number; badges: string[]; nextBadge?: string };
+  assumptions: string[];             // where the CO2 / water numbers come from
+}
 
 // ---------------------------------------------------------------- C's location functions (app-callable)
 // Added to the Api with Caesar's OK (00:30) so A's /world can drop its stubs. C owns the handlers.
