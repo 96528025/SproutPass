@@ -1,11 +1,14 @@
 """RelayProtocol — what two closet agents say to each other when their parents meet.
 
 Privacy (rule 3): the models below carry only shared listings, shared needs,
-the child's age in months and the speaking pet's bubble line. No names,
-phones, birth dates or coordinates.
+the child's age in months and the speaking pet's bubble line. No phones,
+birth dates, ids or coordinates. The one place a parent's first name travels
+is a Decline (the buyer's pet saying whose rule it follows, as the app shows
+it on the radar); never an amount from those rules.
 
 Flow (the encounter's "buyer" side opens, see closet_agent.py):
     LookingFor  →  HaveListings | NoFit  →  ProposeTrade  →  TradeAck
+                                         ↘  Decline (the buyer's pet rules say no: nothing is proposed)
 
 C's encounter picks the "buyer" by comparing parent ids, not by who needs what.
 So an agent that has nothing for the other side but has its own shared needs
@@ -23,7 +26,7 @@ from typing import List, Optional
 from uagents import Model, Protocol
 
 PROTOCOL_NAME = "HandMeDownRelay"
-PROTOCOL_VERSION = "0.2.0"
+PROTOCOL_VERSION = "0.3.0"
 
 
 class Need(Model):
@@ -80,7 +83,20 @@ class TradeAck(Model):
     line: str = ""
 
 
-RELAY_MODELS = (LookingFor, HaveListings, NoFit, ProposeTrade, TradeAck)
+class Decline(Model):
+    """The buyer's side turns an offer down instead of proposing it: its parent's pet rules say no (`rule` =
+    over_price | over_budget | category | agent_may_not_propose, `reason` = the app's sentence, never an amount), or
+    the app refused the proposal after the TradeAck (`rule` empty, `reason` = B's code: already_open | not_resellable |
+    not_eligible). The receiver answers it like a NoFit: it asks with its own needs once (the other direction may
+    still trade), else it ends the encounter with noMatch."""
+    encounter_id: str
+    listing_id: str = ""
+    rule: str = ""
+    reason: str = ""
+    line: str = ""
+
+
+RELAY_MODELS = (LookingFor, HaveListings, NoFit, ProposeTrade, TradeAck, Decline)
 
 
 # One Protocol object per agent process; the handlers are attached in closet_agent.py

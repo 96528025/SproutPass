@@ -11,8 +11,14 @@ What it does (Part C §4–8):
   * talks to the other parent's agent with RelayProtocol when the two phones meet
   * never decides for a person: it only creates *proposals* (rule 1)
 
+Division of labour: the agents claim ONLY "encounter" inbox rows (agent-to-agent negotiation). "imessage" and
+"event" rows are answered by the app's TypeScript side (the Photon webhook + C's inbox handler). INBOX_TYPES=all
+brings back the old "agents answer everything" mode (an app that predates the claimInbox types filter does that anyway).
+Every RelayProtocol message of an encounter goes into the protocol log (agent_log.py), which rides along with the
+createProposal / noMatch call that ends the talk → Encounter.agentLog, negotiatedBy "fetch" (the Agent Console).
+
 Env: BASE44_URL, AGENT_KEY, TEAM_SECRET, APP_URL (for pay links), PARENT_ID_<NAME> (optional),
-     POLL_S (default 10), CALLS_PER_MIN (default 8),
+     POLL_S (default 10), CALLS_PER_MIN (default 8), INBOX_TYPES (default "encounter"; "all" = every row type),
      ASI_OPEN (default 0: an ASI:One sender must "claim" first; 1 = unclaimed senders may also say hi / help / bag),
      INBOX_MAX_AGE_S (default 600: older inbox rows are a backlog from while the agent was off → completed silently)
 """
@@ -27,7 +33,7 @@ import re
 import time
 from collections import deque
 from datetime import datetime, timezone
-from typing import Any, Awaitable, Callable, Deque, Dict, List, Optional
+from typing import Any, Awaitable, Callable, Deque, Dict, List, Optional, Sequence, Tuple
 
 from uagents import Agent, Context, Protocol
 from uagents_core.contrib.protocols.chat import (
@@ -41,9 +47,11 @@ from uagents_core.contrib.protocols.chat import (
 
 import cards
 import wording as w
-from base44_client import Base44Client, Base44Error, CallBudget, RateLimited
+from agent_log import AgentLog, format_log
+from base44_client import Base44Client, Base44Error, CallBudget, RateLimited, with_backoff
 from intents import intent_from_card, parse_card_reply, parse_claim, parse_condition, parse_intent
 from relay_protocol import (
+    Decline,
     HaveListings,
     ListingCard,
     LookingFor,
@@ -62,6 +70,40 @@ PET_NAMES = {"mina": "Button", "jo": "Pip", "sam": "Moss"}  # overwritten by get
 Directory = Dict[str, Dict[str, Any]]  # parent id → {"key", "name", "pet"} (public names only; shared by a Bureau)
 InboxSource = Callable[[], Awaitable[List[Dict[str, Any]]]]
 
+# What the agents claim from AgentInbox. iMessage and app events are the TypeScript side's job now.
+AGENT_INBOX_TYPES: Tuple[str, ...] = ("encounter",)
+ALL_INBOX_TYPES: Tuple[str, ...] = ("encounter", "imessage", "event")
+
+# The buyer's pet rules (B5's mandate, enforced by B's createProposal). agentApi `fit` marks a match the rules stop
+# ({blocked: {rule, reason, line}}), so the buyer's pet declines instead of saying "Trade proposal!". These lines are
+# only the fallback for a refusal that comes later (createProposal: "…not_eligible: pet_rules(<rule>): <reason>");
+# same words as base44/shared/c/location.ts rulesLine. Never an amount: the buyer's limits stay private.
+RULE_LINES = {
+    "agent_may_not_propose": "{name} asked me to point out matches, not propose trades.",
+    "over_price": "it's over the price limit {name} set for me.",
+    "category": "it isn't a kind of clothes {name} asked me to look for.",
+    "over_budget": "it would go over {name}'s monthly budget for me.",
+}
+PET_RULES_RX = re.compile(r'pet_rules\((\w+)\):\s*([^"\\]+)')
+# The app refused the proposal after the TradeAck for another reason: what the buyer's pet says instead.
+REFUSAL_LINES = {
+    "already_open": "that item already has an open trade.",
+    "not_resellable": "that item has had its 3 owners.",
+    "not_eligible": "that listing doesn't fit any more.",
+}
+NO_TRADE_KINDS = ("propose", "ack")  # bubbles that must not survive an encounter that ended without a trade
+
+
+def inbox_types_from(value: Optional[str]) -> Optional[Tuple[str, ...]]:
+    """INBOX_TYPES env → the claimInbox filter. "" → the default (encounter only); "all" → None (no filter)."""
+    raw = (value or "").strip().lower()
+    if not raw:
+        return AGENT_INBOX_TYPES
+    if raw in ("all", "*", "any"):
+        return None
+    picked = tuple(t for t in dict.fromkeys(x.strip() for x in raw.split(",")) if t in ALL_INBOX_TYPES)
+    return picked or AGENT_INBOX_TYPES
+
 
 def _owners(item: Dict[str, Any]) -> int:
     try:
@@ -79,6 +121,28 @@ def _cents(v: Any) -> int:
 
 def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+
+RESALE_PCT = {1: 60, 2: 40}  # base44/shared/pricing.ts: the 2nd owner pays 60% of the original price, the 3rd 40%
+
+
+def fair_price(original_cents: int, owner_count: int) -> Optional[int]:
+    """pricing.ts priceFor (Math.round, half up); None once the item has had its 3 owners."""
+    pct = RESALE_PCT.get(owner_count)
+    return None if pct is None else (int(original_cents) * pct + 50) // 100
+
+
+def approve_line(pay_link: str, face_id: bool = False) -> str:
+    """Both accepted, to the buyer: approve in the app (wording.py approve_in_app, "with Face ID" when it's needed)."""
+    try:
+        return w.approve_in_app(pay_link, face_id=face_id)
+    except TypeError:  # an older wording.py without the face_id flag
+        return w.approve_in_app(pay_link)
+
+
+def pay_in_app_line(pay_link: str) -> str:
+    """"pay" by text: never pay by text, approve in the app (wording.py pay_in_app = wording.ts payInApp)."""
+    return w.pay_in_app(pay_link)
 
 
 _WORD = re.compile(r"[a-z0-9]+")
@@ -153,6 +217,8 @@ class ClosetBrain:
         self.peers: Dict[str, Dict[str, Any]] = {}  # encounter_id → {parentId, agentAddress, role, asked, answered, offered}
         self.props: Dict[str, Dict[str, Any]] = {}  # proposal id → proposal (snapshot/buyer/seller never change)
         self.announced: set = set()  # item ids whose arrival we already announced (skip the welcome nudge)
+        self.address = ""                       # this agent's agent1q… address (attach() sets it)
+        self.agent_log = AgentLog(by="fetch")   # encounter_id → every RelayProtocol message, for Encounter.agentLog
 
     # ----- helpers ---------------------------------------------------------
     async def state(self) -> Dict[str, Any]:
@@ -254,15 +320,20 @@ class ClosetBrain:
             cond = parse_condition(text)
             if self.convo.get("step") == "await_condition" and cond:
                 self.convo["condition"] = cond
-                return [Reply(w.ask_condition(cond))]
+                return [Reply(self._quote())]
             return [Reply(w.unknown())]
+        asked = self.convo.get("lastAsk") or {}
         if intent == "yes":
-            if self.convo.get("step") != "await_condition":
-                return [Reply(w.unknown())]
-            return await self._list_now()
+            if self.convo.get("step") == "await_condition":
+                return await self._list_now()
+            if asked.get("kind") == "proposal":  # "yes" right after a trade proposal = accept (same as the app's TS side)
+                return await self._on_decide("accept", {"proposal_id": asked.get("id")})
+            return [Reply(w.unknown())]
         if intent == "no":
             if self.convo.get("step") == "await_condition":
-                return [Reply('Okay — tell me "like new", "gently used" or "well loved".')]
+                return [Reply(w.pick_condition())]
+            if asked.get("kind") == "proposal":
+                return await self._on_decide("decline", {"proposal_id": asked.get("id")})
             return [Reply(w.unknown())]
         if intent in ("accept", "decline"):
             return await self._on_decide(intent, selection)
@@ -287,7 +358,8 @@ class ClosetBrain:
             if listing:
                 return [Reply(w.already_listed(name, _cents(listing.get("priceCents"))))]
         nudge_id = nudge["id"] if nudge and nudge.get("itemId") == item.get("id") else None
-        self.convo = {"step": "await_photo", "itemId": item["id"], "nudgeId": nudge_id, "itemName": name}
+        self.convo = {"step": "await_photo", "itemId": item["id"], "nudgeId": nudge_id, "itemName": name,
+                      "originalPriceCents": _cents(item.get("originalPriceCents")), "ownerCount": _owners(item)}
         return [Reply(w.ask_photo(name))]
 
     async def _on_photo(self, url: str) -> List[Reply]:
@@ -297,14 +369,25 @@ class ClosetBrain:
             if not nudge:
                 return [Reply(w.unknown())]
             item = self._item(s, nudge.get("itemId")) or {}
-            self.convo = {"step": "await_photo", "itemId": nudge.get("itemId"), "nudgeId": nudge["id"], "itemName": item.get("name", "item")}
+            self.convo = {"step": "await_photo", "itemId": nudge.get("itemId"), "nudgeId": nudge["id"], "itemName": item.get("name", "item"),
+                          "originalPriceCents": _cents(item.get("originalPriceCents")), "ownerCount": _owners(item)}
         try:
             sug = await self.client.suggest_condition(url, self.convo.get("itemName", ""))
         except Base44Error:  # incl. RateLimited: the pet's guess is optional
             sug = {"condition": "gently_used", "note": ""}
         self.convo.update({"step": "await_condition", "photoUrl": url, "condition": sug.get("condition") or "gently_used", "note": sug.get("note") or ""})
-        return [Reply(w.ask_condition(self.convo["condition"]),
+        return [Reply(self._quote(),
                       card=("detail", cards.condition_card(self.convo.get("itemName", "item"), self.convo["condition"], self.convo["note"])))]
+
+    def _quote(self) -> str:
+        """The item, the condition guess and the fair price (2nd owner pays 60%, 3rd 40%): the live app's quote
+        (inboxFallback.ts requote). Nothing is listed until the parent says yes."""
+        c = self.convo
+        owners, original = int(c.get("ownerCount") or 1), _cents(c.get("originalPriceCents"))
+        price = fair_price(original, owners)
+        if price is None or not original:  # no price to show (an old convo): just the condition question
+            return w.ask_condition(c.get("condition", "gently_used"))
+        return w.quote(c.get("itemName", "item"), c.get("condition", "gently_used"), price, original, owners, c.get("note", ""))
 
     async def _list_now(self) -> List[Reply]:
         c = self.convo
@@ -326,7 +409,8 @@ class ClosetBrain:
         listing = r.get("listing") or r
         item = r.get("item") or {}
         self.convo = {"step": "idle"}
-        return [Reply(w.listed(_cents(listing.get("priceCents")), _cents(item.get("originalPriceCents")), _owners(item)))]
+        return [Reply(w.listed_now(item.get("name") or c.get("itemName", "item"), _cents(listing.get("priceCents")),
+                                   _cents(item.get("originalPriceCents") or c.get("originalPriceCents")), _owners(item)))]
 
     async def _on_decide(self, intent: str, selection: Optional[dict]) -> List[Reply]:
         s = await self.state()
@@ -341,7 +425,7 @@ class ClosetBrain:
                           and (not pid or p.get("id") == pid)), None)
             if intent == "accept" and ready:
                 if ready.get("buyerId") == self.parent_id:
-                    return [Reply(w.both_accepted(self.pay_link(ready["id"])), card=("review", cards.pay_card(ready)))]
+                    return [Reply(pay_in_app_line(self.pay_link(ready["id"])), card=("review", cards.pay_card(ready)))]
                 return [Reply(w.accepted("the buyer to pay"))]
             return [Reply(w.no_open_proposal())]
         try:
@@ -351,6 +435,7 @@ class ClosetBrain:
         except Base44Error as e:
             log.warning("decideProposal: %s", e)
             return [Reply(w.expired() if e.code == "expired" else w.no_open_proposal())]
+        self.convo.pop("lastAsk", None)
         return []  # the proposal:updated event carries the next line
 
     async def _on_pay(self, selection: Optional[dict]) -> List[Reply]:
@@ -361,16 +446,24 @@ class ClosetBrain:
         if not ready:
             waiting = any(p.get("status") == "open" and p.get("buyerId") == self.parent_id for p in s.get("proposals") or [])
             return [Reply(w.not_yet() if waiting else w.no_open_proposal())]
-        if selection is not None:  # ASI:One: the card IS the pay button (demo payment)
+        link = self.pay_link(ready["id"])
+        if selection is not None:  # ASI:One: the card IS the pay button (demo payment); the app still judges it
             try:
-                await self.client.pay_proposal(ready["id"], self.parent_id)
+                res = await self.client.pay_proposal(ready["id"], self.parent_id)
             except RateLimited:
                 raise
             except Base44Error as e:
+                # Nothing was charged and nothing moved: B refused before paying. A buyer whose pet rules need Face ID
+                # (a passkey) approves in the app; never retried here, never "the listing is back up".
                 log.warning("payProposal: %s", e)
-                return [Reply(w.payment_failed())]
+                if e.code == "expired" or "expired" in str(e):
+                    return [Reply(w.expired())]
+                face_id = e.code == "forbidden" or e.status == 403 or bool(re.search(r"face id|passkey", str(e), re.I))
+                return [Reply(approve_line(link, face_id=face_id))]
+            if ((res or {}).get("proposal") or {}).get("status") == "payment_failed":
+                return [Reply(w.payment_failed())]  # a real (demo) payment failure: $0 charged, listing back up
             return []  # trade:completed event follows
-        return [Reply(w.both_accepted(self.pay_link(ready["id"])), card=("review", cards.pay_card(ready)))]
+        return [Reply(pay_in_app_line(link), card=("review", cards.pay_card(ready)))]
 
     # ----- app events (Part C §6; payload shapes = types.ts InboxEvent) -----
     async def event(self, payload: Dict[str, Any], age_s: Optional[float] = None) -> List[Reply]:
@@ -416,6 +509,7 @@ class ClosetBrain:
             return []  # gone, or already moved on: the proposal:updated events speak
         snap = prop.get("snapshot") or {}
         peer_pet = payload.get("peerPet") or self._who(self._other_id(prop), "pet") or "a friend's pet"
+        self.convo["lastAsk"] = {"kind": "proposal", "id": pid}  # a plain "yes" / "no" now answers this trade
         return [Reply(w.proposal(snap.get("itemName", "item"), _cents(snap.get("priceCents")), _cents(snap.get("originalPriceCents")),
                                  int(snap.get("previousOwners") or 1), peer_pet),
                       card=("review", cards.proposal_card(prop, self.parent_id)))]
@@ -443,8 +537,8 @@ class ClosetBrain:
         other_id = prop.get("sellerId") if role == "buyer" else prop.get("buyerId")
         other = self._who(other_id, "name") or payload.get("otherName") or "the other side"
         if st == "both_accepted":
-            if role == "buyer":
-                return [Reply(w.both_accepted(self.pay_link(pid)), card=("review", cards.pay_card(prop)) if prop.get("snapshot") else None)]
+            if role == "buyer":  # never a pay-by-text link: approve in the app (wording.ts approveInApp)
+                return [Reply(approve_line(self.pay_link(pid)), card=("review", cards.pay_card(prop)) if prop.get("snapshot") else None)]
             return [Reply(w.accepted("the buyer to pay"))]
         if st == "declined":
             return [Reply(w.declined())]
@@ -461,6 +555,7 @@ class ClosetBrain:
             return [Reply(w.accepted(other))]
         if theirs == "accepted":
             card = ("review", cards.proposal_card(prop, self.parent_id)) if prop.get("snapshot") else None
+            self.convo["lastAsk"] = {"kind": "proposal", "id": pid}
             return [Reply(w.other_accepted(other[:1].upper() + other[1:]), card=card)]
         return []
 
@@ -518,10 +613,51 @@ class ClosetBrain:
         if line and last.get("text") != line[:200]:  # a retried message must not repeat the bubble
             self._turn(enc, role, kind, line, parent_id=self._peer(enc).get("parentId", ""))
 
+    # ----- protocol log (agent_log.py) ------------------------------------
+    def note_sent(self, msg: Any, to: Optional[str] = None) -> None:
+        """Log a RelayProtocol message this agent sends (to = the peer's agent address)."""
+        enc = getattr(msg, "encounter_id", "")
+        peer = to or self._peer(enc).get("agentAddress") or "unknown"
+        self.agent_log.record(enc, msg, self.address or f"{self.parent_name}-closet", peer)
+
+    def note_received(self, msg: Any, sender: Optional[str] = None) -> None:
+        """Log a RelayProtocol message this agent received (sender = the uAgents sender address)."""
+        enc = getattr(msg, "encounter_id", "")
+        if sender:
+            self._peer(enc)["agentAddress"] = sender  # the real sender beats a stale Parent.agentAddress
+        peer = sender or self._peer(enc).get("agentAddress") or "unknown"
+        self.agent_log.record(enc, msg, peer, self.address or f"{self.parent_name}-closet")
+
+    def protocol_log(self, enc: str) -> List[Dict[str, Any]]:
+        return self.agent_log.entries(enc)
+
+    def _show_log(self, enc: str, outcome: str) -> None:
+        """The runner's console shows the same protocol log the app gets (live_bureau runs at INFO)."""
+        entries = self.protocol_log(enc)
+        log.info("encounter %s → %s · %d protocol messages (Fetch.ai uAgents):", enc, outcome, len(entries))
+        for line in format_log(entries):
+            log.info("   %s", line)
+
+    def _app_transcript(self, enc: str, peer_id: Optional[str]) -> List[Dict[str, Any]]:
+        """Both pets' bubbles, with the peer's parent id filled in where it arrived late."""
+        transcript = [dict(t) for t in self.transcripts.get(enc, [])]
+        for t in transcript:
+            if not t["parentId"]:
+                t["parentId"] = peer_id or ""
+        return transcript
+
     async def _no_match(self, enc: str) -> None:
-        self._peer(enc)["done"] = True
+        p = self._peer(enc)
+        p["done"] = True
+        declined = p.get("declined") or {}
+        self._show_log(enc, f"no match (pet rules: {declined['rule']})" if declined.get("rule") else "no match")
+        # Nothing was proposed, so no "Trade proposal!" / "over to the humans" bubble stays (a refused proposal).
+        transcript = [t for t in self._app_transcript(enc, p.get("parentId")) if t["kind"] not in NO_TRADE_KINDS]
         try:
-            await self.client.no_match(enc)
+            # The protocol log (+ the pets' bubbles, + why the buyer's rules said no) ride on the call the agent makes
+            # anyway: no extra call. The reason becomes Encounter.noMatchReason.
+            await self.client.no_match(enc, agent_log=self.protocol_log(enc), transcript=transcript,
+                                       reason=declined.get("reason") if declined.get("rule") else None)
         except Base44Error as e:
             log.warning("noMatch: %s", e)
 
@@ -557,17 +693,25 @@ class ClosetBrain:
         await self.say(enc, "buyer", "looking_for", line)
         return LookingFor(encounter_id=enc, needs=needs, child_age_months=age, line=line)
 
-    async def open_encounter(self, payload: Dict[str, Any]) -> Optional[LookingFor]:
-        """Encounter row {encounterId, role, peer:{parentId, agentAddress}}. The "buyer" side opens; the other waits."""
+    async def open_encounter(self, payload: Dict[str, Any], peer_address: Optional[str] = None) -> Optional[LookingFor]:
+        """Encounter row {encounterId, role, peer:{parentId, agentAddress}}. The "buyer" side opens; the other waits.
+        peer_address: where the opener will be sent (then it is logged as sent; None = it can't be sent)."""
         enc = payload.get("encounterId")
         if not enc:
             return None
         p = self._peer(enc)
+        known = p.get("agentAddress")  # an address learned from a received message beats the Parent row's
         p.update({k: v for k, v in (payload.get("peer") or {}).items() if v})
+        if known:
+            p["agentAddress"] = known
         p["role"] = payload.get("role", "buyer")
         if p["role"] != "buyer" or p["asked"] or p["answered"] or p.get("done"):
             return None
-        return await self._ask(enc)
+        opening = await self._ask(enc)
+        if peer_address:
+            p["agentAddress"] = peer_address
+            self.note_sent(opening, peer_address)
+        return opening
 
     async def on_looking_for(self, msg: LookingFor) -> Any:
         """Answer with my shared listings that match → HaveListings. Nothing for them but I have needs of my own →
@@ -620,21 +764,30 @@ class ClosetBrain:
         enc = msg.encounter_id
         self.heard(enc, "seller", "have", msg.line)
         seller = await self._peer_id(enc)
-        best, weeks, reason, ranked_ok = None, None, "", False
+        best, weeks, reason, ranked_ok, stopped = None, None, "", False, None
         if seller:
             try:
                 ranked = (await self.client.fit(buyerId=self.parent_id, sellerId=seller)).get("matches") or []
                 ranked_ok = True
                 offered = {l.listing_id: l for l in msg.listings}
                 for m in ranked:
-                    if m.get("listingId") in offered:
-                        best, weeks, reason = offered[m["listingId"]], m.get("wearWeeksLeft"), m.get("reason", "")
-                        break
+                    if m.get("listingId") not in offered:
+                        continue
+                    if m.get("blocked"):  # my parent's pet rules say no to this one: look further, remember why
+                        stopped = stopped or (offered[m["listingId"]], m["blocked"])
+                        continue
+                    best, weeks, reason = offered[m["listingId"]], m.get("wearWeeksLeft"), m.get("reason", "")
+                    break
             except Base44Error as e:  # incl. RateLimited: B re-checks everything in createProposal anyway
                 log.warning("fit: %s", e)
         if best is None and not ranked_ok and msg.listings:
             best = msg.listings[0]
             reason = f"Size {best.size} matches a shared need."
+        if best is None and stopped:
+            card, block = stopped
+            rule = str(block.get("rule") or "")
+            return await self._decline(enc, card.listing_id, rule, str(block.get("reason") or ""),
+                                       str(block.get("line") or self.rule_line(rule)))
         if best is None:
             line = await self.say(enc, "buyer", "no_fit", w.t_not_needed(self.pet))
             return NoFit(encounter_id=enc, reason="Nothing on offer fits my little one.", line=line)
@@ -658,6 +811,47 @@ class ClosetBrain:
         await self._no_match(enc)
         return None
 
+    async def on_decline(self, msg: Decline) -> Optional[LookingFor]:
+        """The buyer's pet turned my offer down (its parent's rules, or the app refused the proposal). Like a NoFit:
+        if I haven't asked yet and have needs, I ask now (the other direction may still trade); else the encounter is
+        over, and my noMatch carries the rule's reason."""
+        enc = msg.encounter_id
+        p = self._peer(enc)
+        p["declined"] = {"rule": msg.rule, "reason": msg.reason}
+        # The proposal bubbles of a refused trade go; the decline says why.
+        self.transcripts[enc] = [t for t in self.transcripts.get(enc, []) if t["kind"] not in NO_TRADE_KINDS]
+        self.heard(enc, "buyer", "decline", msg.line)
+        if not p["asked"] and not p.get("done"):
+            s = await self.state()
+            if self._shared_needs(s):
+                return await self._ask(enc, s)
+        await self._no_match(enc)
+        return None
+
+    def owner_first_name(self) -> str:
+        return self._who(self.parent_id, "name") or self.parent_name.title()
+
+    def rule_line(self, rule: str) -> str:
+        """My words for one of my parent's pet rules, never an amount: "it's over the price limit Jo set for me." """
+        return RULE_LINES.get(rule, "my family's rules for me say no.").format(name=self.owner_first_name())
+
+    async def _decline(self, enc: str, listing_id: str, rule: str, reason: str, why: str) -> Decline:
+        """Buyer side: say no (the bubble names the rule, never an amount) and tell the seller's agent."""
+        self._peer(enc)["declined"] = {"rule": rule, "reason": reason}
+        line = await self.say(enc, "buyer", "decline", w.t_decline(self.pet, why))
+        return Decline(encounter_id=enc, listing_id=listing_id, rule=rule, reason=reason, line=line)
+
+    async def _refused(self, enc: str, listing_id: str, e: Base44Error) -> Decline:
+        """createProposal said no after the TradeAck: my parent's rules changed meanwhile (pet_rules tag), or the
+        listing did. The "Trade proposal!" / "over to the humans" bubbles go; my decline says why."""
+        self.transcripts[enc] = [t for t in self.transcripts.get(enc, []) if t["kind"] not in NO_TRADE_KINDS]
+        m = PET_RULES_RX.search(str(e))
+        if m:
+            rule, reason = m.group(1), m.group(2).strip()
+            return await self._decline(enc, listing_id, rule, reason, self.rule_line(rule))
+        code = e.code if e.code in REFUSAL_LINES else "not_eligible"
+        return await self._decline(enc, listing_id, "", code, REFUSAL_LINES[code])
+
     async def on_propose(self, msg: ProposeTrade) -> TradeAck:
         """Seller side re-checks that the listing is still live and at that price (B re-validates again)."""
         enc = msg.encounter_id
@@ -676,22 +870,23 @@ class ClosetBrain:
         line = await self.say(enc, "seller", "ack", w.t_ack(self.pet))
         return TradeAck(encounter_id=enc, listing_id=msg.listing_id, ok=True, line=line)
 
-    async def on_ack(self, msg: TradeAck) -> Optional[Dict[str, Any]]:
-        """Buyer side creates the proposal (B re-validates every rule and derives the seller from the listing)."""
+    async def on_ack(self, msg: TradeAck) -> Optional[Any]:
+        """Buyer side creates the proposal (B re-validates every rule and derives the seller from the listing).
+        Returns the proposal; a Decline for the seller's agent when B refused it (it then ends the encounter or asks
+        the other way round); None when the fallback takes over."""
         enc = msg.encounter_id
         self.heard(enc, "seller", "ack" if msg.ok else "decline", msg.line)
         if not msg.ok:
             await self._no_match(enc)
             return None
         seller = await self._peer_id(enc)
-        transcript = [dict(t) for t in self.transcripts.get(enc, [])]
-        for t in transcript:
-            if not t["parentId"]:
-                t["parentId"] = seller or ""
+        transcript = self._app_transcript(enc, seller)
         # B's fit reason ("Jo's little one fits it for about 4 more weeks."); empty → B writes its own reasonLine.
         reason = self._peer(enc).get("reason") or ""
+        # agentLog: the whole protocol conversation, stored on Encounter.agentLog by agentApi (no extra call).
         args: Dict[str, Any] = dict(listingId=msg.listing_id, buyerId=self.parent_id, encounterId=enc, reason=reason,
-                                    transcript=transcript, source="fetch")
+                                    transcript=transcript, source="fetch", agentLog=self.protocol_log(enc),
+                                    negotiatedBy="fetch")
         if seller:
             args["sellerId"] = seller
         try:
@@ -699,15 +894,24 @@ class ClosetBrain:
         except Base44Error as e:
             log.warning("createProposal: %s", e)
             if e.code in ("not_eligible", "already_open", "not_resellable"):
-                await self._no_match(enc)
+                return await self._refused(enc, msg.listing_id, e)  # sent to the seller's agent: it ends the talk
             return None  # anything else (rate limit, encounter already proposed): C's 8 s fallback takes over
         self._peer(enc)["done"] = True
         if isinstance(prop, dict) and prop.get("id"):
             self.props[prop["id"]] = prop
+            self._show_log(enc, f"proposal {prop.get('id')}")
         return prop
 
-    async def on_relay(self, msg: Any) -> Any:
-        """One RelayProtocol message in → the reply to send back (or None)."""
+    async def on_relay(self, msg: Any, sender: Optional[str] = None) -> Any:
+        """One RelayProtocol message in (from `sender`) → the reply to send back to it (or None).
+        Both go into the protocol log; a retried call logs nothing twice."""
+        self.note_received(msg, sender)
+        out = await self._dispatch(msg)
+        if out is not None:
+            self.note_sent(out, sender)
+        return out
+
+    async def _dispatch(self, msg: Any) -> Any:
         if isinstance(msg, LookingFor):
             return await self.on_looking_for(msg)
         if isinstance(msg, HaveListings):
@@ -717,8 +921,10 @@ class ClosetBrain:
         if isinstance(msg, ProposeTrade):
             return await self.on_propose(msg)
         if isinstance(msg, TradeAck):
-            await self.on_ack(msg)
-            return None
+            out = await self.on_ack(msg)
+            return out if isinstance(out, Decline) else None
+        if isinstance(msg, Decline):
+            return await self.on_decline(msg)
         return None
 
     # ----- housekeeping ------------------------------------------------------
@@ -747,7 +953,8 @@ class ClosetBrain:
 # ---------------------------------------------------------------------------
 
 def build_agent(parent: str, port: int, client: Base44Client, parent_id: str, app_url: str, seed: Optional[str] = None,
-                poll_s: Optional[float] = None, asi_open: Optional[bool] = None, max_age_s: Optional[float] = None) -> Agent:
+                poll_s: Optional[float] = None, asi_open: Optional[bool] = None, max_age_s: Optional[float] = None,
+                inbox_types: Optional[Sequence[str]] = AGENT_INBOX_TYPES) -> Agent:
     team_secret = os.environ.get("TEAM_SECRET", "dev")
     agent = Agent(
         name=f"{parent}-closet",
@@ -761,17 +968,24 @@ def build_agent(parent: str, port: int, client: Base44Client, parent_id: str, ap
     )
     brain = ClosetBrain(client, parent, parent_id, app_url, peer_wait_s=20.0)
     attach(agent, brain, poll_s=poll_s if poll_s is not None else float(os.environ.get("POLL_S", "10")),
-           asi_open=asi_open, max_age_s=max_age_s)
+           asi_open=asi_open, max_age_s=max_age_s, inbox_types=inbox_types)
+
+    @agent.on_event("shutdown")
+    async def _close(ctx: Context):  # no "Unclosed client session" on Ctrl+C
+        await client.close()
+
     return agent
 
 
 def attach(agent: Agent, brain: ClosetBrain, *, inbox: Optional[InboxSource] = None, poll_s: float = 1.0,
            recheck_s: float = 60.0, register: bool = True, publish_manifest: bool = True,
            address_book: Optional[Dict[str, str]] = None, send_lines: bool = True,
-           asi_open: Optional[bool] = None, max_age_s: Optional[float] = None) -> None:
+           asi_open: Optional[bool] = None, max_age_s: Optional[float] = None,
+           inbox_types: Optional[Sequence[str]] = AGENT_INBOX_TYPES) -> None:
     """Wire a brain into an Agent.
 
     inbox:        where rows come from (default: this agent's own claimInbox; live_bureau passes a shared InboxHub)
+    inbox_types:  which AgentInbox rows the default source claims (default: "encounter" only; None = every type)
     recheck_s:    lookupParent re-check period (0 = off; also off when PARENT_ID_<NAME> pins the id)
     address_book: parent id → agent address of agents in the same process (beats a stale Parent.agentAddress)
     send_lines:   False = don't call sendImessage (lines only go to ASI:One / the log)
@@ -789,16 +1003,31 @@ def attach(agent: Agent, brain: ClosetBrain, *, inbox: Optional[InboxSource] = N
     asi_users: Dict[str, str] = {}  # ASI:One sender address → parent id (only our own parent binds here)
     last_sender: Dict[str, str] = {}  # "asi": the CLAIMED owner's ASI:One address (gets every line); "text": dedupe
     backlog: Deque[Dict[str, Any]] = deque()
-    source: InboxSource = inbox or (lambda: brain.client.claim_inbox(brain.parent_id, agent.address))
+    brain.address = agent.address
+    types = tuple(inbox_types) if inbox_types is not None else None
+    # Event rows are the TypeScript side's (it texts the parent). A claimed ASI:One owner still gets the trade cards:
+    # while one is linked, the same claimInbox call also PEEKS at this parent's newer event rows (never claims them),
+    # and the agent mirrors them to ASI:One only — no second iMessage.
+    mirror_events = inbox is None and types is not None and "event" not in types
+    peek: Dict[str, Any] = {"since": _now_iso(), "seen": deque(maxlen=200)}
 
-    async def deliver(ctx: Context, replies: List[Reply]) -> None:
-        """iMessage (+ the in-app pet's PetLine) always; ASI:One too if someone claimed this parent."""
+    async def _own_source() -> List[Dict[str, Any]]:
+        if mirror_events and last_sender.get("asi"):
+            return await brain.client.claim_inbox(brain.parent_id, agent.address, types=types,
+                                                  peek_types=("event",), peek_since=peek["since"])
+        return await brain.client.claim_inbox(brain.parent_id, agent.address, types=types)
+
+    source: InboxSource = inbox or _own_source
+
+    async def deliver(ctx: Context, replies: List[Reply], asi_only: bool = False) -> None:
+        """iMessage (+ the in-app pet's PetLine) always; ASI:One too if someone claimed this parent.
+        asi_only: a mirrored event row the TypeScript side already texts → ASI:One only."""
         for r in replies:
             if r.text == last_sender.get("text"):  # two events in one tick → say it once
                 continue
             last_sender["text"] = r.text
-            ctx.logger.info(f"→ {brain.parent_name}: {r.text}")
-            if send_lines:
+            ctx.logger.info(f"→ {brain.parent_name}{' (ASI:One)' if asi_only else ''}: {r.text}")
+            if send_lines and not asi_only:
                 try:
                     await brain.client.send_imessage(brain.parent_id, r.text, r.image_url)
                 except Base44Error as e:
@@ -813,7 +1042,8 @@ def attach(agent: Agent, brain: ClosetBrain, *, inbox: Optional[InboxSource] = N
         if not register:
             return
         try:
-            await brain.client.register_agent(brain.parent_id, agent.address)
+            await with_backoff(lambda: brain.client.register_agent(brain.parent_id, agent.address), "registerAgent",
+                               attempts=4, say=ctx.logger.warning)
         except Base44Error as e:
             ctx.logger.warning(f"registerAgent: {e} (B's seed can copy the address instead)")
 
@@ -842,6 +1072,18 @@ def attach(agent: Agent, brain: ClosetBrain, *, inbox: Optional[InboxSource] = N
         while backlog:
             row = backlog[0]
             age = row_age_s(row)
+            if row.get("peek"):  # a mirrored event: ASI:One only, never completed (the TypeScript side owns the row)
+                backlog.popleft()
+                peek["since"] = max(peek["since"], str(row.get("createdAt") or ""))
+                if row.get("id") in peek["seen"]:
+                    continue
+                peek["seen"].append(row.get("id"))
+                if last_sender.get("asi") and not (max_age_s and age is not None and age > max_age_s):
+                    try:
+                        await deliver(ctx, await brain.event(row.get("payload") or {}, age_s=age), asi_only=True)
+                    except Exception as e:  # noqa: BLE001 — a mirror line is best effort
+                        ctx.logger.warning(f"ASI:One mirror {row.get('id')}: {type(e).__name__}: {e}")
+                continue
             try:
                 if max_age_s and age is not None and age > max_age_s:
                     # Left over from while the agent was off (no RESET): "tap to pay" for a trade paid an hour ago,
@@ -867,9 +1109,9 @@ def attach(agent: Agent, brain: ClosetBrain, *, inbox: Optional[InboxSource] = N
         elif kind == "event":
             await deliver(ctx, await brain.event(p, age_s=age))
         elif kind == "encounter":
-            opening = await brain.open_encounter(p)
             peer = p.get("peer") or {}
             addr = (address_book or {}).get(peer.get("parentId", "")) or peer.get("agentAddress")
+            opening = await brain.open_encounter(p, peer_address=addr)
             if opening is not None and addr:
                 await ctx.send(addr, opening)
             elif opening is not None:
@@ -879,7 +1121,7 @@ def attach(agent: Agent, brain: ClosetBrain, *, inbox: Optional[InboxSource] = N
     async def _reply(ctx: Context, sender: str, msg: Any) -> None:
         for attempt in range(2):
             try:
-                out = await brain.on_relay(msg)
+                out = await brain.on_relay(msg, sender)
                 break
             except RateLimited as e:  # wait the pause out once; after that C's 8 s fallback owns the encounter
                 if attempt:
@@ -891,10 +1133,9 @@ def attach(agent: Agent, brain: ClosetBrain, *, inbox: Optional[InboxSource] = N
 
     @relay.on_message(model=LookingFor, replies={HaveListings, NoFit, LookingFor})
     async def _looking(ctx: Context, sender: str, msg: LookingFor):
-        brain._peer(msg.encounter_id).setdefault("agentAddress", sender)
-        await _reply(ctx, sender, msg)
+        await _reply(ctx, sender, msg)  # on_relay records the sender's address for this encounter
 
-    @relay.on_message(model=HaveListings, replies={ProposeTrade, NoFit})
+    @relay.on_message(model=HaveListings, replies={ProposeTrade, NoFit, Decline})
     async def _have(ctx: Context, sender: str, msg: HaveListings):
         await _reply(ctx, sender, msg)
 
@@ -908,9 +1149,11 @@ def attach(agent: Agent, brain: ClosetBrain, *, inbox: Optional[InboxSource] = N
 
     @relay.on_message(model=TradeAck)
     async def _ack(ctx: Context, sender: str, msg: TradeAck):
-        prop = await brain.on_ack(msg)
-        if prop:
-            ctx.logger.info(f"proposal {prop.get('id')} created for encounter {msg.encounter_id}")
+        await _reply(ctx, sender, msg)  # logged, then on_ack creates the proposal (a Decline goes back if B refused)
+
+    @relay.on_message(model=Decline)
+    async def _decline(ctx: Context, sender: str, msg: Decline):
+        await _reply(ctx, sender, msg)  # the buyer's pet rules said no: ask the other way round, or end with noMatch
 
     # ---- Chat protocol / ASI:One (Part C §8) -------------------------------
     @chat.on_message(ChatMessage)
@@ -969,7 +1212,7 @@ async def resolve_parent_id(client: Base44Client, parent: str) -> str:
     if env:
         return env
     try:
-        r = await client.lookup_parent(parent)
+        r = await with_backoff(lambda: client.lookup_parent(parent), f"lookupParent {parent}")  # a 429 waits, never exits
         return r["id"]
     except Exception as e:  # noqa: BLE001
         log.warning("lookupParent failed (%s); using name as id — set PARENT_ID_%s", e, parent.upper())
@@ -1000,7 +1243,8 @@ def main() -> None:
     asyncio.set_event_loop(asyncio.new_event_loop())  # uAgents needs a current loop after asyncio.run()
     agent = build_agent(a.parent, a.port or PARENT_PORTS[a.parent], Base44Client(cfg["BASE44_URL"], cfg.get("AGENT_KEY", ""), budget=budget),
                         parent_id, cfg["APP_URL"], seed=seed_for(a.parent, cfg["TEAM_SECRET"]), poll_s=float(cfg["POLL_S"]),
-                        asi_open=cfg.get("ASI_OPEN") == "1", max_age_s=float(cfg.get("INBOX_MAX_AGE_S") or INBOX_MAX_AGE_S))
+                        asi_open=cfg.get("ASI_OPEN") == "1", max_age_s=float(cfg.get("INBOX_MAX_AGE_S") or INBOX_MAX_AGE_S),
+                        inbox_types=inbox_types_from(cfg.get("INBOX_TYPES")))
     print(f"\n=== {agent.name} ===\naddress: {agent.address}\nparentId: {parent_id}\n")
     agent.run()
 

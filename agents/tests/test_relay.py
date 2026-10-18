@@ -17,7 +17,7 @@ from base44_client import Base44Error  # noqa: E402
 from closet_agent import ClosetBrain  # noqa: E402
 from intents import intent_from_card, parse_card_reply, parse_claim, parse_condition, parse_intent  # noqa: E402
 from mock_base44 import DEFAULT_IDS, MockBase44  # noqa: E402
-from relay_protocol import HaveListings, LookingFor, NoFit, ProposeTrade, TradeAck  # noqa: E402
+from relay_protocol import Decline, HaveListings, LookingFor, NoFit, ProposeTrade, TradeAck  # noqa: E402
 
 JO_FIRST = {"mina": DEFAULT_IDS["jo"], "jo": DEFAULT_IDS["mina"]}  # swap ids → Jo's pet opens the encounter
 
@@ -136,8 +136,11 @@ def test_nudge_to_listing(app, brains):
     out = run(mina.event(ev))
     assert "getting snug" in out[0].text and out[0].card[0] == "detail"
     assert "photo" in run(mina.owner_message("sell it"))[0].text
-    assert "gently used" in run(mina.owner_message("", ["https://x/photo.jpg"]))[0].text
-    assert run(mina.owner_message("yes"))[0].text == "Listed at $18.00 — 2nd owner pays 60% of $30.00."
+    quote = run(mina.owner_message("", ["https://x/photo.jpg"]))[0].text  # the live app's quote: item, condition, price
+    assert quote == w.quote("Yellow duck romper", "gently_used", 1800, 3000, 1, "A little fading on the collar.")
+    assert "Fair price $18.00 (2nd owner pays 60% of $30.00)" in quote
+    assert "like new" in run(mina.owner_message("like new"))[0].text  # a different condition: quoted again, same price
+    assert run(mina.owner_message("yes"))[0].text == w.listed_now("Yellow duck romper", 1800, 3000, 1)
     listing = next(iter(app.listings.values()))
     assert listing["priceCents"] == 1800 and listing["shared"] and app.items["romper"]["status"] == "listed"
     assert app.items["romper"]["photos"][0] == "https://x/photo.jpg"
@@ -319,8 +322,13 @@ def test_refused_proposal_ends_the_encounter(app, brains):
     brains["jo"]._peer(enc)["parentId"] = app.id("mina")
     app.needs.clear()  # Jo's need disappears mid-talk → B: not_eligible
     lid = next(iter(app.listings))
-    assert run(brains["jo"].on_ack(TradeAck(encounter_id=enc, listing_id=lid, ok=True))) is None
-    assert app.encounters[enc]["status"] == "no_match" and not app.proposals
+    out = run(brains["jo"].on_ack(TradeAck(encounter_id=enc, listing_id=lid, ok=True)))
+    assert isinstance(out, Decline) and out.rule == "" and out.reason == "not_eligible"
+    assert out.line == "Pip: Not this one — that listing doesn't fit any more."
+    assert run(brains["mina"].on_relay(out)) is None  # the seller's agent ends it (Mina has no need to ask about)
+    e = app.encounters[enc]
+    assert e["status"] == "no_match" and not app.proposals and "noMatchReason" not in e
+    assert [t["kind"] for t in e["transcript"]][-1] == "decline"
 
 
 def test_append_turns_off_still_sends_the_whole_transcript(app):
@@ -355,11 +363,13 @@ def test_accept_pay_and_welcome(app, brains):
     assert run(mina.owner_message("accept")) == []
     assert app.proposals[prop["id"]]["status"] == "both_accepted"
     jo_pay = run(jo.event(events(app, "jo", "proposal:updated")[0]))[0]
-    assert jo_pay.text == f"Both of you said yes! Tap to pay (demo payment · no real charge): http://app/trade/{prop['id']}?as=jo"
+    assert jo_pay.text == w.approve_in_app(f"http://app/trade/{prop['id']}?as=jo")  # never a pay-by-text link
+    assert "Approve the payment in the app" in jo_pay.text and "demo payment · no real charge" in jo_pay.text
     assert jo_pay.card[1]["title"] == "Demo payment · no real charge"
     assert texts(run(mina.event(events(app, "mina", "proposal:updated")[0]))) == ["You accepted! Waiting on the buyer to pay now."]
     pay = run(jo.owner_message("pay"))
-    assert "demo payment" in pay[0].text and prop["id"] in pay[0].text and "?as=jo" in pay[0].text
+    assert pay[0].text == w.pay_in_app(f"http://app/trade/{prop['id']}?as=jo")
+    assert app.proposals[prop["id"]]["status"] == "both_accepted"  # "pay" by text never pays
 
     # ASI:One pay card → payProposal (→ {proposal, item})
     assert run(jo.owner_message("", selection={"action": "pay", "proposal_id": prop["id"]})) == []
@@ -457,7 +467,7 @@ def test_backlogged_both_accepted_is_quiet_once_paid(app, brains):
     prop, both = _both_accepted_then_paid(app, brains)
     assert run(make_brains(app)["jo"].event(both)) == []  # fresh agent: one getState shows it paid
     jo = brains["jo"]  # cached the proposal while it was still open
-    assert "Tap to pay" in run(jo.event(both))[0].text  # a fresh row trusts its payload (no extra call)
+    assert "Approve the payment in the app" in run(jo.event(both))[0].text  # a fresh row trusts its payload (no extra call)
     calls = len(app.calls)
     assert run(jo.event(both, age_s=300)) == []  # an old row is checked first
     assert app.calls[calls:] == ["agentApi:getState"]
@@ -497,3 +507,108 @@ def test_recheck_parent_follows_a_reseed(app, brains):
     assert run(mina.recheck_parent("agent1qmina")) is True
     assert mina.parent_id == new and app.parents[new]["agentAddress"] == "agent1qmina"
     assert mina.directory[new]["pet"] == "Button"
+
+
+# ---- "yes" after a proposal, and the ASI:One pay card -------------------------------------
+
+def test_plain_yes_after_a_proposal_accepts_like_the_app(app, brains):
+    jo = brains["jo"]
+    prop = trade(app, brains)
+    assert "found a match" in run(jo.event(events(app, "jo", "proposal:new")[0]))[0].text
+    assert run(jo.owner_message("yes")) == []
+    assert app.proposals[prop["id"]]["buyerDecision"] == "accepted" and app.proposals[prop["id"]]["status"] == "open"
+    assert texts(run(jo.owner_message("yes"))) == [w.unknown()]  # answered: a second "yes" doesn't guess
+
+
+def test_asi_pay_card_with_face_id_required_points_to_the_app(app, brains):
+    jo, mina = brains["jo"], brains["mina"]
+    prop = trade(app, brains)
+    run(app._api("decideProposal", {"proposalId": prop["id"], "parentId": app.id("mina"), "decision": "accepted"}))
+    run(app._api("decideProposal", {"proposalId": prop["id"], "parentId": app.id("jo"), "decision": "accepted"}))
+    app.parents[app.id("jo")]["mandate"] = {"requirePasskey": True}  # Jo saved a passkey: every payment needs Face ID
+    calls = len(app.calls)
+    out = run(jo.owner_message("", selection={"action": "pay", "proposal_id": prop["id"]}))
+    link = f"http://app/trade/{prop['id']}?as=jo"
+    assert texts(out) == [w.approve_in_app(link, face_id=True)]
+    assert "Face ID" in out[0].text and "listing is back up" not in out[0].text
+    assert app.calls[calls:].count("agentApi:payProposal") == 1  # never retried
+    assert app.proposals[prop["id"]]["status"] == "both_accepted" and app.items["romper"]["status"] == "pending_trade"
+
+
+def test_asi_pay_card_after_expiry_says_expired(app, brains):
+    prop = trade(app, brains)
+    for who in ("mina", "jo"):
+        run(app._api("decideProposal", {"proposalId": prop["id"], "parentId": app.id(who), "decision": "accepted"}))
+    real = app._pay
+
+    def expired(a):
+        raise Base44Error("payProposal: expired: This offer timed out.", status=409, code="expired")
+
+    app._pay = expired
+    assert texts(run(brains["jo"].owner_message("", selection={"action": "pay", "proposal_id": prop["id"]}))) == [w.expired()]
+    app._pay = real
+
+
+# ---- the buyer's pet rules (B5's mandate) stop a trade before anyone says "Trade proposal!" ----------
+
+def jo_rules(app, **m):
+    app.parents[app.id("jo")]["mandate"] = m
+
+
+@pytest.mark.parametrize("ids", [None, JO_FIRST])
+def test_pet_rules_stop_the_trade_and_say_why(ids):
+    app = MockBase44(ids=ids)
+    brains = make_brains(app)
+    list_romper(app, brains)
+    jo_rules(app, maxPriceCents=1000)  # Jo's price limit for Pip: $10 (the romper is $18.00)
+    wire_log.clear()
+    enc = converse(app, brains, "mina", "jo")
+    e = app.encounters[enc]
+    assert not app.proposals and e["status"] == "no_match" and e["negotiatedBy"] == "fetch"
+    assert e["noMatchReason"] == "It costs more than the price limit Jo set for Pip."
+    assert [type(m).__name__ for m in wire_log][-1] == "Decline" and "ProposeTrade" not in [type(m).__name__ for m in wire_log]
+    texts_ = [t["text"] for t in e["transcript"]]
+    assert texts_[-1] == "Pip: Not this one — it's over the price limit Jo set for me."
+    assert not [t for t in e["transcript"] if t["kind"] in ("propose", "ack", "fit_check")]
+    assert not any("Trade proposal" in t or "over to the humans" in t or "Nothing in my closet" in t for t in texts_)
+    assert e["agentLog"][-1]["type"] == "Decline"
+    assert e["agentLog"][-1]["summary"] == "Declines: over the price limit the buyer set for their pet. Nothing was proposed."
+    blob = json.dumps(e["agentLog"])
+    assert "$10" not in blob and "1000" not in blob and "Jo" not in blob  # the log never names anyone or a limit
+    assert "$10" not in json.dumps([m.dict() for m in wire_log])  # the buyer's limit never travels
+
+
+def test_pet_rules_pick_the_listing_the_rules_allow(app, brains):
+    list_romper(app, brains)
+    jo_rules(app, categories=["top"])  # Pip may only look for tops: the romper (onesie) is out
+    enc = converse(app, brains, "mina", "jo")
+    assert app.encounters[enc]["noMatchReason"] == "It isn't one of the kinds of clothes Jo asked Pip to look for."
+    jo_rules(app)  # rules back to the defaults → the same walk proposes
+    enc2 = converse(app, brains, "mina", "jo")
+    assert app.encounters[enc2]["status"] == "proposed" and len(app.proposals) == 1
+
+
+def test_rules_that_change_after_the_ack_take_back_the_proposal_bubbles(app, brains):
+    """Race: the fit said yes, then Jo lowered the limit before createProposal. B refuses (pet_rules tag); the
+    "Trade proposal!" / "over to the humans" bubbles go, Pip says the rule, Mina's agent ends the talk."""
+    list_romper(app, brains)
+    jo = brains["jo"]
+    real_fit = app.fit
+
+    async def fit_then_rules_change(**a):
+        out = await real_fit(**a)
+        jo_rules(app, monthlyBudgetCents=1000)
+        return out
+
+    app.fit = fit_then_rules_change
+    wire_log.clear()
+    enc = converse(app, brains, "mina", "jo")
+    names = [type(m).__name__ for m in wire_log]
+    assert names[-3:] == ["ProposeTrade", "TradeAck", "Decline"]
+    e = app.encounters[enc]
+    assert e["status"] == "no_match" and not app.proposals
+    assert e["noMatchReason"] == "It would go over Jo's monthly budget for Pip."
+    assert [t["kind"] for t in e["transcript"]][-1] == "decline" and not [t for t in e["transcript"] if t["kind"] in ("propose", "ack")]
+    assert e["transcript"][-1]["text"] == "Pip: Not this one — it would go over Jo's monthly budget for me."
+    assert [x["type"] for x in e["agentLog"]][-3:] == ["ProposeTrade", "TradeAck", "Decline"]
+    assert jo._peer(enc)["declined"]["rule"] == "over_budget"

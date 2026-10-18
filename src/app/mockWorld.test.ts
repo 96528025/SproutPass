@@ -20,8 +20,10 @@ import {
   updatePresence as cUpdatePresence,
 } from "../../base44/shared/c/location.ts";
 import type { ClothingItem, Encounter, MatchProposal } from "./types";
-import { createMockWorld, type MockWorld, mockWorldTiming, talkMs } from "./mockWorld";
-import { mockApi } from "./api.mock";
+import {
+  createMockWorld, mockAgentAddress, mockAgentLog, type MockWorld, mockWorldTiming, RULE_PHRASE, rulesPhraseOf, talkMs,
+} from "./mockWorld";
+import { mockApi, mockDev } from "./api.mock";
 
 let db: FakeDb;
 let ids: { mina: string; jo: string; sam: string };
@@ -356,6 +358,217 @@ describe("demo walk → encounter → proposal", () => {
   });
 });
 
+describe("the mock agents' protocol log (Agent Console)", () => {
+  /** Nothing the agents say may name a parent or child, or carry a phone, a place or a date. */
+  const PRIVATE = /\b(Mina|Jo|Sam|Bean|Pea|Sprout)\b|\+\d{6,}|\b\d{3}[ .-]?\d{3}[ .-]?\d{4}\b|"lat"|"lng"|\d{4}-\d{2}-\d{2}/;
+
+  it("a mock encounter logs the RelayProtocol exchange, labelled mock, with stand-in addresses", async () => {
+    await listRomper();
+    await world.updatePresence({ parentId: ids.mina, ...FIX });
+    await walk(ids.jo, ids.mina);
+    const [enc] = await encounters();
+    expect(enc.status).toBe("proposed");
+    expect(enc.negotiatedBy).toBe("local");
+    const log = enc.agentLog ?? [];
+    expect(log.map((e) => e.type)).toEqual(["LookingFor", "HaveListings", "ProposeTrade", "TradeAck"]);
+    expect(log.every((e) => e.by === "mock")).toBe(true);
+    const jo = mockAgentAddress(ids.jo), mina = mockAgentAddress(ids.mina);
+    expect(jo).toMatch(/^mock1q[qpzry9x8gf2tvdw0s3jn54khce6mua7l]{52}$/);
+    expect(jo).not.toBe(mina);
+    expect(log.map((e) => [e.from, e.to])).toEqual([[jo, mina], [mina, jo], [jo, mina], [mina, jo]]);
+    expect(log[0].summary).toBe("Looking for size 6-9M (top, onesie) for a 7-month-old.");
+    expect(log[1].summary).toBe("1 shared listing fits: Yellow duck romper, size 6-9M, gently used, $18.00.");
+    expect(log[2].summary).toBe("Proposes the Yellow duck romper at $18.00 (60% of $30.00, 2nd owner); fits about 4 more weeks.");
+    expect(log[3].summary).toMatch(/nothing is charged until both/);
+    // real-time stamps in order, believable hops
+    expect(log.every((e, i) => i === 0 || Date.parse(e.at) > Date.parse(log[i - 1].at))).toBe(true);
+    expect(log.every((e) => e.ms! >= 140 && e.ms! <= 520)).toBe(true);
+    expect(JSON.stringify(log.map(({ summary, type }) => ({ summary, type })))).not.toMatch(PRIVATE);
+    expect(JSON.stringify(log)).not.toMatch(/agent1q/); // never posing as a Fetch address
+  });
+
+  it("in the browser the messages arrive one by one while the pets talk, and stay after the proposal", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    mockWorldTiming.instant = false;
+    // Everything a console watching would see: the fallback's template log never shows up on a mock encounter.
+    const seen: string[] = [];
+    const off = db._on((e) => {
+      if (e.entity === "Encounter") seen.push(...((e.data as Encounter).agentLog ?? []).map((x) => x.by));
+    });
+    await listRomper();
+    await world.updatePresence({ parentId: ids.mina, ...FIX });
+    await walk(ids.jo, ids.mina);
+    const [talking] = await encounters();
+    expect(talking.status).toBe("talking");
+    expect(talking.agentLog ?? []).toEqual([]);
+    await vi.advanceTimersByTimeAsync(520);
+    await flush();
+    const first = (await encounters())[0].agentLog ?? [];
+    expect(first.length).toBeGreaterThanOrEqual(1);
+    expect(first.length).toBeLessThan(4);
+    await vi.advanceTimersByTimeAsync(talkMs(talking.transcript) + 100);
+    await flush();
+    const [enc] = await encounters();
+    expect(enc.status).toBe("proposed");
+    expect(enc.agentLog?.map((e) => e.type)).toEqual(["LookingFor", "HaveListings", "ProposeTrade", "TradeAck"]);
+    expect(enc.agentLog?.every((e) => e.by === "mock")).toBe(true);
+    off();
+    expect(seen.length).toBeGreaterThan(0);
+    expect(new Set(seen)).toEqual(new Set(["mock"]));
+  });
+
+  it("nothing fits → LookingFor then NoFit, from the side that opened", async () => {
+    await listRomper();
+    await walk(ids.sam, ids.mina);
+    const [enc] = await encounters();
+    expect(enc.status).toBe("no_match");
+    const opener = ids.sam < ids.mina ? ids.sam : ids.mina;
+    const other = opener === ids.sam ? ids.mina : ids.sam;
+    expect(enc.agentLog?.map((e) => [e.type, e.from, e.to])).toEqual([
+      ["LookingFor", mockAgentAddress(opener), mockAgentAddress(other)],
+      ["NoFit", mockAgentAddress(other), mockAgentAddress(opener)],
+    ]);
+    expect(JSON.stringify(enc.agentLog)).not.toMatch(/\b(Mina|Sam|Bean|Sprout)\b/);
+  });
+
+  it("mockAgentLog is pure: same context, same messages and latencies", () => {
+    const ctx = {
+      encounterId: "e1", buyerId: "b", sellerId: "s", needs: [{ sizes: ["2T"] }], childAgeMonths: 26, fits: 2,
+      match: { itemName: "Rain boots", size: "2T", priceCents: 1200, originalPriceCents: 3000, previousOwners: 2 },
+    };
+    const a = mockAgentLog(ctx);
+    expect(a).toEqual(mockAgentLog(ctx));
+    expect(a[1].summary).toBe("2 shared listings fit: Rain boots, size 2T, $12.00.");
+    expect(a[2].summary).toBe("Proposes the Rain boots at $12.00 (40% of $30.00, 3rd owner).");
+    expect(mockAgentLog({ ...ctx, needs: [], childAgeMonths: null, fits: 0, match: undefined }).map((e) => e.type))
+      .toEqual(["LookingFor", "NoFit"]);
+    const declined = mockAgentLog({ ...ctx, declined: { rule: "over_budget", phrase: RULE_PHRASE.over_budget } });
+    expect(declined.map((e) => [e.type, e.from])).toEqual([
+      ["LookingFor", mockAgentAddress("b")], ["HaveListings", mockAgentAddress("s")], ["Decline", mockAgentAddress("b")],
+    ]);
+    expect(rulesPhraseOf(declined[2].summary)).toBe("over the monthly budget");
+  });
+});
+
+describe("the buyer's pet rules say no (B5's mandate, checked by createProposal)", () => {
+  /** Jo's pet may only propose up to $10.00: the $18.00 romper is over the limit. */
+  const lowLimit = () => db.Parent.update(ids.jo, {
+    mandate: { agentMayPropose: true, maxPriceCents: 1000, monthlyBudgetCents: 10_000, categories: [], requirePasskey: false },
+  });
+
+  it("the buyer's agent declines instead of proposing; its own pet says why; the log never claims a deal", async () => {
+    const romper = await listRomper();
+    await lowLimit();
+    await world.updatePresence({ parentId: ids.mina, ...FIX });
+    await walk(ids.jo, ids.mina);
+    const [enc] = await encounters();
+    expect(enc.status).toBe("no_match");
+    expect(await proposals()).toEqual([]);
+    expect((await db.ClothingItem.get(romper.id)).status).not.toBe("pending_trade"); // still Mina's, still listed
+    // the pets (C's lines): no "Trade proposal!", no "over to the humans", no "nothing fits"; Jo's pet says why not
+    const kinds = enc.transcript.map((t) => t.kind);
+    expect(kinds).not.toContain("propose");
+    expect(kinds).not.toContain("ack");
+    expect(kinds).not.toContain("no_fit");
+    expect(enc.transcript.at(-1)).toMatchObject({ kind: "decline", parentId: ids.jo });
+    // the protocol: no ProposeTrade / TradeAck, a Decline from Jo's agent that names the rule (not the limit)
+    const log = enc.agentLog ?? [];
+    expect(log.map((e) => [e.type, e.from, e.by])).toEqual([
+      ["LookingFor", mockAgentAddress(ids.jo), "mock"],
+      ["HaveListings", mockAgentAddress(ids.mina), "mock"],
+      ["Decline", mockAgentAddress(ids.jo), "mock"],
+    ]);
+    expect(log[2].summary).toBe("Won't propose it (the buyer's pet rules: over the price limit). Nothing was proposed or charged.");
+    expect(rulesPhraseOf(log[2].summary)).toBe("over the price limit");
+    expect(JSON.stringify(log)).not.toMatch(/\b(Mina|Jo|Sam|Bean|Pea|Sprout)\b|\$10\.00/);
+    // asking again (another tick) changes nothing
+    await world.updatePresence({ parentId: ids.mina, ...FIX });
+    const again = (await encounters())[0];
+    expect(again.agentLog).toEqual(enc.agentLog);
+    expect(again.transcript).toEqual(enc.transcript);
+  });
+
+  it("in the browser the decline goes up at once, before any trade line is typed", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    mockWorldTiming.instant = false;
+    await listRomper();
+    await lowLimit();
+    await world.updatePresence({ parentId: ids.mina, ...FIX });
+    await walk(ids.jo, ids.mina);
+    const [enc] = await encounters(); // no timers have run: decided on the meeting tick
+    expect(enc.status).toBe("no_match");
+    expect(enc.transcript.map((t) => t.kind)).not.toContain("propose");
+    expect(enc.transcript.at(-1)?.kind).toBe("decline");
+    expect(enc.agentLog?.map((e) => e.type)).toEqual(["LookingFor", "HaveListings", "Decline"]);
+    await vi.advanceTimersByTimeAsync(15_000);
+    await flush();
+    expect(await proposals()).toEqual([]);
+    expect((await encounters())[0].agentLog?.map((e) => e.type)).toEqual(["LookingFor", "HaveListings", "Decline"]);
+  });
+
+  it("a pet that may only point out matches declines too, saying so", async () => {
+    await listRomper();
+    await db.Parent.update(ids.jo, {
+      mandate: { agentMayPropose: false, maxPriceCents: 5000, monthlyBudgetCents: 10_000, categories: [], requirePasskey: false },
+    });
+    const met = await world.instantEncounter(ids.jo, ids.mina);
+    expect(met.proposal).toBeNull();
+    expect(met.declined).toMatchObject({ rule: "agent_may_not_propose" });
+    expect(met.encounter?.transcript.at(-1)).toMatchObject({ kind: "decline", parentId: ids.jo });
+    expect(met.encounter?.agentLog?.at(-1)?.summary).toMatch(/pet rules: point out matches only/);
+    expect(met.message).toBe("Stopped by Jo's pet rules: point out matches only, never propose. Nothing was proposed or charged.");
+  });
+});
+
+describe("TRIGGER ENCOUNTER (instantEncounter): the pets meet without the walk", () => {
+  it("a real encounter: the pets' lines, the mock agents' log, then B's proposal for that encounter", async () => {
+    const romper = await listRomper();
+    const met = await world.instantEncounter(ids.jo, ids.mina);
+    const [enc] = await encounters();
+    const [prop] = await proposals();
+    expect(met.proposal?.id).toBe(prop.id);
+    expect(met.encounter?.id).toBe(enc.id);
+    expect(enc).toMatchObject({ aId: ids.jo, bId: ids.mina, band: "<25m", simulated: true, status: "proposed", proposalId: prop.id, negotiatedBy: "local" });
+    expect(prop).toMatchObject({ encounterId: enc.id, buyerId: ids.jo, sellerId: ids.mina, itemId: romper.id, source: "local", status: "open" });
+    expect(enc.transcript.map((t) => t.kind)).toEqual(["looking_for", "have", "fit_check", "propose", "ack"]);
+    expect(prop.transcript).toEqual(enc.transcript); // the trade's "how our pets found this" has the pets' lines
+    expect(enc.agentLog?.map((e) => e.type)).toEqual(["LookingFor", "HaveListings", "ProposeTrade", "TradeAck"]);
+    expect(enc.agentLog?.every((e) => e.by === "mock")).toBe(true);
+    expect(met.message).toBe("Jo's and Mina's pets agreed on the Yellow duck romper. Both parents decide.");
+  });
+
+  it("with talk: the pets say their lines first; it resolves once the proposal lands", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    mockWorldTiming.instant = false;
+    await listRomper();
+    let met: Awaited<ReturnType<MockWorld["instantEncounter"]>> | null = null;
+    const pending = world.instantEncounter(ids.jo, ids.mina, { talk: true }).then((r) => { met = r; });
+    await flush();
+    const [talking] = await encounters();
+    expect(talking.status).toBe("talking");
+    expect(talking.transcript.map((t) => t.kind)).toContain("propose");
+    expect(await proposals()).toEqual([]);
+    expect(met).toBeNull();
+    await vi.advanceTimersByTimeAsync(talkMs(talking.transcript) + 100);
+    await flush();
+    await pending;
+    expect(met!.proposal?.encounterId).toBe(talking.id);
+    expect((await encounters())[0].agentLog?.map((e) => e.type)).toEqual(["LookingFor", "HaveListings", "ProposeTrade", "TradeAck"]);
+  });
+
+  it("nothing fits: an encounter with the no-fit exchange, no proposal, and a plain message", async () => {
+    await listRomper();
+    const met = await world.instantEncounter(ids.sam, ids.mina);
+    expect(met.proposal).toBeNull();
+    expect(met.declined).toBeNull();
+    expect(met.encounter?.status).toBe("no_match");
+    expect(met.encounter?.agentLog?.map((e) => e.type)).toEqual(["LookingFor", "NoFit"]);
+    expect(met.message).toBe("The pets met, but nothing on either shared list fits.");
+    await expect(world.instantEncounter(ids.jo, ids.jo)).rejects.toMatchObject({ code: "bad_request" });
+    await expect(world.instantEncounter(ids.jo, "nope")).rejects.toMatchObject({ code: "not_found" });
+  });
+});
+
 describe("live rules (the Deno functions run the same location.ts)", () => {
   /** Walk Jo in with the core directly (default deps: cbridge findMatches, live waits). Returns the meeting time. */
   async function liveWalk(t0: number) {
@@ -530,5 +743,21 @@ describe("mockApi wiring", () => {
     expect(walked).toMatchObject({ ok: true, distanceM: 120, encounters: [] });
     const view = await mockApi.listNearby({ parentId: jo });
     expect(view.nearby).toMatchObject([{ parentId: mina, band: "100-300m", distanceM: 120 }]);
+  }, 15_000);
+
+  it("the demo panel's TRIGGER ENCOUNTER runs a real encounter (Agent Console, bubbles), not a bare proposal", async () => {
+    await mockApi.demoReset();
+    await mockApi.demoClock({ now: DEMO_DATES.nudge });
+    const closet = await mockApi.getCloset({ parentKey: "mina" });
+    const nudge = closet.nudges.find((n) => n.kind === "outgrow_check")!;
+    const res = await mockApi.resolveNudge({ parentKey: "mina", nudgeId: nudge.id, action: "sell" });
+    await mockApi.listItem({ parentKey: "mina", itemId: res.itemId!, photo: "p.jpg", condition: "gently_used", conditionNote: "", shared: true });
+    await mockApi.demoClock({ now: DEMO_DATES.meet });
+    const p = (await mockDev.triggerEncounter())!;
+    const [enc] = (await mockDev.db.Encounter.list("-startedAt")) as Encounter[];
+    expect(p).toMatchObject({ encounterId: enc.id, status: "open", source: "local" });
+    expect(enc).toMatchObject({ status: "proposed", proposalId: p.id, negotiatedBy: "local" });
+    expect(enc.agentLog?.map((e) => e.type)).toEqual(["LookingFor", "HaveListings", "ProposeTrade", "TradeAck"]);
+    expect(p.transcript.length).toBeGreaterThan(0);
   }, 15_000);
 });

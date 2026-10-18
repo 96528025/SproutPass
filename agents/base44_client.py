@@ -20,7 +20,7 @@ import os
 import re
 import time
 from collections import deque
-from typing import Any, Callable, Deque, Dict, List, Optional
+from typing import Any, Awaitable, Callable, Deque, Dict, List, Optional, Sequence, TypeVar
 
 log = logging.getLogger("base44")
 
@@ -132,6 +132,35 @@ class CallBudget:
         self.strikes = 0
 
 
+T = TypeVar("T")
+
+
+def retryable(e: Base44Error) -> bool:
+    """A 429, a network blip (no status) or a 5xx is worth waiting out; a 4xx (bad key, unknown parent) is not."""
+    return isinstance(e, RateLimited) or e.status is None or e.status >= 500
+
+
+async def with_backoff(call: Callable[[], Awaitable[T]], what: str, *, attempts: int = 8, base_s: float = 15.0,
+                       cap_s: float = 120.0, sleep: Callable[[float], Awaitable[Any]] = asyncio.sleep,
+                       say: Optional[Callable[[str], None]] = None) -> T:
+    """Run `call` until it succeeds; on a 429 / network error / 5xx wait (Retry-After, else 15 → 30 → 60 → 120 s)
+    and try again, at most `attempts` times. Other errors (and the last failure) are raised.
+
+    Used for the runners' startup calls (lookupParent / registerAgent), so a busy rate limit delays the start instead
+    of ending it. Every attempt still goes through the client's CallBudget, so the team's rate budget holds."""
+    for attempt in range(1, attempts + 1):
+        try:
+            return await call()
+        except Base44Error as e:
+            if not retryable(e) or attempt >= attempts:
+                raise
+            wait = getattr(e, "retry_after", None) or min(cap_s, base_s * 2 ** (attempt - 1))
+            note = f"{what}: {'rate limited' if isinstance(e, RateLimited) else e} — retrying in {wait:.0f}s ({attempt}/{attempts})"
+            (say or log.warning)(note)
+            await sleep(wait)
+    raise Base44Error(f"{what}: gave up")  # unreachable (attempts >= 1)
+
+
 class Base44Client:
     def __init__(self, base_url: Optional[str] = None, agent_key: Optional[str] = None, timeout_s: float = 20.0,
                  budget: Optional[CallBudget] = None):
@@ -196,13 +225,23 @@ class Base44Client:
     async def api(self, action: str, **args) -> Any:
         return await self.call("agentApi", {"action": action, **args})
 
-    async def claim_inbox(self, parent_id: Optional[str], agent_address: str, limit: int = 5) -> List[Dict[str, Any]]:
-        """parent_id=None claims the oldest pending rows of EVERY parent (one call for a whole Bureau)."""
+    async def claim_inbox(self, parent_id: Optional[str], agent_address: str, limit: int = 5,
+                          types: Optional[Sequence[str]] = None, peek_types: Optional[Sequence[str]] = None,
+                          peek_since: Optional[str] = None) -> List[Dict[str, Any]]:
+        """parent_id=None claims the oldest pending rows of EVERY parent (one call for a whole Bureau).
+        types=("encounter",) claims only those row types (the rest stay pending for the app's TypeScript side).
+        peek_types=("event",) (with parent_id): in the same call, this parent's newer rows of those types come back
+        too, NOT claimed and marked {"peek": True} (the TypeScript side still answers them on iMessage; the agent
+        only mirrors them to a claimed ASI:One owner). peek_since: only rows created after this ISO time."""
         args: Dict[str, Any] = {"agentAddress": agent_address, "limit": limit}
         if parent_id:
             args["parentId"] = parent_id
-        r = await self.api("claimInbox", **args)
-        return list((r or {}).get("rows") or [])
+        if types:
+            args["types"] = list(types)
+        if peek_types and parent_id:
+            args["peek"] = {"types": list(peek_types), **({"since": peek_since} if peek_since else {})}
+        r = await self.api("claimInbox", **args) or {}
+        return list(r.get("rows") or []) + [{**row, "peek": True} for row in r.get("peeked") or []]
 
     async def complete(self, inbox_id: str) -> None:
         await self.api("complete", inboxId=inbox_id)
@@ -229,8 +268,19 @@ class Base44Client:
     async def create_proposal(self, **args) -> Dict[str, Any]:
         return await self.api("createProposal", **args)
 
-    async def no_match(self, encounter_id: str) -> None:
-        await self.api("noMatch", encounterId=encounter_id)
+    async def no_match(self, encounter_id: str, agent_log: Optional[List[Dict[str, Any]]] = None,
+                       transcript: Optional[List[Dict[str, Any]]] = None, reason: Optional[str] = None) -> None:
+        """The talk ended without a trade. agent_log (the protocol messages) and transcript (the pets' bubbles) ride
+        along, so the app shows the real conversation without another call. reason: why the buyer's pet rules said
+        no (the app's own sentence, no amounts) → Encounter.noMatchReason."""
+        args: Dict[str, Any] = {"encounterId": encounter_id, "negotiatedBy": "fetch"}
+        if agent_log:
+            args["agentLog"] = agent_log
+        if transcript:
+            args["transcript"] = transcript
+        if reason:
+            args["reason"] = reason
+        await self.api("noMatch", **args)
 
     async def append_turn(self, encounter_id: str, turn: Dict[str, Any]) -> None:
         await self.api("appendTurn", encounterId=encounter_id, turn=turn)

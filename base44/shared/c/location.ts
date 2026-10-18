@@ -41,7 +41,10 @@ import {
 } from "./geo.ts";
 import { tl } from "./wording.ts";
 import { callB, findMatches as bFindMatches } from "../cbridge.ts";
+import { getNow } from "../db.ts";
 import { bad, notFound } from "../errors.ts";
+import { checkMandate, type MandateRule, mandateOf, monthTotals } from "../logic/trust.ts";
+import type { AgentLogEntry, Category } from "../types.ts";
 
 /** No Fetch agents on duty: the local fallback starts the pets' talk 8 s after the meeting. */
 export const FALLBACK_AFTER_MS = 8_000;
@@ -73,6 +76,8 @@ export interface LocalMatch {
   itemName: string;
   size: string;
   priceCents: number;
+  /** The item's category (cbridge sends it): the buyer's "kinds of clothes" rule needs it. */
+  category?: string;
   wearWeeksLeft?: number;
   reason?: string;
 }
@@ -389,6 +394,205 @@ export async function detectEncounters(
   return result;
 }
 
+// ---------------------------------------------------------------- the negotiation log (Encounter.agentLog)
+//
+// Every encounter says who negotiated it (negotiatedBy) and what was said, as AgentLogEntry rows (types.ts):
+//   - the Fetch.ai agents send their whole RelayProtocol log with the createProposal / noMatch call that ends the talk
+//     (agentApi → encounter.ts proposeFromAgents / noMatchFromAgents): by "fetch", from/to = their agent1q… addresses;
+//   - C's local fallback (below) writes the same shape for its template talk: by "fallback", from/to "fallback".
+// The Encounter row is readable by every signed-in parent, so a summary never carries private data: the agents build
+// it from shared listings / needs only, and cleanAgentLog still blanks anything shaped like a phone number or email.
+
+export const AGENT_LOG_MAX = 40;
+const PHONE_RX = /\+?\d[\d\s().-]{6,}\d/g;
+const EMAIL_RX = /[\w.+-]+@[\w-]+\.[\w.]+/g;
+
+/** Who negotiated an encounter, as written next to its status. */
+export interface AgentRun {
+  negotiatedBy: "fetch" | "local";
+  agentLog?: AgentLogEntry[];
+  /** The pets' bubbles (agents' noMatch): replaces the transcript when non-empty. */
+  transcript?: any[];
+}
+
+const plainText = (s: unknown, max: number) =>
+  String(s ?? "").replace(/\s+/g, " ").trim().replace(EMAIL_RX, "[hidden]").replace(PHONE_RX, "[hidden]").slice(0, max);
+const addressLike = (s: unknown) => String(s ?? "").replace(/[^A-Za-z0-9_:.-]/g, "").slice(0, 80) || "unknown";
+
+/**
+ * Untrusted log in (an agent's request body) → at most AGENT_LOG_MAX clean entries (the last ones). `by` is forced:
+ * only the agents call agentApi, so everything that arrives there is "fetch".
+ */
+export function cleanAgentLog(raw: unknown, by: AgentLogEntry["by"], nowMs: number = Date.now()): AgentLogEntry[] {
+  if (!Array.isArray(raw)) return [];
+  const out: AgentLogEntry[] = [];
+  for (const e of raw.slice(-AGENT_LOG_MAX)) {
+    if (!e || typeof e !== "object") continue;
+    const type = String((e as any).type ?? "").replace(/[^A-Za-z0-9_]/g, "").slice(0, 40);
+    if (!type) continue;
+    const at = Date.parse(String((e as any).at ?? ""));
+    const latency = Number((e as any).ms);
+    out.push({
+      at: iso(Number.isFinite(at) ? at : nowMs),
+      from: addressLike((e as any).from),
+      to: addressLike((e as any).to),
+      type,
+      summary: plainText((e as any).summary, 200),
+      ...((e as any).ms != null && Number.isFinite(latency) && latency >= 0 ? { ms: Math.min(Math.round(latency), 3_600_000) } : {}),
+      by,
+    });
+  }
+  return out;
+}
+
+const TURN_FROM = new Set(["buyer_agent", "seller_agent"]);
+const TURN_KINDS = new Set(["looking_for", "have", "no_fit", "fit_check", "propose", "ack", "decline"]);
+
+/** Untrusted AgentTurn[] in → the turns that fit the Encounter.transcript schema (as appendTurn writes them). */
+export function cleanTurns(raw: unknown, nowMs: number = Date.now()): any[] {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .filter((t) => t && typeof t === "object" && TURN_FROM.has(t.from) && TURN_KINDS.has(t.kind) && String(t.text ?? "").trim())
+    .slice(-AGENT_LOG_MAX)
+    .map((t) => ({
+      from: t.from,
+      parentId: String(t.parentId ?? ""),
+      kind: t.kind,
+      text: String(t.text).slice(0, 200),
+      at: Number.isFinite(Date.parse(String(t.at ?? ""))) ? String(t.at) : iso(nowMs),
+    }));
+}
+
+/** An AgentRun as Encounter fields (agentLog only when there is one). */
+export function runFields(run?: AgentRun | null): Record<string, unknown> {
+  if (!run) return {};
+  return { negotiatedBy: run.negotiatedBy, ...(run.agentLog?.length ? { agentLog: run.agentLog } : {}) };
+}
+
+const money = (cents: number) => `$${(Math.max(0, Number(cents) || 0) / 100).toFixed(2)}`;
+
+// ---------------------------------------------------------------- the buyer's pet rules (B5's mandate, trust.ts)
+//
+// B's createProposal refuses a trade the BUYER's pet rules don't allow (may propose at all, price limit, kinds of
+// clothes, monthly budget). The pets check the same rules BEFORE anyone says "Trade proposal!", so a parent sees why
+// nothing was proposed instead of a false "nothing fits": the buyer's pet says the rule (first person, no amounts),
+// the protocol log gets a Decline entry (no names, no amounts) and the Encounter keeps trust.ts's sentence as
+// noMatchReason. createProposal stays the judge: this only decides what the pets say.
+
+/** A match the buyer's own pet rules stop. */
+export interface RulesBlock {
+  rule: MandateRule;
+  /** trust.ts checkMandate's sentence, e.g. "It costs more than the price limit Jo set for Pip." (no amounts). */
+  reason: string;
+  /** What the buyer's pet says after "Not this one — " (first person, no amounts). */
+  line: string;
+}
+
+const RULE_LINE: Record<MandateRule, (name: string) => string> = {
+  agent_may_not_propose: (n) => `${n} asked me to point out matches, not propose trades.`,
+  over_price: (n) => `it's over the price limit ${n} set for me.`,
+  category: (n) => `it isn't a kind of clothes ${n} asked me to look for.`,
+  over_budget: (n) => `it would go over ${n}'s monthly budget for me.`,
+};
+
+/** The same rules for the protocol log, which never names anyone (Encounter rows are readable by every parent). */
+export const RULE_SUMMARY: Record<MandateRule, string> = {
+  agent_may_not_propose: "the buyer asked their pet to point out matches only",
+  over_price: "over the price limit the buyer set for their pet",
+  category: "not a kind of clothes the buyer asked their pet to look for",
+  over_budget: "over the budget the buyer set for their pet",
+};
+
+/** The buyer's pet's words for a rule ("it's over the price limit Jo set for me."). agents/closet_agent.py mirrors it. */
+export function rulesLine(rule: MandateRule, parentName: string): string {
+  return (RULE_LINE[rule] ?? RULE_LINE.over_price)(parentName || "my family");
+}
+
+/**
+ * Each match (best first) with the buyer's verdict: `blocked` when their pet rules say no. One Parent read, plus this
+ * month's totals (one MatchProposal read + the clock) only when a budget check is reached. Unknown buyer → unchanged.
+ */
+export async function withRules<M extends { priceCents: number; category?: string }>(
+  db: any,
+  buyerId: string,
+  matches: M[],
+): Promise<(M & { blocked?: RulesBlock })[]> {
+  if (!matches?.length) return [];
+  const buyer: any = await db.Parent.get(buyerId).catch(() => null);
+  if (!buyer) return matches;
+  const m = mandateOf(buyer);
+  const who = { name: String(buyer.name ?? ""), petName: String(buyer.pet?.name ?? "") || "their pet" };
+  let committed: number | null = null;
+  const out: (M & { blocked?: RulesBlock })[] = [];
+  for (const match of matches) {
+    const offer = { priceCents: Number(match.priceCents) || 0, category: (match.category ?? "other") as Category };
+    const rules = match.category ? m : { ...m, categories: [] }; // no category known: createProposal judges that one
+    let check = checkMandate(rules, offer, 0, who);
+    if (check.ok) {
+      if (committed == null) {
+        const t = await monthTotals(db, buyerId, await getNow(db)).catch(() => ({ spentCents: 0, pendingCents: 0 }));
+        committed = t.spentCents + t.pendingCents;
+      }
+      check = checkMandate(rules, offer, committed, who);
+    }
+    out.push(check.ok ? match : { ...match, blocked: { rule: check.rule, reason: check.reason, line: rulesLine(check.rule, who.name) } });
+  }
+  return out;
+}
+
+/**
+ * The local fallback's talk in the agents' log shape: the same four protocol steps the Fetch agents take
+ * (LookingFor → HaveListings → ProposeTrade → TradeAck); LookingFor → HaveListings → Decline when the buyer's pet
+ * rules stop the match; LookingFor → NoFit when nothing fits either way.
+ * No latency (`ms`): nothing travelled, it is one template written at once.
+ */
+export function localAgentLog(match: LocalMatch | null, nowMs: number = Date.now(), blocked?: RulesBlock | null): AgentLogEntry[] {
+  const at = iso(nowMs);
+  const line = (type: string, summary: string): AgentLogEntry => ({ at, from: "fallback", to: "fallback", type, summary, by: "fallback" });
+  if (!match) {
+    return [
+      line("LookingFor", "Local matcher checks both closets' shared listings and needs."),
+      line("NoFit", "No fit: nothing shared fits either way today."),
+    ];
+  }
+  const weeks = match.wearWeeksLeft != null ? ` Size ${match.size} fits for about ${match.wearWeeksLeft} more weeks.` : "";
+  const opening = [
+    line("LookingFor", `Buyer side asks for size ${match.size}.`),
+    line("HaveListings", plainText(`Seller side offers a shared listing: ${match.itemName}, size ${match.size}, ${money(match.priceCents)}.`, 200)),
+  ];
+  if (blocked) {
+    return [...opening, line("Decline", `Buyer side declines: ${RULE_SUMMARY[blocked.rule] ?? "the buyer's pet rules say no"}. Nothing was proposed.`)];
+  }
+  return [
+    ...opening,
+    line("ProposeTrade", `Buyer side proposes the listing at ${money(match.priceCents)}.${weeks}`),
+    line("TradeAck", "Seller side agrees; both parents still decide in the app."),
+  ];
+}
+
+/** A local-fallback run (negotiatedBy "local") for this match, for a match the buyer's rules stopped, or for "nothing fits". */
+export const localRun = (match: LocalMatch | null, nowMs: number = Date.now(), blocked?: RulesBlock | null): AgentRun => ({
+  negotiatedBy: "local",
+  agentLog: localAgentLog(match, nowMs, blocked),
+});
+
+/**
+ * Encounter.update with optional extras, most important first (e.g. proposalId, then the agent log). The live
+ * schema may not know a newer field until `entities push`: a refused write is retried with fewer extras, and
+ * finally with the patch alone, so the status change itself always lands.
+ */
+export async function updateEncounter(db: any, id: string, patch: Record<string, unknown>, ...extras: Record<string, unknown>[]) {
+  const layers = extras.filter((x) => x && Object.keys(x).length);
+  for (let n = layers.length; n > 0; n--) {
+    try {
+      return await db.Encounter.update(id, Object.assign({}, patch, ...layers.slice(0, n)));
+    } catch {
+      /* retry with one extra fewer */
+    }
+  }
+  return await db.Encounter.update(id, patch);
+}
+
 // ---------------------------------------------------------------- local match (fallback "agents")
 
 export interface LocalPlan {
@@ -396,7 +600,11 @@ export interface LocalPlan {
   sellerId: string;
   match: LocalMatch;
   transcript: any[];
+  /** The buyer's pet rules stop this match: the pets say so (blockedTranscript) and nobody calls createProposal. */
+  blocked?: RulesBlock;
 }
+
+type BlockedPlan = LocalPlan & { blocked: RulesBlock };
 
 /**
  * Template transcript so the EncounterScene has bubbles even without LLM/agents. Same lines as the Python agents
@@ -416,7 +624,21 @@ export function localTranscript(buyerId: string, sellerId: string, m: LocalMatch
   ];
 }
 
-/** The best match each way, a→b (a buys) first, then b→a; each with the template lines the pets would say. */
+/** The buyer's pet turns the offer down because of its parent's rules: no "Trade proposal!", no "over to the humans". */
+export function blockedTranscript(buyerId: string, sellerId: string, m: LocalMatch, block: RulesBlock, nowMs: number): any[] {
+  const at = (i: number) => iso(nowMs + i * 600);
+  return [
+    { from: "buyer_agent", parentId: buyerId, kind: "looking_for", text: tl.lookingFor([m.size]), at: at(0) },
+    { from: "seller_agent", parentId: sellerId, kind: "have", text: tl.have(m.itemName, m.size), at: at(1) },
+    { from: "buyer_agent", parentId: buyerId, kind: "decline", text: tl.decline(block.line), at: at(2) },
+  ];
+}
+
+/**
+ * The best match each way, a→b (a buys) first, then b→a; each with the template lines the pets would say. The best
+ * match the buyer's pet rules allow wins; when they allow none, the plan is the best match marked `blocked`.
+ * `first`: stop at the first plan that can be proposed.
+ */
 export async function planLocalMatch(
   db: any,
   enc: any,
@@ -426,29 +648,39 @@ export async function planLocalMatch(
 ): Promise<LocalPlan[]> {
   const plans: LocalPlan[] = [];
   for (const [buyerId, sellerId] of [[enc.aId, enc.bId], [enc.bId, enc.aId]]) {
-    const best = (await findMatches(db, { buyerId, sellerId }))?.[0];
-    if (best) plans.push({ buyerId, sellerId, match: best, transcript: localTranscript(buyerId, sellerId, best, nowMs) });
-    if (opts.first && plans.length) break;
+    const ranked = ((await findMatches(db, { buyerId, sellerId })) ?? []).slice(0, 5);
+    if (!ranked.length) continue;
+    const checked = await withRules(db, buyerId, ranked);
+    const pick = checked.find((x) => !x.blocked) ?? checked[0];
+    const { blocked, ...match } = pick;
+    plans.push(blocked
+      ? { buyerId, sellerId, match, blocked, transcript: blockedTranscript(buyerId, sellerId, match, blocked, nowMs) }
+      : { buyerId, sellerId, match, transcript: localTranscript(buyerId, sellerId, match, nowMs) });
+    if (opts.first && !blocked) break;
   }
   return plans;
 }
 
 /**
  * Encounter → "proposed", with Encounter.proposalId so A's EncounterScene can hand the right proposal to the
- * Trade window. proposalId is a new optional field (entities/Encounter.json): if the live schema refuses it,
- * the write is retried without it.
+ * Trade window, and (when given) who negotiated it + their log. Newer optional fields (entities/Encounter.json):
+ * if the live schema refuses them, the write is retried without them (updateEncounter).
  */
-async function markProposed(db: any, encounterId: string, patch: Record<string, unknown>, proposalId: string | undefined) {
-  if (!proposalId) return void await db.Encounter.update(encounterId, patch);
-  try {
-    await db.Encounter.update(encounterId, { ...patch, proposalId });
-  } catch {
-    await db.Encounter.update(encounterId, patch);
-  }
+async function markProposed(db: any, encounterId: string, patch: Record<string, unknown>, proposalId: string | undefined, run?: AgentRun) {
+  await updateEncounter(db, encounterId, patch, proposalId ? { proposalId } : {}, runFields(run));
 }
 
-/** Nothing fits either way: the pets say so (the Python agents' no-fit exchange) and the encounter ends. */
-async function markNoMatch(db: any, enc: any, nowMs: number): Promise<"no_match"> {
+/**
+ * Nothing fits either way: the pets say so (the Python agents' no-fit exchange) and the encounter ends. `run`: who
+ * decided it (default: the local fallback, with its LookingFor → NoFit log; null = don't say).
+ */
+async function markNoMatch(
+  db: any,
+  enc: any,
+  nowMs: number,
+  run: AgentRun | null = localRun(null, nowMs),
+  extra: Record<string, unknown> = {},
+): Promise<"no_match"> {
   const said: any[] = (Array.isArray(enc.transcript) ? enc.transcript : []).filter((t: any) => t?.kind !== "propose" && t?.kind !== "ack");
   const opener = enc.aId < enc.bId ? enc.aId : enc.bId; // same rule as the agents: the smaller id opens
   const other = opener === enc.aId ? enc.bId : enc.aId;
@@ -456,22 +688,50 @@ async function markNoMatch(db: any, enc: any, nowMs: number): Promise<"no_match"
     ...(said.length ? said : [{ from: "buyer_agent", parentId: opener, kind: "looking_for", text: tl.hello(), at: iso(nowMs) }]),
     { from: "seller_agent", parentId: other, kind: "no_fit", text: tl.noFit(), at: iso(nowMs + 600) },
   ];
-  await db.Encounter.update(enc.id, { status: "no_match", transcript });
+  await updateEncounter(db, enc.id, { status: "no_match", transcript }, runFields(run), extra);
+  return "no_match";
+}
+
+/**
+ * The buyer's pet rules stopped the match: the encounter ends "no_match" with the pets saying why (any staged
+ * "Trade proposal!" / "over to the humans" lines are dropped), the fallback's LookingFor → HaveListings → Decline
+ * log, and trust.ts's sentence as Encounter.noMatchReason (the Agent Console's outcome; no amounts).
+ */
+async function markBlocked(db: any, enc: any, plan: BlockedPlan, nowMs: number): Promise<"no_match"> {
+  const keep = (t: any) => t && t.kind !== "propose" && t.kind !== "ack" && t.kind !== "no_fit";
+  const said: any[] = (Array.isArray(enc.transcript) ? enc.transcript : []).filter(keep);
+  const opening = said.length ? said : plan.transcript.filter((t) => keep(t) && t.kind !== "decline");
+  const last = Math.max(nowMs, ...opening.map((t: any) => ms(t?.at) + 600));
+  const transcript = [
+    ...opening,
+    { from: "buyer_agent", parentId: plan.buyerId, kind: "decline", text: tl.decline(plan.blocked.line), at: iso(last) },
+  ];
+  // The log before the reason: a live schema that doesn't know noMatchReason yet still stores the log.
+  await updateEncounter(db, enc.id, { status: "no_match", transcript }, runFields(localRun(plan.match, nowMs, plan.blocked)),
+    { noMatchReason: plan.blocked.reason });
   return "no_match";
 }
 
 /**
  * Step 1 of the local fallback: the pets' lines go onto the encounter while it stays "talking", so AgentBubbles
- * type them under the EncounterScene before any Trade window exists. Nothing fits → "no_match" at once.
+ * type them under the EncounterScene before any Trade window exists. Nothing fits → "no_match" at once; a match the
+ * buyer's pet rules stop → "no_match" at once too, with the pets saying which rule (never "Trade proposal!").
  */
 export async function stageEncounter(
   db: any,
   enc: any,
   findMatches: FindMatches,
   nowMs: number = Date.now(),
-): Promise<{ status: "staged" | "no_match"; transcript: any[] }> {
-  const [plan] = await planLocalMatch(db, enc, findMatches, nowMs, { first: true });
-  if (!plan) return { status: await markNoMatch(db, enc, nowMs), transcript: [] };
+): Promise<{ status: "staged" | "no_match"; transcript: any[]; reason?: string }> {
+  const plans = await planLocalMatch(db, enc, findMatches, nowMs, { first: true });
+  const plan = plans.find((p) => !p.blocked);
+  if (!plan) {
+    const stop = plans.find((p): p is BlockedPlan => !!p.blocked);
+    if (stop) return { status: await markBlocked(db, enc, stop, nowMs), transcript: [], reason: stop.blocked.reason };
+    return { status: await markNoMatch(db, enc, nowMs), transcript: [] };
+  }
+  // No agentLog yet: the encounter isn't decided (the agents may still win it, and B's mock plays its own log while
+  // the pets talk). resolveEncounter writes the fallback's log with the proposal.
   await db.Encounter.update(enc.id, { transcript: plan.transcript });
   return { status: "staged", transcript: plan.transcript };
 }
@@ -502,7 +762,12 @@ export async function resolveEncounter(
     return "proposed";
   }
 
+  let stop: BlockedPlan | null = null;
   for (const plan of await planLocalMatch(db, enc, findMatches, nowMs)) {
+    if (plan.blocked) {
+      stop ??= plan as BlockedPlan; // the other direction may still work
+      continue;
+    }
     // Keep lines the pets already said for this same buyer (the staged lines, agents' appendTurn, the mock).
     const said: any[] = Array.isArray(enc.transcript) ? enc.transcript : [];
     const transcript = said.some((t) => t?.kind === "propose" && t?.parentId === plan.buyerId) ? said : plan.transcript;
@@ -517,27 +782,48 @@ export async function resolveEncounter(
         transcript,
         source: "local",
       });
-      await markProposed(db, enc.id, { status: "proposed", transcript }, prop?.id);
+      // B hands back the agents' proposal if theirs landed a moment earlier (idempotent): then their log stays.
+      const run = prop?.source === "fetch" ? undefined : localRun(plan.match, nowMs);
+      await markProposed(db, enc.id, { status: "proposed", transcript }, prop?.id, run);
       return "proposed";
     } catch (e) {
-      console.error("[C] local createProposal failed", e);
       // Another tick (or the agents) may have proposed for this encounter meanwhile: never add a second trade.
       const won = await db.MatchProposal.filter({ encounterId: enc.id }, undefined, 1).catch(() => []);
       if (won?.length) {
         await markProposed(db, enc.id, { status: "proposed" }, won[0].id);
         return "proposed";
       }
+      // The buyer's rules changed since the lines were staged (a trade paid meanwhile, a new limit): say which.
+      const [again] = (e as { code?: string })?.code === "not_eligible"
+        ? await withRules(db, plan.buyerId, [plan.match]).catch(() => [])
+        : [];
+      if (again?.blocked) {
+        console.info(`[C] pet rules stopped encounter ${enc.id}: ${again.blocked.rule}`);
+        stop ??= { ...plan, blocked: again.blocked };
+      } else {
+        console.error("[C] local createProposal failed", e);
+      }
     }
   }
+  if (stop) return await markBlocked(db, enc, stop, nowMs);
   return await markNoMatch(db, enc, nowMs);
 }
 
 /**
  * agentApi `noMatch`: the agents found nothing. Only a still-"talking" encounter without a proposal ends here; a
- * late conversation never flips an encounter the local fallback (or the agents) already proposed. If the fallback
- * had staged its trade lines, they're swapped for the no-fit exchange.
+ * late conversation never flips an encounter the local fallback (or the agents) already proposed (and their log is
+ * then not stored either: the encounter keeps the log of whoever decided it). `run` = the agents' log + bubbles:
+ * their bubbles replace the transcript (minus any "Trade proposal!" / "over to the humans" line: no trade was
+ * proposed); else, if the fallback had staged its trade lines, those are swapped for the no-fit exchange.
+ * `reason` (e.g. the buyer's pet rules said no) is kept as Encounter.noMatchReason.
  */
-export async function endWithoutMatch(db: any, encounterId: string, nowMs: number = Date.now()): Promise<{ ok: true; skipped?: string }> {
+export async function endWithoutMatch(
+  db: any,
+  encounterId: string,
+  nowMs: number = Date.now(),
+  run?: AgentRun,
+  reason?: string,
+): Promise<{ ok: true; skipped?: string }> {
   const enc = await db.Encounter.get(encounterId).catch(() => null);
   if (!enc) throw notFound("encounter");
   if (enc.status !== "talking") return { ok: true, skipped: enc.status };
@@ -546,8 +832,12 @@ export async function endWithoutMatch(db: any, encounterId: string, nowMs: numbe
     await markProposed(db, enc.id, { status: "proposed" }, prop.id);
     return { ok: true, skipped: "proposed" };
   }
-  if (stagedAt(enc) != null) await markNoMatch(db, enc, nowMs);
-  else await db.Encounter.update(enc.id, { status: "no_match" });
+  const why = plainText(reason, 200);
+  const extra = why ? { noMatchReason: why } : {};
+  const said = (run?.transcript ?? []).filter((t: any) => t?.kind !== "propose" && t?.kind !== "ack");
+  if (said.length) await updateEncounter(db, enc.id, { status: "no_match", transcript: said }, runFields(run), extra);
+  else if (stagedAt(enc) != null) await markNoMatch(db, enc, nowMs, run ?? null, extra);
+  else await updateEncounter(db, enc.id, { status: "no_match" }, runFields(run), extra);
   return { ok: true };
 }
 
