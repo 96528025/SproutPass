@@ -146,6 +146,24 @@
   background: var(--cream);
   border-top: var(--border-ink);
 }
+/* Dock lane. On B's screens, while C's corner pet or the trade-offer pill is up, the bar grows a 64px lane above
+   its tabs and the pet (right) and the pill (left) sit in it (agent.css, trade.css). They never float over a
+   screen's text: content scrolls under the lane's edge like under the bar, and .b-main's bottom padding
+   (bottom bar + 80px) lets the last line scroll clear of it. Not on /world (the map is the screen) and not under
+   B's nudge dialog (it covers this spot and hides the pet). */
+:root {
+  --dock-lane: 64px;
+}
+.b-overlays:not([data-route="world"]):is(:has(> .c-pet), :has(> .t-reopen)):not(:has(> .b-nudge)) > .bb::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 100%;
+  height: var(--dock-lane);
+  background: var(--cream);
+  border-top: var(--border-ink); /* takes taps too: nothing hidden under the lane can be hit by accident */
+}
 .bb__tabs {
   display: flex;
   gap: 8px;
@@ -240,7 +258,10 @@
 }
 
 /* ---------- TitleScreen ---------- */
+/* Sky on top, grass below. The grass band is a share of the screen so short phones keep the pets clear of the
+   copy; --grass-h is used for both the band height and the pets' baseline (both resolve against .ts's height). */
 .ts {
+  --grass-h: clamp(208px, 35%, 296px);
   position: relative;
   height: var(--screen-h);
   min-height: 640px;
@@ -252,19 +273,32 @@
   position: absolute;
   width: 4px;
   height: 4px;
+  animation: ts-drift 12s steps(6, end) infinite alternate;
+}
+.ts__cloud:nth-of-type(2) {
+  animation-duration: 16s;
+  animation-direction: alternate-reverse;
+}
+@keyframes ts-drift {
+  from { transform: translateX(0); }
+  to   { transform: translateX(24px); }
 }
 .ts__mark {
   position: absolute;
-  top: 120px;
+  top: 88px;
   left: 0;
   right: 0;
+  margin: 0;
   text-align: center;
+  font-family: var(--font-wordmark); /* the logo: the one place Press Start 2P is used */
+  font-weight: 400;
   color: var(--paper);
   text-shadow: 4px 4px 0 var(--ink);
+  -webkit-font-smoothing: none;
 }
 .ts__l1 {
   display: block;
-  font-size: 24px;
+  font-size: var(--fs-xl, 24px);
   line-height: 32px;
 }
 .ts__l2 {
@@ -282,24 +316,63 @@
   background: var(--gold);
   box-shadow: 4px 4px 0 var(--ink);
 }
-.ts__tag {
+/* the one-line pitch + the promise, under the wordmark */
+.ts__intro {
   position: absolute;
-  top: 316px;
-  left: 0;
-  right: 0;
+  top: 272px;
+  left: 24px;
+  right: 24px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
   text-align: center;
+}
+.ts__tag {
+  max-width: 330px;
   font-family: var(--font-ui);
-  font-size: 20px;
-  line-height: 24px;
+  font-size: var(--fs-lg, 20px);
+  line-height: 28px;
   font-weight: 700;
   color: var(--ink);
+  text-wrap: balance;
+}
+.ts__promise {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 330px;
+  padding: 4px 12px;
+  background: var(--paper);
+  border: var(--border-ink);
+  box-shadow: var(--shadow-hard-sm);
+  font-family: var(--font-ui);
+  font-size: var(--fs-md, 16px);
+  line-height: 22px;
+  color: var(--ink);
+  text-align: left;
+}
+.ts__promise::before {
+  /* a pixel check mark: 4-px blocks drawn with box-shadow, 20 x 16 */
+  content: "";
+  flex: none;
+  align-self: center;
+  width: 4px;
+  height: 4px;
+  margin: -12px 20px 0 0;
+  background: transparent;
+  box-shadow:
+    16px 0 0 var(--grass-deep, #2e6b36),
+    12px 4px 0 var(--grass-deep, #2e6b36),
+    0 8px 0 var(--grass-deep, #2e6b36), 8px 8px 0 var(--grass-deep, #2e6b36),
+    4px 12px 0 var(--grass-deep, #2e6b36);
 }
 .ts__grass {
   position: absolute;
   left: 0;
   right: 0;
   bottom: 0;
-  height: 296px;
+  height: var(--grass-h);
   border-top: var(--border-ink);
   --grass-tile: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='48' height='48' shape-rendering='crispEdges'%3E%3Crect width='48' height='48' fill='%237BC96F'/%3E%3Crect x='8' y='8' width='4' height='4' fill='%234E9A57'/%3E%3Crect x='12' y='12' width='4' height='4' fill='%234E9A57'/%3E%3Crect x='32' y='20' width='4' height='4' fill='%234E9A57'/%3E%3Crect x='36' y='24' width='4' height='4' fill='%234E9A57'/%3E%3Crect x='16' y='36' width='4' height='4' fill='%234E9A57'/%3E%3Crect x='20' y='40' width='4' height='4' fill='%234E9A57'/%3E%3Crect x='40' y='4' width='4' height='4' fill='%23FFF4D6'/%3E%3C/svg%3E") 0 0 / 48px 48px repeat;
   background: var(--grass-tile);
@@ -308,7 +381,7 @@
   position: absolute;
   left: 0;
   right: 0;
-  bottom: 280px; /* feet sit a little below the grass edge */
+  bottom: calc(var(--grass-h) - 16px); /* feet sit a little below the grass edge */
   display: flex;
   justify-content: center;
   align-items: flex-end;
@@ -329,20 +402,45 @@
 }
 .ts__action {
   position: absolute;
-  left: 24px;
-  right: 24px;
-  bottom: 72px;
+  left: 16px;
+  right: 16px;
+  bottom: calc(48px + env(safe-area-inset-bottom, 0px));
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 12px;
 }
+/* PRESS START: a steady plate (always readable) with a blinking pixel caret */
 .ts__start {
-  font-family: var(--font-wordmark);
-  font-size: 16px;
-  line-height: 24px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 20px;
+  background: var(--ink);
   color: var(--paper);
-  text-shadow: 4px 4px 0 var(--ink);
+  box-shadow: 4px 4px 0 var(--grass-dark);
+  clip-path: var(--clip-step);
+}
+.ts__start-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  font-family: var(--font-display, var(--font-wordmark));
+  font-size: var(--fs-lg, 20px);
+  font-weight: 600;
+  line-height: 24px;
+  letter-spacing: var(--track-label, 0.04em);
+  color: var(--gold);
+  -webkit-font-smoothing: none;
+}
+.ts__start-label::before {
+  content: "";
+  width: 0;
+  height: 0;
+  border-top: 8px solid transparent;
+  border-bottom: 8px solid transparent;
+  border-left: 8px solid var(--gold);
   animation: ts-blink 1s steps(1) infinite;
 }
 @keyframes ts-blink {
@@ -350,28 +448,92 @@
   50% { opacity: 0; }
 }
 .ts__sub {
-  font-family: var(--font-label);
-  font-size: 12px;
-  line-height: 16px;
-  text-transform: uppercase;
+  font-family: var(--font-ui);
+  font-size: var(--fs-md, 16px);
+  line-height: 20px;
+  color: var(--paper);
+}
+/* the projector views (agent console, impact board): small plates under PRESS START, above the tap layer */
+.ts__links {
+  position: relative;
+  z-index: 5; /* over .ts__tap (4), so a tap here follows the link instead of starting */
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 12px;
+}
+.ts__link {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 0 14px;
+  background: var(--paper);
+  color: var(--ink);
+  border: var(--border-ink);
+  box-shadow: var(--shadow-hard-sm, 2px 2px 0 var(--ink));
+  font-family: var(--font-ui);
+  font-size: var(--fs-md, 16px);
+  font-weight: 700;
+  line-height: 20px;
+  text-decoration: none;
+  touch-action: manipulation;
+}
+.ts__link:hover {
+  background: var(--gold);
+}
+.ts__link:active {
+  transform: translate(2px, 2px);
+  box-shadow: none;
+}
+.ts__link:focus-visible {
+  outline: 4px solid var(--gold);
+  outline-offset: 2px;
+}
+.ts__panel {
+  width: 100%;
+}
+/* NO GPS: the picker panel's first row (not a chip floating over the title tab and the pets) */
+.ts__gps {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0 0 12px;
+  font-family: var(--font-ui);
+  font-size: var(--fs-md, 16px);
+  line-height: 22px;
   color: var(--ink);
 }
 .ts__consent {
-  font-family: var(--font-label);
-  font-size: 12px;
-  line-height: 16px;
-  text-transform: uppercase;
-  text-align: center;
+  font-family: var(--font-ui);
+  font-size: var(--fs-md, 16px);
+  line-height: 24px;
+  text-align: left;
+  color: var(--ink);
+}
+.ts__consent + .ts__consent {
+  margin-top: 8px;
+}
+.ts__consent--quiet {
+  padding-left: 12px;
+  border-left: 4px solid var(--grass-dark);
+}
+.ts__hint {
+  margin-top: 12px;
+  font-family: var(--font-ui);
+  font-size: var(--fs-md, 16px);
+  line-height: 22px;
+  color: var(--ink);
 }
 .ts__row {
   display: flex;
   flex-wrap: wrap;
   gap: 12px;
   justify-content: center;
-  margin-top: 12px;
+  margin-top: 16px;
 }
-.ts__panel {
-  width: 100%;
+.ts__row > * {
+  min-width: 160px;
 }
 .ts__tap {
   position: absolute;
@@ -388,9 +550,19 @@
   outline-offset: -8px;
 }
 
+/* short phones: tighten the sky so the pitch stays clear of the pets; once a panel is up (location, who's
+   playing) it needs the room, so the promise line steps aside */
+@media (max-height: 720px) {
+  .ts__mark { top: 56px; }
+  .ts__l2 { font-size: 40px; line-height: 40px; }
+  .ts__intro { top: 216px; gap: 8px; }
+  .ts:not(.ts--title) .ts__promise { display: none; }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .ts__pet,
-  .ts__start {
+  .ts__cloud,
+  .ts__start-label::before {
     animation: none;
   }
 }

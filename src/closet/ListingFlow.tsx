@@ -136,7 +136,7 @@ export function ListingFlow() {
     try {
       const listing = await api.listItem({ ...parentRef(), itemId: item.id, photo: photoUrl, condition, conditionNote: note.trim(), shared });
       window.dispatchEvent(new CustomEvent("sfx", { detail: "coin" }));
-      toast(`LISTED! ${formatCents(listing.priceCents)}`, "gold");
+      toast(`Listed for ${formatCents(listing.priceCents)}!`, "gold");
       void refreshCloset();
       nav("/bag");
     } catch (e) {
@@ -145,7 +145,7 @@ export function ListingFlow() {
       if (code === "not_resellable") setFinalHome(true);
       else if (code === "not_found") {
         // The demo was reset under us (new ids): reload the bag instead of leaving a dead form.
-        toast("THAT ITEM MOVED · BAG REFRESHED", "red");
+        toast("That item moved, so we refreshed your bag.", "red");
         void refreshCloset();
         nav("/bag");
       } else toast(errorText(e), "red");
@@ -181,7 +181,7 @@ export function ListingFlow() {
             </div>
             {!shownPhoto && (
               <button type="button" className="b-link" onClick={useFallback}>
-                {item.photos[0] ? "USE THE BAG PHOTO" : "NO CAMERA? USE THE PIXEL ART"}
+                {item.photos[0] ? "Use the bag photo" : "No camera? Use the pixel art"}
               </button>
             )}
           </div>
@@ -220,7 +220,7 @@ export function ListingFlow() {
               <span className="b-switch" aria-hidden />
               <span className="b-stack" style={{ gap: 4 }}>
                 <span className="b-label">SHARE {shared ? "ON" : "OFF"}</span>
-                <span className="b-small">Only shared listings can be found by other pets</span>
+                <span className="b-small">Only shared listings can be found by other pets.</span>
               </span>
             </label>
             <div className="b-actions">

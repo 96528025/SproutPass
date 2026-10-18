@@ -9,12 +9,14 @@ export interface ChipProps {
   className?: string;
   style?: CSSProperties;
   title?: string;
+  /** Keep the caller's casing (sentence-like chips: "Demo payment · no real charge"). Default: uppercase tag. */
+  plain?: boolean;
 }
 
-/** Silkscreen uppercase label, 24px tall. e.g. GPS ±12M, SIMULATED GPS, DEMO PAYMENT. */
-export function Chip({ tone = "paper", children, className, style, title }: ChipProps) {
+/** Short tag in the bold readable face, uppercase, 32px tall: GPS ±12M, SIMULATED GPS, 6-9M. `plain` keeps casing. */
+export function Chip({ tone = "paper", children, className, style, title, plain }: ChipProps) {
   return (
-    <span className={`chip chip--${tone} ${className ?? ""}`.trim()} style={style} title={title}>
+    <span className={`chip chip--${tone}${plain ? " chip--plain" : ""} ${className ?? ""}`.trim()} style={style} title={title}>
       {children}
     </span>
   );

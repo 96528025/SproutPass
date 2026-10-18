@@ -89,7 +89,8 @@ export function AgentBubbles({ transcript, me, petNames, onBlip, onDone }: Agent
       })}
       {!transcript.length && (
         <div className="c-bubble c-bubble--left">
-          <span className="c-bubble__who">…</span>
+          <span className="c-bubble__who">Pets</span>
+          Saying hi
           <span className="c-cursor" aria-hidden />
         </div>
       )}

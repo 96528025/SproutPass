@@ -12,8 +12,7 @@ const HEART = [
   "...O...",
 ];
 
-function shadow(fillColor: string): string {
-  const px = 2; // 7px heart at x2 = 14px inside a 16px slot
+function shadow(fillColor: string, px: number): string {
   const parts: string[] = [];
   HEART.forEach((row, y) => {
     row.split("").forEach((ch, x) => {
@@ -25,8 +24,11 @@ function shadow(fillColor: string): string {
   return parts.join(",");
 }
 
-const FILLED = shadow("var(--pink)");
-const EMPTY = shadow("var(--paper)");
+// 7px heart at x2 = 14px inside a 16px slot; `big` draws it at x3 = 21px inside a 24px slot.
+const FILLED = shadow("var(--pink)", 2);
+const EMPTY = shadow("var(--paper)", 2);
+const FILLED_BIG = shadow("var(--pink)", 3);
+const EMPTY_BIG = shadow("var(--paper)", 3);
 
 export interface HeartsProps {
   /** Owner count, 1..3. */
@@ -35,22 +37,22 @@ export interface HeartsProps {
   of?: number;
   className?: string;
   label?: string;
+  /** 24px hearts (default 16px) for places where the owner count is the headline. */
+  big?: boolean;
 }
 
-/** Owner count ♥♥♡ */
-export function Hearts({ filled, of = 3, className, label }: HeartsProps) {
+/** Owner count ♥♥♡. Screen readers (and a hover tooltip) get "2 of 3 owners". */
+export function Hearts({ filled, of = 3, className, label, big }: HeartsProps) {
   const slots = Array.from({ length: of }, (_, i) => i < filled);
+  const text = label ?? `${filled} of ${of} owners`;
+  const off = big ? -3 : -2;
   return (
-    <span
-      className={`hearts ${className ?? ""}`.trim()}
-      role="img"
-      aria-label={label ?? `${filled} of ${of} owners`}
-    >
+    <span className={`hearts${big ? " hearts--lg" : ""} ${className ?? ""}`.trim()} role="img" aria-label={text} title={text}>
       {slots.map((on, i) => (
         <span className="heart" key={i}>
           <span
             className="heart__px"
-            style={{ boxShadow: on ? FILLED : EMPTY, marginLeft: -2, marginTop: -2 }}
+            style={{ boxShadow: on ? (big ? FILLED_BIG : FILLED) : big ? EMPTY_BIG : EMPTY, marginLeft: off, marginTop: off }}
           />
         </span>
       ))}

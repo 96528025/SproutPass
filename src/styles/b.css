@@ -1,7 +1,10 @@
 /* OWNER: B4. App shell + closet styles. Pixel rules (Part D): 4 px grid, hard ink shadows,
    no blur, no gradients, no rounded corners.
    A's src/pixel/tokens.css is the design source of truth (palette --ink … --mint, grid, z-layers, fonts, resets;
-   main.tsx loads it first). B adds only two aliases for its own rules below. */
+   main.tsx loads it first). B adds only two aliases for its own rules below.
+   Readability (B1): sentences, buttons, inputs and labels use the readable face (--font-ui, body 17px, never
+   below 16px for text); the pixel face only for short titles (--font-display, >= 16px) and the tiny slot tags
+   (--font-label, >= 12px). Muted text is a solid colour (--ink-soft), not opacity, so it keeps 4.5:1. */
 :root {
   --label: var(--font-label);
   --body: var(--font-ui);
@@ -47,24 +50,35 @@ button { border-radius: 0; }
 .b-overlays > .cel { z-index: calc(var(--z-modal) + 1); }
 
 /* ---------------------------------------------------------------- shared bits */
-.b-label { font-family: var(--label); text-transform: uppercase; font-size: 12px; letter-spacing: 0; }
+/* short uppercase label in the readable face (form labels, hints, captions) */
+.b-label {
+  font-family: var(--font-ui); font-size: var(--fs-sm); font-weight: 700; line-height: var(--lh-snug);
+  letter-spacing: var(--track-label); text-transform: uppercase;
+}
 .b-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .b-row-between { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
 .b-stack { display: flex; flex-direction: column; gap: 12px; }
-.b-muted { opacity: 0.7; }
-.b-small { font-size: 12px; }
-.b-p { margin: 0; line-height: 20px; }
-.b-h1 { margin: 0; font-family: var(--label); font-size: 20px; text-transform: uppercase; }
+.b-muted { color: var(--ink-soft); }
+.b-small { font-size: var(--fs-text-min); line-height: var(--lh-snug); }
+.b-p { margin: 0; line-height: var(--lh-body); }
+/* short title: the pixel display face */
+.b-h1 {
+  margin: 0; font-family: var(--font-display); font-size: var(--fs-lg); font-weight: 400; line-height: 24px;
+  text-transform: uppercase; overflow-wrap: anywhere; -webkit-font-smoothing: none;
+}
 .b-actions { display: flex; gap: 12px; flex-wrap: wrap; }
 .b-actions > * { flex: 1; }
 .b-link {
-  background: none; border: 0; padding: 0; cursor: pointer;
-  font-family: var(--label); font-size: 12px; text-transform: uppercase; text-decoration: underline;
+  display: inline-flex; align-items: center; justify-content: center; min-height: var(--tap); min-width: var(--tap);
+  background: none; border: 0; padding: 0 4px; cursor: pointer;
+  font-family: var(--font-ui); font-size: var(--fs-text-min); font-weight: 700; line-height: var(--lh-snug);
+  text-decoration: underline; text-decoration-thickness: 2px; text-underline-offset: 3px;
 }
+.b-link:focus-visible { outline: 4px solid var(--lav); outline-offset: 2px; }
 .b-center { display: grid; place-items: center; text-align: center; padding: 24px 0; gap: 12px; }
 
 /* Wrap a <Chip> to make it a toggle */
-.b-chip-btn { background: none; border: 0; padding: 0 4px 4px 0; cursor: pointer; }
+.b-chip-btn { display: inline-flex; align-items: center; min-height: var(--tap); background: none; border: 0; padding: 0 4px 0 0; cursor: pointer; }
 .b-chip-btn:disabled { cursor: default; opacity: 0.5; }
 .b-chip-btn:focus-visible { outline: 4px solid var(--lav); }
 
@@ -85,7 +99,7 @@ button { border-radius: 0; }
 }
 .b-parent-card:hover, .b-parent-card:focus-visible { background: var(--gold); outline: none; }
 .b-parent-card:active { transform: translateY(4px); box-shadow: 0 0 0 var(--ink); }
-.b-parent-name { font-family: var(--label); font-size: 20px; text-transform: uppercase; }
+.b-parent-name { font-family: var(--font-display); font-size: var(--fs-lg); font-weight: 400; line-height: 24px; text-transform: uppercase; }
 /* compact row (A's TitleScreen "WHO ARE YOU?" panel) */
 .b-picker-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
 .b-parent-mini {
@@ -102,7 +116,7 @@ button { border-radius: 0; }
 }
 .b-parent-mini:hover, .b-parent-mini:focus-visible { background: var(--gold); outline: none; }
 .b-parent-mini:active { transform: translate(4px, 4px); box-shadow: none; }
-.b-parent-mini-name { font-family: var(--label); font-size: 16px; line-height: 20px; text-transform: uppercase; }
+.b-parent-mini-name { font-family: var(--font-display); font-size: var(--fs-text-min); font-weight: 400; line-height: 20px; text-transform: uppercase; }
 
 /* ---------------------------------------------------------------- demo panel */
 .b-demo {
@@ -113,20 +127,26 @@ button { border-radius: 0; }
 }
 .b-demo-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding-right: 44px; /* A's MuteToggle */ }
 .b-demo-toggle {
-  background: none; border: 0; color: var(--paper); cursor: pointer; padding: 4px 0;
-  font-family: var(--label); font-size: 12px; text-transform: uppercase;
+  min-height: var(--tap); background: none; border: 0; color: var(--paper); cursor: pointer; padding: 0;
+  font-family: var(--font-ui); font-size: var(--fs-sm); font-weight: 700; letter-spacing: var(--track-label);
+  text-transform: uppercase;
 }
-.b-demo-body { display: flex; flex-wrap: wrap; gap: 8px; padding: 8px 0 4px; }
+.b-demo-body { display: flex; flex-wrap: wrap; gap: 8px; padding: 4px 0 8px; }
 .b-demo-btn {
-  padding: 4px 8px;
+  min-height: var(--tap);
+  padding: 4px 10px;
   border: 4px solid var(--paper);
   background: var(--ink);
   color: var(--paper);
-  font-family: var(--label);
-  font-size: 12px;
+  font-family: var(--font-ui);
+  font-size: var(--fs-sm);
+  font-weight: 700;
+  line-height: var(--lh-tight);
+  letter-spacing: var(--track-label);
   text-transform: uppercase;
   cursor: pointer;
 }
+.b-demo-btn:focus-visible, .b-demo-toggle:focus-visible { outline: 4px solid var(--sky); outline-offset: 2px; }
 .b-demo-btn:hover:not(:disabled) { background: var(--gold); color: var(--ink); border-color: var(--gold); }
 .b-demo-btn.on { background: var(--gold); color: var(--ink); border-color: var(--gold); }
 .b-demo-btn:disabled { opacity: 0.5; cursor: progress; }
@@ -161,12 +181,12 @@ button { border-radius: 0; }
   inset: 8px;
   display: grid;
   place-items: center;
-  font-family: var(--label);
-  font-size: 12px;
-  line-height: 12px;
-  text-transform: uppercase;
+  font-family: var(--font-ui);
+  font-size: var(--fs-sm);
+  font-weight: 700;
+  line-height: var(--lh-tight);
   text-align: center;
-  word-break: break-word;
+  overflow-wrap: anywhere;
   pointer-events: none;
 }
 .b-slot-icon { position: relative; display: grid; place-items: center; }
@@ -178,12 +198,13 @@ button { border-radius: 0; }
   bottom: 0;
   padding: 2px 0;
   border-top: 4px solid var(--ink);
-  font-family: var(--label);
-  font-size: 12px;
+  font-family: var(--label); /* tiny tag inside a ~72px slot: Silkscreen at its 12px floor */
+  font-size: var(--fs-tag);
   line-height: 12px;
   text-transform: uppercase;
   text-align: center;
   pointer-events: none;
+  -webkit-font-smoothing: none;
 }
 .b-badge.listed { background: var(--gold); }
 .b-badge.trading { background: var(--pink); }
@@ -192,22 +213,28 @@ button { border-radius: 0; }
   position: absolute;
   top: 0;
   right: 0;
-  width: 20px;
-  height: 20px;
+  width: 24px;
+  height: 24px;
   display: grid;
   place-items: center;
-  background: var(--red);
+  background: var(--red-deep); /* paper on --red was 3.1:1 */
   color: var(--paper);
   border-left: 4px solid var(--ink);
   border-bottom: 4px solid var(--ink);
-  font-family: var(--label);
-  font-size: 12px;
+  font-family: var(--font-display);
+  font-size: var(--fs-text-min);
+  font-weight: 700;
+  line-height: 1;
   pointer-events: none;
+  -webkit-font-smoothing: none;
 }
 .b-shelf-title { margin: 0 0 8px; }
 
 /* ---------------------------------------------------------------- item card */
 .b-card-head { display: grid; grid-template-columns: auto 1fr; gap: 12px; align-items: start; }
+/* the item name wraps beside its ✕ instead of pushing the ✕ onto a row of its own */
+.b-card-head .b-row-between { flex-wrap: nowrap; align-items: flex-start; }
+.b-card-head .b-row-between > .b-link { flex: none; margin: -10px -8px 0 0; }
 .b-card-icon {
   position: relative;
   width: 104px;
@@ -218,16 +245,20 @@ button { border-radius: 0; }
   border: 4px solid var(--ink);
 }
 .b-card-icon .item-icon { border: 0; background: transparent; }
-.b-facts { display: grid; grid-template-columns: auto 1fr; gap: 4px 12px; margin: 0; }
-.b-facts dt { font-family: var(--label); font-size: 12px; text-transform: uppercase; padding-top: 2px; }
-.b-facts dd { margin: 0; }
+.b-facts { display: grid; grid-template-columns: auto 1fr; gap: 8px 12px; margin: 0; align-items: baseline; }
+.b-facts dt {
+  font-family: var(--font-ui); font-size: var(--fs-sm); font-weight: 700; letter-spacing: var(--track-label);
+  text-transform: uppercase; color: var(--ink-soft);
+}
+.b-facts dd { margin: 0; line-height: var(--lh-snug); }
 .b-final {
   padding: 8px 12px;
   background: var(--lav);
   border: 4px solid var(--ink);
-  font-family: var(--label);
-  font-size: 12px;
-  text-transform: uppercase;
+  font-family: var(--font-ui);
+  font-size: var(--fs-text-min);
+  font-weight: 700;
+  line-height: var(--lh-snug);
 }
 
 /* ---------------------------------------------------------------- nudge dialog
@@ -260,9 +291,10 @@ button { border-radius: 0; }
 .b-polaroid-img img.pixel { object-fit: contain; image-rendering: pixelated; }
 .b-polaroid-cap {
   padding: 8px 0 12px;
-  font-family: var(--label);
-  font-size: 12px;
-  text-transform: uppercase;
+  font-family: var(--font-ui);
+  font-size: var(--fs-text-min);
+  font-weight: 700;
+  line-height: var(--lh-snug);
   text-align: center;
 }
 .b-option {
@@ -277,17 +309,23 @@ button { border-radius: 0; }
   border: 4px solid var(--ink);
   box-shadow: 4px 4px 0 var(--ink);
   cursor: pointer;
-  font-family: var(--label);
-  font-size: 16px;
-  text-transform: uppercase;
+  min-height: 52px;
+  font-family: var(--font-ui);
+  font-size: var(--fs-md);
+  font-weight: 700;
+  line-height: var(--lh-snug);
 }
 .b-option[aria-pressed="true"] { background: var(--gold); }
 .b-option:focus-visible { outline: 4px solid var(--lav); outline-offset: 4px; }
 .b-option:active { transform: translateY(4px); box-shadow: 0 0 0 var(--ink); }
-.b-stars { letter-spacing: 2px; }
+.b-stars { letter-spacing: 2px; font-size: var(--fs-lg); }
 .b-input {
   width: 100%;
+  min-height: 48px;
   padding: 8px 12px;
+  font-family: var(--font-ui);
+  font-size: var(--fs-md); /* >= 16px: no iOS zoom on focus */
+  line-height: var(--lh-snug);
   background: #fff;
   border: 4px solid var(--ink);
   border-radius: 0;
@@ -299,12 +337,13 @@ button { border-radius: 0; }
   grid-template-columns: auto 1fr;
   gap: 12px;
   align-items: center;
+  min-height: var(--tap);
   cursor: pointer;
 }
 .b-toggle input { position: absolute; opacity: 0; pointer-events: none; }
 .b-switch {
   width: 56px;
-  height: 28px;
+  height: 32px;
   padding: 0;
   border: 4px solid var(--ink);
   background: var(--cream);
@@ -315,12 +354,12 @@ button { border-radius: 0; }
   position: absolute;
   top: 0;
   left: 0;
-  width: 20px;
-  height: 20px;
+  width: 24px;
+  height: 24px;
   background: var(--ink);
 }
 .b-toggle input:checked + .b-switch { background: var(--mint); }
-.b-toggle input:checked + .b-switch::after { left: 28px; }
+.b-toggle input:checked + .b-switch::after { left: 24px; }
 .b-toggle input:focus-visible + .b-switch { outline: 4px solid var(--lav); }
 .b-hidden-input { display: none; }
 .b-spin { display: inline-block; animation: b-blink 0.6s steps(2) infinite; }

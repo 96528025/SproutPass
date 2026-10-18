@@ -43,16 +43,19 @@
 .radar__label {
   position: absolute;
   left: var(--rh);
-  width: 48px;
+  min-width: 48px;
   margin-left: -24px;
-  height: 16px;
+  margin-top: -2px; /* 20px tall, centred on the inline top (half - 8) */
+  height: 20px;
+  padding: 0 6px;
   background: var(--ink);
   color: var(--paper);
   font-family: var(--font-label);
-  font-size: 10px;
-  line-height: 16px;
+  font-size: var(--fs-tag, 12px);
+  line-height: 20px;
   text-align: center;
   white-space: nowrap;
+  box-shadow: 2px 2px 0 var(--paper);
 }
 /* the 25 M ring is hidden behind my avatar, so its label sits just east of the avatar instead of on top of the ring */
 .radar__label--side { margin-left: 60px; }
@@ -104,7 +107,7 @@
   position: relative;
   display: block;
   margin-top: -8px;
-  padding: 0 4px;
+  padding: 2px 6px;
   background: var(--ink);
   color: var(--paper);
   font-family: var(--font-label);
@@ -175,11 +178,34 @@
   right: 0;
   bottom: calc(var(--bottom-bar) + 12px);
   display: flex;
-  justify-content: center;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
   z-index: 4; /* below --z-overlay so A5's scenes cover the HUD */
+  pointer-events: none; /* only the button and hint take taps, not the strip across the map */
+}
+.ws__walk > * { pointer-events: auto; }
+/* one readable line over the map, always on its own paper plate (never bare text on tiles) */
+.ws__walk-hint {
+  max-width: 236px; /* clears C's corner pet on the right */
+  padding: 4px 10px;
+  background: var(--paper);
+  border: var(--border-ink);
+  box-shadow: var(--shadow-hard-sm);
+  font-family: var(--font-ui);
+  font-size: var(--fs-md, 16px);
+  line-height: 20px;
+  color: var(--ink);
+  text-align: center;
+  animation: ws-hint-in 240ms steps(3, end) 1;
+}
+@keyframes ws-hint-in {
+  from { transform: translateY(8px); }
+  to   { transform: translateY(0); }
 }
 
 @media (prefers-reduced-motion: reduce) {
   .radar__sweep-arm,
-  .radar__sweep-arm > .spr { animation: none; }
+  .radar__sweep-arm > .spr,
+  .ws__walk-hint { animation: none; }
 }

@@ -1,4 +1,5 @@
-/* Hand-Me-Down Relay — pixel design tokens (A1). Add colours only through A. */
+/* Hand-Me-Down Relay — pixel design tokens (A1; readability system B1). Palette/art colours only through A;
+   the text colours below (--ink-soft, --red-deep, …) exist so text passes WCAG AA on that palette. */
 :root {
   --ink: #2b2140;
   --paper: #fff4d6;
@@ -46,9 +47,47 @@
   --z-modal: 30;
   --z-toast: 40;
 
-  --font-ui: "Pixelify Sans", "Trebuchet MS", sans-serif;
-  --font-label: "Silkscreen", "Courier New", monospace;
-  --font-wordmark: "Press Start 2P", "Courier New", monospace;
+  /* Fonts (src/pixel/fonts.css). Readable first: --font-ui for every sentence, button, input and toast;
+     the pixel faces only where they are short. */
+  --font-ui: "Atkinson Hyperlegible Next", "Atkinson Hyperlegible", system-ui, -apple-system, "Segoe UI", Roboto,
+    "Helvetica Neue", Arial, sans-serif;
+  /* --font-display: short titles, numbers, prices, at 16px and up. It is Silkscreen, not Pixelify Sans: side by side
+     on the mock, Pixelify's "5" reads as "S", "7" as a bracket and "B" as "ß" ("$15.75" -> "$1S.7S"), which is not OK
+     on a price. Silkscreen keeps the pixel look with unambiguous digits. Pixelify Sans stays loaded for old callers. */
+  --font-display: "Silkscreen", "Courier New", monospace;
+  --font-label: "Silkscreen", "Courier New", monospace;        /* tiny uppercase tags, never below 12px */
+  --font-wordmark: "Press Start 2P", "Courier New", monospace; /* the logo only */
+
+  /* Type scale. Body = --fs-md. Readable text never goes below 16px (--fs-text-min);
+     --fs-xs / --fs-sm are for short uppercase labels and tags only. */
+  --fs-xs: 13px;
+  --fs-sm: 15px;
+  --fs-text-min: 16px;
+  --fs-md: 17px;
+  --fs-lg: 20px;
+  --fs-xl: 26px;
+  --fs-2xl: 34px;
+  --fs-tag: 12px; /* Silkscreen floor: 12px = 1.5px per font pixel, crisp at 2x */
+  --lh-body: 1.45;
+  --lh-snug: 1.3;
+  --lh-tight: 1.15;
+  --track-label: 0.04em; /* letter-spacing for uppercase labels */
+  --tap: 44px;           /* minimum touch target */
+
+  /* Text colours, checked against the palette (WCAG 2.1 AA, 4.5:1 for text). The art keeps its colours;
+     only text and the surfaces that carry text use these.
+       --ink on paper 13.7 · cream 12.5 · sky 9.3 · gold 9.7 · mint 10.0 · lav 7.0 · pink 7.0 · path 9.1
+       --ink on --red is 4.4 and --paper on --red 3.1 (both fail): red surfaces with text use --red-deep
+       --paper on --red-deep 5.6 · --red-deep on paper 5.6 · on cream 5.1
+       --ink-soft (muted text) on paper 8.9 · cream 8.1 · sky 6.0 · path 5.9 · gold 6.3 · lav 4.5
+         (ink at 70% opacity on sky was 4.47: muted text is a solid colour now, never opacity)
+       --grass-deep on paper 5.9 · cream 5.3 (--grass-dark text on paper was 3.2)
+       --paper-soft on ink 8.6 (muted text on dark) */
+  --text: var(--ink);
+  --ink-soft: #4a3f5c;
+  --paper-soft: #c9c0d9;
+  --red-deep: #b03535;
+  --grass-deep: #2e6b36;
 
   --bottom-bar: 64px;
   --chip-row: 40px;
@@ -67,11 +106,13 @@ body {
   background: var(--grass-dark);
   color: var(--ink);
   font-family: var(--font-ui);
-  font-size: 16px;
-  line-height: 20px;
+  font-size: var(--fs-md);
+  line-height: var(--lh-body);
   -webkit-text-size-adjust: 100%;
   -webkit-tap-highlight-color: transparent;
-  -webkit-font-smoothing: none;
+  -webkit-font-smoothing: antialiased; /* the readable face needs smoothing; pixel faces opt out below */
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
   overscroll-behavior: none;
 }
 
@@ -102,23 +143,77 @@ p {
   margin: 0;
 }
 
+/* inputs: 17px also stops iOS Safari zooming in on focus (it zooms below 16px) */
+input,
+textarea,
+select {
+  font-family: var(--font-ui);
+  font-size: var(--fs-md);
+  line-height: var(--lh-snug);
+}
+::placeholder {
+  color: var(--ink-soft);
+  opacity: 1;
+}
+
+/* Font utilities. The pixel faces render without smoothing so their edges stay crisp. */
 .font-ui {
   font-family: var(--font-ui);
+}
+.font-display {
+  font-family: var(--font-display);
+  -webkit-font-smoothing: none;
 }
 .font-label {
   font-family: var(--font-label);
   text-transform: uppercase;
   letter-spacing: 0;
+  -webkit-font-smoothing: none;
 }
 .font-wordmark {
   font-family: var(--font-wordmark);
+  -webkit-font-smoothing: none;
 }
 
-.px-ui-16 { font-family: var(--font-ui); font-size: 16px; line-height: 20px; }
-.px-ui-20 { font-family: var(--font-ui); font-size: 20px; line-height: 24px; }
-.px-ui-24 { font-family: var(--font-ui); font-size: 24px; line-height: 28px; }
-.px-label-12 { font-family: var(--font-label); font-size: 12px; line-height: 16px; text-transform: uppercase; }
-.px-label-16 { font-family: var(--font-label); font-size: 16px; line-height: 20px; text-transform: uppercase; }
+/* Readable text (Atkinson Hyperlegible Next). The px-ui-* names are kept for existing callers. */
+.px-ui-16 { font-family: var(--font-ui); font-size: var(--fs-text-min); line-height: 24px; }
+.px-ui-20 { font-family: var(--font-ui); font-size: var(--fs-lg); line-height: 28px; }
+.px-ui-24 { font-family: var(--font-ui); font-size: 24px; line-height: 32px; }
+.px-text    { font-family: var(--font-ui); font-size: var(--fs-md); line-height: var(--lh-body); }
+.px-text-lg { font-family: var(--font-ui); font-size: var(--fs-lg); line-height: var(--lh-snug); }
+.px-muted   { color: var(--ink-soft); }
+/* Short uppercase label in the readable face (form labels, section eyebrows, stat captions). */
+.px-eyebrow {
+  font-family: var(--font-ui);
+  font-size: var(--fs-sm);
+  font-weight: 700;
+  line-height: var(--lh-snug);
+  letter-spacing: var(--track-label);
+  text-transform: uppercase;
+}
+/* Pixel display: short titles, numbers, prices. Silkscreen is drawn on an 8px em: 16 / 24 / 32px stay crisp. */
+.px-display-16 { font-family: var(--font-display); font-size: var(--fs-text-min); line-height: 20px; text-transform: uppercase; -webkit-font-smoothing: none; }
+.px-display-20 { font-family: var(--font-display); font-size: var(--fs-lg); line-height: 24px; text-transform: uppercase; -webkit-font-smoothing: none; }
+.px-display-24 { font-family: var(--font-display); font-size: 24px; line-height: 32px; text-transform: uppercase; -webkit-font-smoothing: none; }
+.px-display-32 { font-family: var(--font-display); font-size: 32px; line-height: 40px; text-transform: uppercase; -webkit-font-smoothing: none; }
+.px-display-26 { font-family: var(--font-display); font-size: var(--fs-xl); line-height: 32px; text-transform: uppercase; -webkit-font-smoothing: none; }
+.px-display-34 { font-family: var(--font-display); font-size: var(--fs-2xl); line-height: 40px; text-transform: uppercase; -webkit-font-smoothing: none; }
+/* Silkscreen tags: tiny, uppercase, 12px floor. Use for 1-3 word tags, never for sentences. */
+.px-label-12 { font-family: var(--font-label); font-size: var(--fs-tag); line-height: 16px; text-transform: uppercase; -webkit-font-smoothing: none; }
+.px-label-16 { font-family: var(--font-label); font-size: 16px; line-height: 20px; text-transform: uppercase; -webkit-font-smoothing: none; }
+
+/* Visually hidden, still read by screen readers (DialogBox reads the whole line, not the typewriter). */
+.px-sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
 
 /* utility: dithered backdrop */
 .px-dither {

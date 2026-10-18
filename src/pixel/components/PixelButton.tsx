@@ -8,7 +8,7 @@ export interface PixelButtonProps extends Omit<ButtonHTMLAttributes<HTMLButtonEl
   variant?: ButtonVariant;
   icon?: ReactNode;
   onClick?: (e: MouseEvent<HTMLButtonElement>) => void;
-  /** 32px tall variant for chips rows. */
+  /** Compact variant for chip rows (still a 44px touch target). */
   small?: boolean;
   /** Full width. */
   block?: boolean;
@@ -18,7 +18,7 @@ export interface PixelButtonProps extends Omit<ButtonHTMLAttributes<HTMLButtonEl
   silent?: boolean;
 }
 
-/** Pressed state drops 4px and loses its shadow. Primary = gold. */
+/** Pressed state drops 4px and loses its shadow. Primary = gold. Label in the readable face, caller's casing. */
 export function PixelButton({
   variant = "primary",
   icon,

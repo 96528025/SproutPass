@@ -33,7 +33,7 @@ export function ItemCard(p: { item: ClothingItem; closet: ClosetView; onClose?: 
     setBusy(true);
     try {
       await api.withdrawListing({ ...parentRef(), listingId: listing.id });
-      toast("LISTING WITHDRAWN", "cream");
+      toast("Listing withdrawn. It's back in your bag.", "cream");
       await refreshCloset();
     } catch (e) {
       toast(errorText(e), "red");
@@ -93,7 +93,7 @@ export function ItemCard(p: { item: ClothingItem; closet: ClosetView; onClose?: 
             <PixelButton variant="ghost" disabled={busy || !listing} onClick={withdraw}>{busy ? "…" : "WITHDRAW"}</PixelButton>
           </div>
         ) : finalHome ? (
-          <div className="b-final">FINAL HOME 💛 — this one stays</div>
+          <div className="b-final">Final home 💛 This one stays with you.</div>
         ) : (
           <div className="b-stack">
             <p className="b-p b-small">{priceRuleText(item)}</p>

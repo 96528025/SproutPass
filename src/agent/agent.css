@@ -1,26 +1,30 @@
-/* C: src/agent styles — Part D rules: 4 px grid, hard shadows, steps() motion, no radius/blur. */
+/* C: src/agent styles — Part D rules: 4 px grid, hard shadows, steps() motion, no radius/blur.
+   Bubble text is the readable UI font at 16 px; the speaker is a short pixel label above it. */
 
 .c-bubbles {
   display: flex;
   flex-direction: column;
   justify-content: flex-end; /* past 240 px the OLDEST bubbles clip off the top; the one typing stays visible */
-  gap: 8px;
+  gap: 12px;
   width: 100%;
   max-height: 240px;
   overflow: hidden;
-  padding: 4px;
+  padding: 4px 4px 8px;
   font-family: var(--font-ui);
-  font-size: 16px;
-  line-height: 20px;
+  font-size: var(--fs-md, 16px);
+  line-height: 22px;
   color: var(--ink);
 }
 .c-bubble {
   position: relative;
-  max-width: 80%;
-  padding: 8px 12px;
+  max-width: 82%;
+  padding: 8px 12px 10px;
   background: var(--paper);
+  color: var(--ink);
   border: 4px solid var(--ink);
   box-shadow: 4px 4px 0 var(--ink);
+  overflow-wrap: anywhere;
+  animation: c-pop 160ms steps(2, end) 1;
 }
 .c-bubble--left  { align-self: flex-start; }
 .c-bubble--right { align-self: flex-end; background: var(--cream); }
@@ -34,30 +38,47 @@
   width: 8px;
   height: 8px;
   background: var(--ink);
+  box-shadow: 4px 4px 0 var(--ink);
 }
 .c-bubble--left::after  { left: 12px; }
-.c-bubble--right::after { right: 12px; }
+.c-bubble--right::after { right: 16px; }
+/* who is speaking: ink on the bubble colour (AA on paper, cream, gold and peach) */
 .c-bubble__who {
   display: block;
   margin-bottom: 4px;
   font-family: var(--font-label);
-  font-size: 12px;
+  font-size: var(--fs-tag, 12px);
+  line-height: 16px;
   text-transform: uppercase;
-  color: var(--lav);
+  letter-spacing: 0.5px;
+  color: var(--ink);
+}
+.c-bubble__who::before {
+  content: "";
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-right: 6px;
+  vertical-align: 1px;
+  background: var(--lav);
+  box-shadow: 0 0 0 2px var(--ink);
 }
 .c-bubble--right .c-bubble__who { text-align: right; }
+.c-bubble--right .c-bubble__who::before { background: var(--mint); }
 .c-cursor { display: inline-block; width: 8px; height: 16px; margin-left: 2px; background: var(--ink); vertical-align: -2px; animation: c-blink 1s steps(2, end) infinite; }
 @keyframes c-blink { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }
+@keyframes c-pop { from { transform: translateY(4px); } to { transform: translateY(0); } }
 
 /* Fixed to A's handheld screen (HandheldFrame), above the bottom bar (z 5) and mute toggle (z 6), under A's
-   full-screen scenes (--z-overlay), dialogs and modals. */
+   full-screen scenes (--z-overlay), dialogs and modals. On B's screens it stands in the bar's dock lane
+   (src/world/shell.css, --dock-lane 64px): 48px tall, 6px off the bar, so even mid-bob it stays inside the lane. */
 .c-pet {
   position: fixed;
   right: 16px;
-  bottom: calc(var(--bottom-bar) + 8px);
+  bottom: calc(var(--bottom-bar) + 6px);
   z-index: 7;
-  width: 64px;
-  height: 64px;
+  width: 48px;
+  height: 48px;
   padding: 0;
   background: transparent;
   border: 0;
@@ -66,6 +87,7 @@
   animation: c-bob 1s steps(2, end) infinite;
 }
 .c-pet:active { transform: translateY(4px); }
+.c-pet:focus-visible { outline: 4px solid var(--sky); outline-offset: 2px; }
 .c-pet__dot {
   position: absolute;
   top: 0;
@@ -76,24 +98,37 @@
   border: 4px solid var(--ink);
   animation: c-blink 1s steps(2, end) infinite;
 }
+/* PSST / TRADE!: left of the pet, in the same lane row, vertically centred on it */
 .c-pet__hint {
   position: absolute;
-  right: 72px;
+  right: 56px;
   bottom: 8px;
   padding: 4px 8px;
   white-space: nowrap;
   font-family: var(--font-label);
-  font-size: 12px;
+  font-size: var(--fs-tag, 12px);
+  line-height: 16px;
   text-transform: uppercase;
   color: var(--ink);
   background: var(--lav);
   border: 4px solid var(--ink);
   box-shadow: 4px 4px 0 var(--ink);
 }
+/* stepped tail pointing at the pet */
+.c-pet__hint::after {
+  content: "";
+  position: absolute;
+  right: -12px;
+  top: 50%;
+  width: 8px;
+  height: 8px;
+  margin-top: -4px;
+  background: var(--ink);
+}
 @keyframes c-bob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-4px); } }
 
 @media (prefers-reduced-motion: reduce) {
-  .c-pet, .c-cursor, .c-pet__dot { animation: none; }
+  .c-pet, .c-cursor, .c-pet__dot, .c-bubble { animation: none; }
 }
 
 /* Inside B's shell (src/app/Shell.tsx): the pet's own dialog goes over B's nudge box when opened on purpose
@@ -102,3 +137,5 @@
 .dlg.c-pet__dlg { z-index: calc(var(--z-dialog) + 1); }
 .b-nudge ~ .c-pet { display: none; }
 .b-overlays[data-route="world"] .c-pet { bottom: calc(var(--bottom-bar) + 72px); }
+/* The trade-offer pill (trade.css) already says "trade offer" in the same lane: one call to action, not two. */
+.b-overlays:has(> .t-reopen) .c-pet__hint { display: none; }

@@ -31,7 +31,11 @@ const CONTROL = 'input, textarea, select, button, a[href], [contenteditable]:not
 const prefersReduced = () =>
   typeof window !== "undefined" && window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
 
-/** RPG text box: portrait left, typewriter at ~40 chars/s with a blip, blinking ▼, choices as a pixel menu. */
+/**
+ * RPG text box: portrait left, typewriter at ~40 chars/s with a blip, blinking ▼, choices as a pixel menu.
+ * Text is in the readable face (--font-ui, 17px); the line is laid out in full from the first frame, so the
+ * typewriter never reflows, and screen readers hear the whole line, not single letters.
+ */
 export function DialogBox({
   speaker,
   lines,
@@ -162,7 +166,11 @@ export function DialogBox({
             {portrait ?? speaker.name.slice(0, 1).toUpperCase()}
           </div>
           <div className="dlg__text">
-            {line.slice(0, shown)}
+            {/* screen readers get the whole line once; the typewriter below is visual only */}
+            <span className="px-sr-only" aria-live="polite">{line}</span>
+            <span aria-hidden>{line.slice(0, shown)}</span>
+            {/* the untyped rest is laid out but invisible, so words never jump to the next line mid-word */}
+            {typing && <span className="dlg__rest" aria-hidden>{line.slice(shown)}</span>}
             {!typing && !showChoices && <span className="dlg__caret" aria-hidden />}
           </div>
           {showChoices && choices && (

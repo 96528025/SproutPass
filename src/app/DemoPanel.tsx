@@ -43,18 +43,18 @@ export function DemoPanel() {
   const setClock = (label: string, iso: string) => run(label, async () => {
     const r = await api.demoClock({ now: iso });
     setNow(r.now);
-    return `CLOCK → ${label}${r.nudgesCreated ? ` · ${r.nudgesCreated} NUDGE${r.nudgesCreated > 1 ? "S" : ""}` : ""}`;
+    return `Clock set to ${label.charAt(0)}${label.slice(1).toLowerCase()}${r.nudgesCreated ? ` · ${r.nudgesCreated} new nudge${r.nudgesCreated > 1 ? "s" : ""}` : ""}`;
   });
 
   const reset = () => run("RESET", async () => {
     await api.demoReset();
     setNow(null);
-    return "DEMO RESET";
+    return "Demo reset. Everyone starts fresh.";
   });
 
   const encounter = () => run("ENCOUNTER", async () => {
     const p = await mockDev.triggerEncounter();
-    return p ? `ENCOUNTER · ${p.snapshot.itemName.toUpperCase()}` : "NO ACTIVE LISTING YET";
+    return p ? `Encounter: ${p.snapshot.itemName}` : "List an item first, then try again.";
   });
 
   return (

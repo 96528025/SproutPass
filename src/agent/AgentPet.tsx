@@ -106,7 +106,7 @@ export function AgentPet({ parentId, pet, onChoice, onOpenTrade }: AgentPetProps
   return (
     <>
       <button className="c-pet" aria-label={`${pet.name}, your closet pet`} onClick={() => setOpen(true)}>
-        <Sprite name={pet.sprite} fallback="pet_a" anim={attention ? "cheer" : "idle"} scale={4} />
+        <Sprite name={pet.sprite} fallback="pet_a" anim={attention ? "cheer" : "idle"} scale={3} />
         {attention && <span className="c-pet__dot" aria-hidden />}
         {attention && !open && <span className="c-pet__hint">{proposals > 0 ? "TRADE!" : "PSST"}</span>}
       </button>
@@ -116,7 +116,7 @@ export function AgentPet({ parentId, pet, onChoice, onOpenTrade }: AgentPetProps
           className="c-pet__dlg"
           speaker={{ name: pet.name, sprite: pet.sprite }}
           portrait={<Sprite name={pet.sprite} fallback="pet_a" anim="talk" scale={3} />}
-          lines={[text, "(I said the same thing in iMessage.)"]}
+          lines={[text, "(I sent you the same note in iMessage.)"]}
           choices={choices}
           onDone={() => setOpen(false)}
           onChoice={onPick}

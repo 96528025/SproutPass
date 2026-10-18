@@ -1,4 +1,7 @@
-/* A1 component styles. 4px grid, hard shadows, stepped corners, steps() motion. */
+/* A1 component styles. 4px grid, hard shadows, stepped corners, steps() motion.
+   Readability (B1): sentences, buttons, toasts and dialog text use var(--font-ui) at >= 16px with no forced
+   uppercase; the pixel face stays on short titles, numbers and prices (--font-display, >= 16px) and tiny tags
+   (--font-label, >= 12px). Text colours come from tokens.css and pass WCAG AA (4.5:1) on their surface. Touch targets >= 44px. */
 
 /* ---------- PixelPanel ---------- */
 .pp {
@@ -24,21 +27,28 @@
 .pp--cream .pp__body { background: var(--cream); }
 .pp--lav   .pp__body { background: var(--lav); }
 .pp--ink   .pp__body { background: var(--ink); color: var(--paper); }
-.pp--titled .pp__body { padding-top: var(--u6); }
+.pp--titled .pp__body { padding-top: 28px; }
+/* Title tab: a short title in the pixel display face (16px = 2px per Silkscreen pixel), gold on ink (9.7:1). */
 .pp__title {
   position: absolute;
-  top: -8px;
+  top: -10px;
   left: 12px;
   z-index: 1;
-  height: 20px;
-  padding: 0 var(--u2);
+  max-width: calc(100% - 24px);
+  height: 28px;
+  padding: 0 10px;
+  overflow: hidden;
   background: var(--ink);
   color: var(--gold);
-  font-family: var(--font-label);
-  font-size: 12px;
-  line-height: 20px;
+  font-family: var(--font-display);
+  font-size: var(--fs-text-min);
+  font-weight: 400;
+  line-height: 28px;
+  letter-spacing: 0;
   text-transform: uppercase;
+  text-overflow: ellipsis;
   white-space: nowrap;
+  -webkit-font-smoothing: none;
 }
 
 /* ---------- PixelButton ---------- */
@@ -48,25 +58,29 @@
   align-items: center;
   justify-content: center;
   gap: var(--u2);
-  min-height: 44px;
-  min-width: 44px;
+  min-height: 48px;
+  min-width: var(--tap);
   padding: var(--u2) var(--u4);
   border: var(--border-ink);
   box-shadow: var(--shadow-hard);
   font-family: var(--font-ui);
-  font-size: 20px;
-  line-height: 24px;
+  font-size: var(--fs-md);
+  line-height: var(--lh-tight);
   font-weight: 700;
+  letter-spacing: 0.01em;
   color: var(--ink);
-  text-transform: uppercase;
+  text-align: center;
+  text-wrap: balance;
   user-select: none;
   -webkit-user-select: none;
   touch-action: manipulation;
+  isolation: isolate; /* lets the disabled dither sit between the fill and the label */
 }
 .pb--primary { background: var(--gold); }
 .pb--ghost   { background: var(--paper); }
-.pb--danger  { background: var(--red); color: var(--paper); }
-.pb--small   { min-height: 32px; padding: 0 var(--u3); font-size: 16px; line-height: 20px; }
+/* --red with text fails AA (paper 3.1, ink 4.4): the danger surface uses --red-deep (paper 5.6) */
+.pb--danger  { background: var(--red-deep); color: var(--paper); }
+.pb--small   { min-height: var(--tap); padding: var(--u) var(--u3); font-size: var(--fs-text-min); }
 .pb--block   { display: flex; width: 100%; }
 .pb:not(:disabled):active,
 .pb--pressed {
@@ -76,12 +90,14 @@
 .pb:disabled {
   cursor: not-allowed;
 }
+/* dithered veil over the fill only (z-index -1 inside the isolated button): reads as "off", label stays sharp */
 .pb:disabled::after {
   content: "";
   position: absolute;
   inset: 0;
+  z-index: -1;
   background: var(--dither-paper);
-  opacity: 0.9;
+  opacity: 0.85;
 }
 .pb:focus-visible {
   outline: 4px solid var(--sky);
@@ -96,24 +112,34 @@
 }
 
 /* ---------- Chip ---------- */
+/* A short tag (SIZE 6-9M, LISTED · $18.00): bold readable face, uppercase, 32px tall.
+   .chip--plain keeps the caller's casing for sentence-like chips ("Demo payment · no real charge"). */
 .chip {
   display: inline-flex;
   align-items: center;
   gap: var(--u);
-  height: 24px;
-  padding: 0 var(--u2);
+  min-height: 32px;
+  padding: 2px var(--u2);
   border: var(--border-ink);
-  font-family: var(--font-label);
-  font-size: 12px;
-  line-height: 16px;
+  font-family: var(--font-ui);
+  font-size: var(--fs-sm);
+  font-weight: 700;
+  line-height: var(--lh-tight);
+  letter-spacing: var(--track-label);
   text-transform: uppercase;
   white-space: nowrap;
   color: var(--ink);
   background: var(--paper);
 }
+.chip--plain {
+  font-size: var(--fs-text-min);
+  letter-spacing: 0;
+  text-transform: none;
+  white-space: normal;
+}
 .chip--ink   { background: var(--ink);   color: var(--paper); }
 .chip--gold  { background: var(--gold); }
-.chip--red   { background: var(--red);   color: var(--paper); }
+.chip--red   { background: var(--red-deep); color: var(--paper); }
 .chip--mint  { background: var(--mint); }
 .chip--lav   { background: var(--lav); }
 .chip--sky   { background: var(--sky); }
@@ -125,12 +151,15 @@
   display: inline-flex;
   gap: var(--u);
   vertical-align: middle;
+  align-items: center;
 }
 .heart {
   position: relative;
   width: 16px;
   height: 16px;
 }
+.hearts--lg { gap: 6px; }
+.hearts--lg .heart { width: 24px; height: 24px; }
 .heart__px {
   position: absolute;
   top: 0;
@@ -138,24 +167,29 @@
   width: 2px;
   height: 2px;
 }
+.hearts--lg .heart__px { width: 3px; height: 3px; }
 
 /* ---------- FitBar ---------- */
 .fit {
   display: block;
-  font-family: var(--font-label);
-  font-size: 12px;
-  line-height: 16px;
-  text-transform: uppercase;
+  font-family: var(--font-ui);
+  font-size: var(--fs-text-min);
+  line-height: var(--lh-snug);
+  color: var(--ink);
 }
 .fit__row {
   display: flex;
   justify-content: space-between;
-  gap: var(--u2);
-  margin-bottom: var(--u);
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0 var(--u3);
+  margin-bottom: var(--u2);
 }
+.fit__when { font-weight: 500; }
+.fit__left { font-weight: 700; white-space: nowrap; }
 .fit__track {
   position: relative;
-  height: 16px;
+  height: 20px;
   border: var(--border-ink);
   background: var(--paper);
 }
@@ -177,7 +211,7 @@
   pointer-events: none;
 }
 .fit--soon .fit__row { color: var(--ink); }
-.fit--past .fit__row { color: var(--red); }
+.fit--past .fit__row { color: var(--red-deep); } /* 5.6:1 on paper; --red text was 3.1 */
 
 /* ---------- PriceReceipt ---------- */
 .rcpt {
@@ -187,10 +221,9 @@
   padding: var(--u6) var(--u4);
   background: var(--paper);
   color: var(--ink);
-  font-family: var(--font-label);
-  font-size: 12px;
-  line-height: 16px;
-  text-transform: uppercase;
+  font-family: var(--font-ui);
+  font-size: var(--fs-text-min);
+  line-height: var(--lh-snug);
   filter: none;
 }
 .rcpt__shadow {
@@ -208,15 +241,25 @@
 .rcpt__line {
   display: flex;
   justify-content: space-between;
+  align-items: baseline;
   gap: var(--u2);
   padding: var(--u) 0;
 }
+.rcpt__line > span:first-child { white-space: nowrap; }
+.rcpt__num {
+  font-family: var(--font-display);
+  font-size: var(--fs-text-min);
+  font-weight: 400;
+  white-space: nowrap;
+  -webkit-font-smoothing: none;
+}
 .rcpt__dots {
   flex: 1;
+  min-width: var(--u4);
   overflow: hidden;
   white-space: nowrap;
   color: var(--ink);
-  opacity: 0.5;
+  opacity: 0.5; /* decorative leader, aria-hidden */
 }
 .rcpt__rule {
   height: 4px;
@@ -226,23 +269,29 @@
 .rcpt__total {
   display: flex;
   justify-content: space-between;
-  align-items: baseline;
-  font-size: 16px;
-  line-height: 20px;
+  align-items: center;
+  gap: var(--u3);
+  font-size: var(--fs-md);
+  font-weight: 700;
+  line-height: var(--lh-snug);
 }
 .rcpt__price {
-  font-family: var(--font-wordmark);
-  font-size: 20px;
-  line-height: 24px;
+  font-family: var(--font-display);
+  font-size: 24px; /* 3px per Silkscreen pixel */
+  font-weight: 400;
+  line-height: 32px;
   color: var(--ink);
   background: var(--gold);
-  padding: var(--u) var(--u2);
+  padding: 0 var(--u2);
   border: var(--border-ink);
+  white-space: nowrap;
+  -webkit-font-smoothing: none;
 }
 .rcpt__stamp {
-  margin-top: var(--u2);
+  margin-top: var(--u3);
   text-align: center;
-  color: var(--grass-dark);
+  font-weight: 700;
+  color: var(--grass-deep); /* 5.9:1 on paper; --grass-dark was 3.2 */
 }
 
 /* ---------- DialogBox ---------- */
@@ -264,7 +313,7 @@
   display: grid;
   grid-template-columns: 64px 1fr;
   gap: var(--u3);
-  min-height: 120px;
+  min-height: 112px;
   cursor: pointer;
   user-select: none;
   -webkit-user-select: none;
@@ -282,20 +331,26 @@
   font-size: 20px;
   color: var(--ink);
 }
+/* The typewriter types into a laid-out line: the untyped rest is already there, invisible, so words never jump
+   between lines and the box never grows while it types. */
 .dlg__text {
   position: relative;
   font-family: var(--font-ui);
-  font-size: 20px;
-  line-height: 24px;
-  min-height: 72px;
+  font-size: var(--fs-md);
+  font-weight: 500;
+  line-height: var(--lh-body);
+  min-height: calc(3em * 1.45);
   padding-right: var(--u6);
   white-space: pre-wrap;
-  word-break: break-word;
+  overflow-wrap: anywhere;
+}
+.dlg__rest {
+  visibility: hidden;
 }
 .dlg__caret {
   position: absolute;
   right: 0;
-  bottom: 0;
+  bottom: 4px;
   width: 0;
   height: 0;
   border-left: 8px solid transparent;
@@ -312,7 +367,7 @@
   display: flex;
   flex-direction: column;
   gap: var(--u);
-  margin-top: var(--u2);
+  margin-top: var(--u);
   padding-top: var(--u2);
   border-top: 4px solid var(--ink);
 }
@@ -320,23 +375,26 @@
   display: flex;
   align-items: center;
   gap: var(--u2);
-  min-height: 36px;
-  padding: 0 var(--u2);
+  min-height: var(--tap);
+  padding: var(--u) var(--u2);
   font-family: var(--font-ui);
-  font-size: 20px;
-  line-height: 24px;
-  text-transform: uppercase;
+  font-size: var(--fs-md);
+  font-weight: 700;
+  line-height: var(--lh-tight);
+  letter-spacing: 0.01em;
   text-align: left;
   width: 100%;
 }
 .dlg__choice--active {
   background: var(--gold);
+  box-shadow: inset 0 0 0 4px var(--ink);
 }
 .dlg__cursor {
   display: inline-block;
+  flex: none;
   width: 16px;
-  font-family: var(--font-label);
-  font-size: 12px;
+  font-size: 14px;
+  line-height: 1;
   color: var(--ink);
   visibility: hidden;
 }
@@ -365,21 +423,23 @@
   max-width: 358px;
   max-height: calc(var(--screen-h, 100dvh) - 32px); /* the handheld screen, not the window */
   overflow: auto;
-  padding: 8px 4px 4px 0; /* room for the title tab and the hard shadow */
+  padding: 12px 4px 4px 0; /* room for the title tab and the hard shadow */
 }
 .modal__close {
   position: absolute;
-  top: var(--u);
-  right: var(--u);
+  top: 0;
+  right: 0;
   z-index: 2;
-  width: 32px;
-  height: 32px;
-  font-family: var(--font-label);
-  font-size: 16px;
-  line-height: 32px;
+  width: var(--tap);
+  height: var(--tap);
+  font-family: var(--font-ui);
+  font-size: 28px;
+  font-weight: 700;
+  line-height: var(--tap);
   text-align: center;
   color: var(--ink);
 }
+.pp--ink .modal__close { color: var(--paper); }
 
 /* ---------- Toast ---------- */
 .toast {
@@ -407,22 +467,24 @@
 .toast__body {
   display: inline-flex;
   align-items: center;
-  min-height: 40px;
+  justify-content: center;
+  min-height: 48px;
   padding: var(--u2) var(--u4);
   border: var(--border-ink);
   box-shadow: var(--shadow-hard);
-  font-family: var(--font-label);
-  font-size: 12px;
-  line-height: 16px;
-  text-transform: uppercase;
+  font-family: var(--font-ui);
+  font-size: var(--fs-text-min);
+  font-weight: 700;
+  line-height: var(--lh-snug);
   background: var(--paper);
   color: var(--ink);
   white-space: normal;
   text-align: center;
+  text-wrap: balance;
 }
 .toast--ink  .toast__body { background: var(--ink); color: var(--paper); }
 .toast--gold .toast__body { background: var(--gold); }
-.toast--red  .toast__body { background: var(--red); color: var(--paper); }
+.toast--red  .toast__body { background: var(--red-deep); color: var(--paper); }
 .toast--mint .toast__body { background: var(--mint); }
 .toast--lav  .toast__body { background: var(--lav); }
 .toast--sky  .toast__body { background: var(--sky); }
