@@ -39,7 +39,7 @@ import {
   stepToward,
   withinEncounter,
 } from "./geo.ts";
-import { tl } from "./wording.ts";
+import { tl, unlabelled } from "./wording.ts";
 import { callB, findMatches as bFindMatches } from "../cbridge.ts";
 import { getNow } from "../db.ts";
 import { bad, notFound } from "../errors.ts";
@@ -509,17 +509,20 @@ export function rulesLine(rule: MandateRule, parentName: string): string {
 }
 
 /**
- * Each match (best first) with the buyer's verdict: `blocked` when their pet rules say no. One Parent read, plus this
- * month's totals (one MatchProposal read + the clock) only when a budget check is reached. Unknown buyer → unchanged.
+ * Each match (best first) with the buyer's verdict: `blocked` when their pet rules say no. One Parent read (none when
+ * `rows` already holds the buyer; the row read is kept there), plus this month's totals (one MatchProposal read + the
+ * clock) only when a budget check is reached. Unknown buyer → unchanged.
  */
 export async function withRules<M extends { priceCents: number; category?: string }>(
   db: any,
   buyerId: string,
   matches: M[],
+  rows?: ParentRows,
 ): Promise<(M & { blocked?: RulesBlock })[]> {
   if (!matches?.length) return [];
-  const buyer: any = await db.Parent.get(buyerId).catch(() => null);
+  const buyer: any = rows?.get(buyerId) ?? (await db.Parent.get(buyerId).catch(() => null));
   if (!buyer) return matches;
+  rows?.set(buyerId, buyer);
   const m = mandateOf(buyer);
   const who = { name: String(buyer.name ?? ""), petName: String(buyer.pet?.name ?? "") || "their pet" };
   let committed: number | null = null;
@@ -594,6 +597,36 @@ export async function updateEncounter(db: any, id: string, patch: Record<string,
 }
 
 // ---------------------------------------------------------------- local match (fallback "agents")
+//
+// The pets' voices (personality.ts): each line is said in its pet's own voice once the pet's name is known, from Parent
+// rows this request already holds (demoWalk reads them all; updatePresence has the caller's) or from the ONE
+// Parent.list planLocalMatch makes in place of withRules' Parent.get for the buyer. So a voice never costs an extra
+// read (Base44's rate limit is shared by the whole team). A pet whose name isn't known says the neutral line.
+
+/** Parent rows by id that this request already read. */
+export type ParentRows = Map<string, any>;
+
+/** The pets saying a plan's lines; their names pick their voices (personality.ts). */
+export interface PlanPets {
+  buyer?: string;
+  seller?: string;
+}
+
+const petName = (rows: ParentRows | undefined, id: string): string | undefined => rows?.get(id)?.pet?.name || undefined;
+
+/**
+ * Both parents of an encounter in `rows`, with one Parent.list unless they are there already. Only called where
+ * withRules would read the buyer anyway (it then reuses the row). Best effort: on a failure withRules reads the buyer
+ * itself and the seller's pet says the neutral lines.
+ */
+async function loadParents(db: any, rows: ParentRows, ids: string[]): Promise<void> {
+  if (ids.every((id) => rows.has(id))) return;
+  try {
+    for (const p of ((await db.Parent.list()) ?? []) as any[]) if (p?.id && !rows.has(p.id)) rows.set(p.id, p);
+  } catch {
+    /* withRules falls back to Parent.get */
+  }
+}
 
 export interface LocalPlan {
   buyerId: string;
@@ -602,60 +635,76 @@ export interface LocalPlan {
   transcript: any[];
   /** The buyer's pet rules stop this match: the pets say so (blockedTranscript) and nobody calls createProposal. */
   blocked?: RulesBlock;
+  /** Who says the lines (their voices); unknown → the neutral lines. */
+  pets?: PlanPets;
 }
 
 type BlockedPlan = LocalPlan & { blocked: RulesBlock };
 
 /**
  * Template transcript so the EncounterScene has bubbles even without LLM/agents. Same lines as the Python agents
- * (wording.ts `tl` = agents/wording.py t_*), without the "Pip: " prefix: AgentBubbles names the pet by parentId.
+ * (wording.ts `tl` = agents/wording.py t_*), each in its pet's own voice when `pets` names it, without the "Pip: "
+ * prefix: AgentBubbles and the Agent Console name the pet by parentId.
  * The buyer's pet says the fit line ("My little one…"): it is the buyer's child the fit was computed for.
  */
-export function localTranscript(buyerId: string, sellerId: string, m: LocalMatch, nowMs: number): any[] {
+export function localTranscript(buyerId: string, sellerId: string, m: LocalMatch, nowMs: number, pets: PlanPets = {}): any[] {
   const at = (i: number) => iso(nowMs + i * 600);
+  const buyer = unlabelled(pets.buyer), seller = unlabelled(pets.seller);
   return [
-    { from: "buyer_agent", parentId: buyerId, kind: "looking_for", text: tl.lookingFor([m.size]), at: at(0) },
-    { from: "seller_agent", parentId: sellerId, kind: "have", text: tl.have(m.itemName, m.size), at: at(1) },
+    { from: "buyer_agent", parentId: buyerId, kind: "looking_for", text: tl.lookingFor([m.size], undefined, buyer), at: at(0) },
+    { from: "seller_agent", parentId: sellerId, kind: "have", text: tl.have(m.itemName, m.size, seller), at: at(1) },
     ...(m.wearWeeksLeft != null
-      ? [{ from: "buyer_agent", parentId: buyerId, kind: "fit_check", text: tl.fitCheck(m.wearWeeksLeft), at: at(2) }]
+      ? [{ from: "buyer_agent", parentId: buyerId, kind: "fit_check", text: tl.fitCheck(m.wearWeeksLeft, buyer), at: at(2) }]
       : []),
-    { from: "buyer_agent", parentId: buyerId, kind: "propose", text: tl.propose(m.priceCents), at: at(3) },
-    { from: "seller_agent", parentId: sellerId, kind: "ack", text: tl.ack(), at: at(4) },
+    { from: "buyer_agent", parentId: buyerId, kind: "propose", text: tl.propose(m.priceCents, buyer), at: at(3) },
+    { from: "seller_agent", parentId: sellerId, kind: "ack", text: tl.ack(seller), at: at(4) },
   ];
 }
 
 /** The buyer's pet turns the offer down because of its parent's rules: no "Trade proposal!", no "over to the humans". */
-export function blockedTranscript(buyerId: string, sellerId: string, m: LocalMatch, block: RulesBlock, nowMs: number): any[] {
+export function blockedTranscript(
+  buyerId: string,
+  sellerId: string,
+  m: LocalMatch,
+  block: RulesBlock,
+  nowMs: number,
+  pets: PlanPets = {},
+): any[] {
   const at = (i: number) => iso(nowMs + i * 600);
+  const buyer = unlabelled(pets.buyer);
   return [
-    { from: "buyer_agent", parentId: buyerId, kind: "looking_for", text: tl.lookingFor([m.size]), at: at(0) },
-    { from: "seller_agent", parentId: sellerId, kind: "have", text: tl.have(m.itemName, m.size), at: at(1) },
-    { from: "buyer_agent", parentId: buyerId, kind: "decline", text: tl.decline(block.line), at: at(2) },
+    { from: "buyer_agent", parentId: buyerId, kind: "looking_for", text: tl.lookingFor([m.size], undefined, buyer), at: at(0) },
+    { from: "seller_agent", parentId: sellerId, kind: "have", text: tl.have(m.itemName, m.size, unlabelled(pets.seller)), at: at(1) },
+    { from: "buyer_agent", parentId: buyerId, kind: "decline", text: tl.decline(block.line, buyer), at: at(2) },
   ];
 }
 
 /**
  * The best match each way, a→b (a buys) first, then b→a; each with the template lines the pets would say. The best
  * match the buyer's pet rules allow wins; when they allow none, the plan is the best match marked `blocked`.
- * `first`: stop at the first plan that can be proposed.
+ * `first`: stop at the first plan that can be proposed. `parents`: rows this request already read (filled further by
+ * the one Parent.list, see loadParents), for the pets' voices.
  */
 export async function planLocalMatch(
   db: any,
   enc: any,
   findMatches: FindMatches,
   nowMs: number = Date.now(),
-  opts: { first?: boolean } = {},
+  opts: { first?: boolean; parents?: ParentRows } = {},
 ): Promise<LocalPlan[]> {
+  const rows: ParentRows = opts.parents ?? new Map();
   const plans: LocalPlan[] = [];
   for (const [buyerId, sellerId] of [[enc.aId, enc.bId], [enc.bId, enc.aId]]) {
     const ranked = ((await findMatches(db, { buyerId, sellerId })) ?? []).slice(0, 5);
     if (!ranked.length) continue;
-    const checked = await withRules(db, buyerId, ranked);
+    await loadParents(db, rows, [buyerId, sellerId]);
+    const checked = await withRules(db, buyerId, ranked, rows);
     const pick = checked.find((x) => !x.blocked) ?? checked[0];
     const { blocked, ...match } = pick;
+    const pets: PlanPets = { buyer: petName(rows, buyerId), seller: petName(rows, sellerId) };
     plans.push(blocked
-      ? { buyerId, sellerId, match, blocked, transcript: blockedTranscript(buyerId, sellerId, match, blocked, nowMs) }
-      : { buyerId, sellerId, match, transcript: localTranscript(buyerId, sellerId, match, nowMs) });
+      ? { buyerId, sellerId, match, blocked, pets, transcript: blockedTranscript(buyerId, sellerId, match, blocked, nowMs, pets) }
+      : { buyerId, sellerId, match, pets, transcript: localTranscript(buyerId, sellerId, match, nowMs, pets) });
     if (opts.first && !blocked) break;
   }
   return plans;
@@ -672,7 +721,8 @@ async function markProposed(db: any, encounterId: string, patch: Record<string, 
 
 /**
  * Nothing fits either way: the pets say so (the Python agents' no-fit exchange) and the encounter ends. `run`: who
- * decided it (default: the local fallback, with its LookingFor → NoFit log; null = don't say).
+ * decided it (default: the local fallback, with its LookingFor → NoFit log; null = don't say). `rows`: parent rows
+ * already read, for the pets' voices (nothing is read for them here).
  */
 async function markNoMatch(
   db: any,
@@ -680,13 +730,15 @@ async function markNoMatch(
   nowMs: number,
   run: AgentRun | null = localRun(null, nowMs),
   extra: Record<string, unknown> = {},
+  rows?: ParentRows,
 ): Promise<"no_match"> {
   const said: any[] = (Array.isArray(enc.transcript) ? enc.transcript : []).filter((t: any) => t?.kind !== "propose" && t?.kind !== "ack");
   const opener = enc.aId < enc.bId ? enc.aId : enc.bId; // same rule as the agents: the smaller id opens
   const other = opener === enc.aId ? enc.bId : enc.aId;
+  const hello = tl.hello(unlabelled(petName(rows, opener)));
   const transcript = [
-    ...(said.length ? said : [{ from: "buyer_agent", parentId: opener, kind: "looking_for", text: tl.hello(), at: iso(nowMs) }]),
-    { from: "seller_agent", parentId: other, kind: "no_fit", text: tl.noFit(), at: iso(nowMs + 600) },
+    ...(said.length ? said : [{ from: "buyer_agent", parentId: opener, kind: "looking_for", text: hello, at: iso(nowMs) }]),
+    { from: "seller_agent", parentId: other, kind: "no_fit", text: tl.noFit(unlabelled(petName(rows, other))), at: iso(nowMs + 600) },
   ];
   await updateEncounter(db, enc.id, { status: "no_match", transcript }, runFields(run), extra);
   return "no_match";
@@ -704,7 +756,7 @@ async function markBlocked(db: any, enc: any, plan: BlockedPlan, nowMs: number):
   const last = Math.max(nowMs, ...opening.map((t: any) => ms(t?.at) + 600));
   const transcript = [
     ...opening,
-    { from: "buyer_agent", parentId: plan.buyerId, kind: "decline", text: tl.decline(plan.blocked.line), at: iso(last) },
+    { from: "buyer_agent", parentId: plan.buyerId, kind: "decline", text: tl.decline(plan.blocked.line, unlabelled(plan.pets?.buyer)), at: iso(last) },
   ];
   // The log before the reason: a live schema that doesn't know noMatchReason yet still stores the log.
   await updateEncounter(db, enc.id, { status: "no_match", transcript }, runFields(localRun(plan.match, nowMs, plan.blocked)),
@@ -722,13 +774,15 @@ export async function stageEncounter(
   enc: any,
   findMatches: FindMatches,
   nowMs: number = Date.now(),
+  opts: { parents?: ParentRows } = {},
 ): Promise<{ status: "staged" | "no_match"; transcript: any[]; reason?: string }> {
-  const plans = await planLocalMatch(db, enc, findMatches, nowMs, { first: true });
+  const rows: ParentRows = opts.parents ?? new Map();
+  const plans = await planLocalMatch(db, enc, findMatches, nowMs, { first: true, parents: rows });
   const plan = plans.find((p) => !p.blocked);
   if (!plan) {
     const stop = plans.find((p): p is BlockedPlan => !!p.blocked);
     if (stop) return { status: await markBlocked(db, enc, stop, nowMs), transcript: [], reason: stop.blocked.reason };
-    return { status: await markNoMatch(db, enc, nowMs), transcript: [] };
+    return { status: await markNoMatch(db, enc, nowMs, localRun(null, nowMs), {}, rows), transcript: [] };
   }
   // No agentLog yet: the encounter isn't decided (the agents may still win it, and B's mock plays its own log while
   // the pets talk). resolveEncounter writes the fallback's log with the proposal.
@@ -747,14 +801,16 @@ export function stagedAt(enc: any): number | null {
  * Step 2 (or all of it, for a caller that skips the talk): resolve one "talking" encounter the way C's local
  * fallback does (rule 10 + Part C §1): an existing proposal just marks it; otherwise B's findMatches both
  * directions → B's createProposal (it re-validates every rule; we only supply wording) → "proposed"; nothing
- * fits → "no_match". Pass a fresh row.
+ * fits → "no_match". Pass a fresh row. `parents`: rows this request already read (the pets' voices).
  */
 export async function resolveEncounter(
   db: any,
   enc: any,
   findMatches: FindMatches,
   nowMs: number = Date.now(),
+  opts: { parents?: ParentRows } = {},
 ): Promise<"proposed" | "no_match"> {
+  const rows: ParentRows = opts.parents ?? new Map();
   // Already proposed by the agents? Then just mark and move on.
   const existing = await db.MatchProposal.filter({ encounterId: enc.id }, undefined, 1);
   if (existing?.length) {
@@ -763,7 +819,7 @@ export async function resolveEncounter(
   }
 
   let stop: BlockedPlan | null = null;
-  for (const plan of await planLocalMatch(db, enc, findMatches, nowMs)) {
+  for (const plan of await planLocalMatch(db, enc, findMatches, nowMs, { parents: rows })) {
     if (plan.blocked) {
       stop ??= plan as BlockedPlan; // the other direction may still work
       continue;
@@ -806,7 +862,7 @@ export async function resolveEncounter(
     }
   }
   if (stop) return await markBlocked(db, enc, stop, nowMs);
-  return await markNoMatch(db, enc, nowMs);
+  return await markNoMatch(db, enc, nowMs, localRun(null, nowMs), {}, rows);
 }
 
 /**
@@ -848,6 +904,8 @@ export interface FallbackOpts {
   nowMs?: number;
   /** Talking encounters already read on this tick (else one query). */
   talking?: any[];
+  /** Parent rows already read on this tick (demoWalk: all; updatePresence: the caller's): the pets' voices. */
+  parents?: ParentRows;
 }
 
 /**
@@ -872,6 +930,7 @@ export async function runLocalFallback(
   const onDuty = agentsOnDuty(s, nowMs);
   const wait = s.matchVia === "local" ? 0 : (opts.fallbackAfterMs ?? (onDuty ? AGENT_FALLBACK_AFTER_MS : FALLBACK_AFTER_MS));
   const talkFor = opts.talkMs ?? ((t: { text?: string }[]) => talkMs(t));
+  const rows: ParentRows = opts.parents ?? new Map(); // shared by every encounter on this tick: one Parent.list at most
 
   for (const enc of talking) {
     if (enc?.status !== "talking") continue;
@@ -882,7 +941,7 @@ export async function runLocalFallback(
       // The agents are still saying lines (appendTurn): let them finish, up to a hard cap.
       const lastLine = Math.max(0, ...((enc.transcript ?? []) as any[]).map((t) => ms(t?.at)));
       if (onDuty && opts.fallbackAfterMs == null && nowMs - lastLine < 10_000 && age < AGENT_FALLBACK_MAX_MS) continue;
-      const step = await stageEncounter(db, enc, findMatches, nowMs);
+      const step = await stageEncounter(db, enc, findMatches, nowMs, { parents: rows });
       if (step.status === "no_match") {
         resolved.push(enc.id);
         continue;
@@ -894,14 +953,21 @@ export async function runLocalFallback(
     if (nowMs - at < talkFor(enc.transcript ?? [])) continue;
     const fresh = await db.Encounter.get(enc.id).catch(() => null);
     if (fresh?.status !== "talking") continue; // the agents (or another tick) got there first
-    await resolveEncounter(db, fresh, findMatches, nowMs);
+    await resolveEncounter(db, fresh, findMatches, nowMs, { parents: rows });
     resolved.push(enc.id);
   }
   return { resolved, staged };
 }
 
 /** After detection: the fallback, read only around a recent meeting (or on a recheck tick). */
-async function fallbackTick(db: any, det: EncounterResult, deps: LocationDeps, recheck: boolean, nowMs: number): Promise<string[]> {
+async function fallbackTick(
+  db: any,
+  det: EncounterResult,
+  deps: LocationDeps,
+  recheck: boolean,
+  nowMs: number,
+  parents: ParentRows,
+): Promise<string[]> {
   const look = recheck || det.created.length > 0 || det.recent;
   if (!look) return [];
   const talking = det.encounters?.filter((e) => e?.status === "talking");
@@ -910,6 +976,7 @@ async function fallbackTick(db: any, det: EncounterResult, deps: LocationDeps, r
     talkMs: deps.talkMs,
     nowMs,
     talking,
+    parents,
   });
   return resolved;
 }
@@ -983,10 +1050,17 @@ export async function updatePresence(db: any, body: UpdatePresenceBody, deps: Lo
   await writePresence(db, existing, row);
   all.set(parentId, row);
 
-  const parentOf: ParentLookup = async (id) => (id === parentId ? parent : await db.Parent.get(id).catch(() => null));
+  // The parent rows this tick reads are kept for the fallback (the pets' voices) instead of being read again.
+  const rows: ParentRows = new Map([[parentId, parent]]);
+  const parentOf: ParentLookup = async (id) => {
+    if (rows.has(id)) return rows.get(id);
+    const p = await db.Parent.get(id).catch(() => null);
+    if (p) rows.set(id, p);
+    return p;
+  };
   const recheck = deps.recheck || recheckDue(nowMs);
   const det = await detectEncounters(db, row, parentOf, nowMs, { presences: [...all.values()], recheck });
-  const fallback = await fallbackTick(db, det, deps, recheck, nowMs);
+  const fallback = await fallbackTick(db, det, deps, recheck, nowMs, rows);
   return { ok: true as const, encounters: det.created, fallback };
 }
 
@@ -1090,7 +1164,7 @@ export async function demoWalk(db: any, body: DemoWalkBody, deps: LocationDeps =
     mover: true,
     recheck: recheck || Boolean(body.reset), // the reset tick re-arms the pair at once
   });
-  const fallback = await fallbackTick(db, det, deps, recheck, nowMs);
+  const fallback = await fallbackTick(db, det, deps, recheck, nowMs, parentsById);
   return {
     ok: true as const,
     distanceM: Math.round(haversineM(row, target)),

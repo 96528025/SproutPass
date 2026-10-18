@@ -38,19 +38,26 @@ to them, and that never spends money or makes a decision on its own.
   judging), the encounter scene plays and their two agents negotiate: what the buyer's child needs, what the
   seller has shared, how long it will fit, and the price. If something fits, the same trade proposal appears on
   both phones and in both iMessage threads.
+- **Each pet has its own personality.** Button (Mina's) is tidy and warm, Pip (Jo's) curious and bouncy, Moss
+  (Sam's) calm and thrifty: "I have a Yellow duck romper in 6-9M, neatly folded." The voice is the same in the
+  encounter bubbles, the Agent Console, the in-app pet and iMessage. It changes how a pet says a line, never the item,
+  the price or "nothing is charged until you both accept", and the voice itself never names a parent or a child.
 - **People decide, the pet only proposes.** Each parent accepts or declines on their own phone. Nothing is
   charged until both accept. The buyer then pays: a demo payment, approved with Face ID if the parent turned that
   on. A golden-flower celebration plays on both screens, and the item moves to the buyer's closet with its history.
 - **Spending rules for the pet.** On "Pip's spending rules" a parent sets a price limit per trade, a monthly budget,
   the kinds of clothes the pet may look for, whether the pet may propose at all, and whether every payment needs
-  Face ID. The server enforces the rules: a trade that breaks them is never proposed, and the pet says which rule
-  stopped it ("Not this one, it's over the price limit Jo set for me"), never the amount.
+  Face ID. The server enforces the rules: a trade that breaks them is never proposed, and in the Agent Console the
+  buyer's pet says which rule stopped it ("Aw, not this one — it's over the price limit Jo set for me."), never the
+  amount.
 - **The pet lives in iMessage too.** Through Photon, each parent can text their pet: send a photo to sell, get a
   quote with the fair price, reply "yes" to list, "accept" or "decline" a trade, "status", "help", "stop". The pet
   never pays by text; it sends a link to approve in the app.
-- **You can watch the agents.** The Agent Console (`/agents`) is built for a projector. It shows the two agents,
-  every protocol message with its latency, the pets' conversation, a privacy check over every message on screen,
-  and the outcome. It labels honestly whether a Fetch.ai uAgent, the fallback matcher or the offline mock spoke.
+- **You can watch the agents.** The Agent Console (`/agents`) is built for a projector and reads top to bottom on a
+  phone. It shows the two agents with their pets' personalities, every protocol message with its latency, the pets'
+  conversation, a privacy check over every message on screen, and the outcome. It labels honestly whether a Fetch.ai
+  uAgent, the fallback matcher or the offline mock spoke. On a phone, "See the agents' chat" in the encounter scene
+  or AGENTS' CHAT in the pet's menu opens that meeting (`/agents?enc=<id>`).
 - **Impact you can check.** `/impact` counts new homes, CO₂e, water and landfill avoided, money saved by buyers and
   earned by sellers, with points and badges. Every number comes with its assumption and source, and totals are
   rounded down.
@@ -68,7 +75,8 @@ to them, and that never spends money or makes a decision on its own.
   in-memory database shared across tabs. A judge can play both phones on a laptop with no backend at all.
 - **Fetch.ai uAgents** (Python, `uagents` 0.26) run one closet agent per parent. They speak `HandMeDownRelay 0.3.0`
   (`LookingFor`, `HaveListings`, `NoFit`, `ProposeTrade`, `TradeAck`, `Decline`), carry only shared data, and hand
-  the app a protocol log that the Agent Console shows. They also support ASI:One chat with interactive cards.
+  the app a protocol log that the Agent Console shows. They also support ASI:One chat with interactive cards. Each
+  agent talks in its pet's voice from `agents/personality.py`, the same as the app's `personality.ts`.
 - **Photon 2.0** delivers iMessage: a signed webhook in, per-parent lines out, the flowers GIF as an attachment.
 - **Passkeys** (WebAuthn via `@simplewebauthn/browser` 14 and `@simplewebauthn/server` 13) approve payments, with a
   challenge bound to one trade and its price.
@@ -102,8 +110,9 @@ to them, and that never spends money or makes a decision on its own.
   encounter, proposal on both screens, two accepts, demo payment, celebration, and the item in the new closet with
   its history. A second run had the Fetch.ai agents negotiate and create the proposal themselves. A third run, after
   deploying the upgrades, added the pet's spending rules in the trade window, the Agent Console and the impact board.
-- 429 vitest tests, 59 Deno tests and 102 Python tests pass, plus an offline Fetch.ai demo with 13 checks. A parity
-  test runs the Python agent's wording and intent parser and compares them word for word with the TypeScript side.
+- 441 vitest tests, 71 Deno tests and 114 Python tests pass, plus an offline Fetch.ai demo with 13 checks. A parity
+  test runs the Python agent's wording, intent parser and pet personalities and compares them word for word with the
+  TypeScript side.
 - The trust design holds on the server, not just in the UI: the buyer's spending rules are checked in
   `createProposal`, payment needs both accepts, and Face ID approval is verified with `@simplewebauthn/server`
   before any money (demo money) moves.
@@ -153,8 +162,6 @@ our running log of findings.
   data would touch our backend.
 - **More of the closet:** shoes and gear, size tags read from two photos, and a charity or textile-recycling "final
   home" for items that have had 3 owners.
-- **Event texts without waiting for a sweep:** today "Jo accepted" and the flowers GIF go out on the next inbox sweep
-  (a text in, or an open map tab). One line in the decide, pay and list entry files would send them at once.
 - **Agentverse and ASI:One** for every parent (mailbox agents), and a paid Base44 plan so live demos aren't bound by
   the Free-plan rate limit.
 

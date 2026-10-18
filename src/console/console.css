@@ -19,6 +19,14 @@
   line-height: var(--lh-body, 1.45);
   min-height: 100%;
 }
+/* Phone view sits in B's padded screen column (b.css .b-main): bleed to its edges, so on a phone the dark surface
+   fills the screen instead of floating in a sky-blue frame, and grow to its height when there's little to show. */
+.b-main > .ac {
+  flex: 1 0 auto;
+  margin: -16px -16px calc(-1 * (var(--bottom-bar, 64px) + 80px + var(--dock-h, 0px)));
+}
+/* no demo strip above: the top-right 48 px belong to A's MuteToggle */
+.b-app--no-demo > .b-main > .ac { margin-top: -48px; padding-top: calc(48px + var(--u2)); }
 
 /* Big screen: a full-viewport layer over the handheld frame (portal to <body>). */
 .ac-layer {
@@ -49,6 +57,31 @@
 
 .ac p { margin: 0; }
 .ac h1, .ac h3 { margin: 0; }
+
+/* ---------- top row: back to the game · big screen / phone view ---------- */
+.ac-top {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--u2);
+}
+.ac-back {
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--tap, 44px);
+  padding: var(--u) var(--u3);
+  background: var(--paper);
+  color: var(--ink);
+  border: 4px solid var(--ink);
+  box-shadow: var(--ac-shadow);
+  font-family: var(--font-ui);
+  font-weight: 700;
+  font-size: var(--fs-text-min, 16px);
+  text-decoration: none;
+}
+.ac-back:active { transform: translate(4px, 4px); box-shadow: none; }
+.ac-back:focus-visible { outline: 4px solid var(--sky); outline-offset: 2px; }
 
 /* ---------- header ---------- */
 .ac-head {
@@ -111,25 +144,41 @@
 }
 
 .ac-loading { color: var(--ac-muted); }
+/* a link to an encounter the relay no longer has */
+.ac-note {
+  padding: var(--u2) var(--u3);
+  border: 4px solid var(--gold);
+  color: var(--paper);
+  font-size: var(--fs-text-min, 16px);
+}
 
 /* ---------- encounter strip ---------- */
+/* Phone view: FOLLOW LIVE on its own row, the tabs under it in a full-width row that scrolls sideways by itself
+   (the page never does). Big screen: one row. */
 .ac-strip {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: var(--u3);
+  gap: var(--u2) var(--u3);
   min-width: 0;
 }
+.ac--big .ac-strip { flex-wrap: nowrap; }
 .ac-strip > .pb { flex: 0 0 auto; }
 .ac-strip__list {
   display: flex;
+  flex: 1 1 100%;
   gap: var(--u2);
   margin: 0;
   padding: 4px 8px 8px 0;
   list-style: none;
   overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scroll-snap-type: x proximity;
   min-width: 0;
   scrollbar-width: thin;
 }
+.ac--big .ac-strip__list { flex: 0 1 auto; }
+.ac-strip__list > li { flex: 0 0 auto; scroll-snap-align: start; }
 .ac-tab {
   display: flex;
   align-items: center;
@@ -159,37 +208,82 @@
   font-size: var(--fs-text-min, 16px);
 }
 .ac-enc-line span + span::before { content: "·"; margin-right: var(--u4); }
+/* phone view: one fact per line (a wrapped line would start with the "·") */
+.ac:not(.ac--big) .ac-enc-line { flex-direction: column; gap: 0; }
+.ac:not(.ac--big) .ac-enc-line span + span::before { content: none; }
+
+/* phone view: jump straight to the conversation (the big screen shows it all at once) */
+.ac-jump {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--u2);
+}
+.ac-jump button {
+  min-height: var(--tap, 44px);
+  padding: var(--u) var(--u2);
+  background: var(--ink);
+  color: var(--paper);
+  border: 4px solid var(--ac-line);
+  box-shadow: var(--ac-shadow);
+  font-family: var(--font-ui);
+  font-weight: 700;
+  font-size: var(--fs-text-min, 16px);
+  line-height: 1.2;
+  text-wrap: balance;
+  cursor: pointer;
+}
+.ac-jump button:active { transform: translate(4px, 4px); box-shadow: none; }
+.ac-jump button:focus-visible { outline: 4px solid var(--sky); outline-offset: 2px; }
 
 /* ---------- stage: agent · timeline · agent ---------- */
+/* Phone view: one agent per row, then the messages. Big screen: agent · messages · agent. */
 .ac-stage {
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: var(--u3);
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--u4);
 }
-.ac-stage > .ac-timeline { grid-column: 1 / -1; order: 3; }
+.ac-stage > .ac-timeline { order: 3; }
 .ac--big .ac-stage {
   grid-template-columns: minmax(240px, 300px) minmax(0, 1fr) minmax(240px, 300px);
   gap: var(--u6);
   align-items: stretch;
 }
-.ac--big .ac-stage > .ac-timeline { grid-column: auto; order: 0; }
+.ac--big .ac-stage > .ac-timeline { order: 0; }
 
+/* Phone view: pet left, who + engine right, then the personality, the address, the count, all left-aligned. */
 .ac-agent {
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-areas:
+    "pet who"
+    "pet chips"
+    "persona persona"
+    "addr addr"
+    "sent sent";
   align-items: center;
-  gap: var(--u2);
+  gap: var(--u2) var(--u3);
   padding: var(--u3);
   background: var(--paper);
   color: var(--ink);
   border: 4px solid var(--ink);
   outline: 4px solid var(--ac-line);
   box-shadow: 8px 8px 0 #000;
-  text-align: center;
+  text-align: left;
   min-width: 0;
 }
-.ac--big .ac-agent { padding: var(--u6) var(--u4); gap: var(--u3); align-self: start; position: sticky; top: var(--u6); }
+.ac--big .ac-agent {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: var(--u6) var(--u4);
+  gap: var(--u3);
+  text-align: center;
+  align-self: start;
+  position: sticky;
+  top: var(--u6);
+}
 .ac-agent__pet {
+  grid-area: pet;
   display: grid;
   place-items: center;
   width: 96px;
@@ -197,6 +291,8 @@
   background: var(--sky);
   border: 4px solid var(--ink);
 }
+.ac-agent__who { grid-area: who; align-self: end; min-width: 0; }
+.ac--big .ac-agent > * { align-self: auto; } /* the grid placements above mean nothing in the big screen's column */
 .ac--big .ac-agent__pet { width: 128px; height: 128px; background: var(--grass); }
 .ac-agent__name {
   font-family: var(--font-display, var(--font-ui));
@@ -204,15 +300,21 @@
   line-height: 1.1;
 }
 .ac-agent__parent { font-size: var(--fs-text-min, 16px); color: var(--ink-soft, #4a3f5c); }
-.ac-agent__chips { display: flex; flex-wrap: wrap; justify-content: center; gap: var(--u); }
+.ac-agent__chips { grid-area: chips; align-self: start; display: flex; flex-wrap: wrap; gap: var(--u); }
+.ac--big .ac-agent__chips { justify-content: center; }
+/* the pet's personality (base44/shared/c/personality.ts): traits as a tag, the one-line blurb under it */
+.ac-agent__persona { grid-area: persona; display: flex; flex-direction: column; align-items: flex-start; gap: var(--u2); }
+.ac--big .ac-agent__persona { align-items: center; }
+.ac-agent__blurb { font-size: var(--fs-text-min, 16px); color: var(--ink-soft, #4a3f5c); }
 .ac-agent__addr {
+  grid-area: addr;
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  justify-content: center;
   gap: var(--u2);
   max-width: 100%;
 }
+.ac--big .ac-agent__addr { justify-content: center; }
 .ac-agent__addr code {
   padding: 2px var(--u2);
   background: var(--ink);
@@ -223,6 +325,7 @@
 }
 .ac-agent__noaddr { font-size: var(--fs-text-min, 16px); color: var(--ink-soft, #4a3f5c); }
 .ac-agent__sent {
+  grid-area: sent;
   font-family: var(--font-display, var(--font-ui));
   font-size: var(--fs-text-min, 16px);
   color: var(--ink-soft, #4a3f5c);
@@ -588,8 +691,7 @@
   to { right: calc(100% - 16px); opacity: 0; }
 }
 
-/* narrow phones: one agent per row if the two cards get too tight */
-@media (max-width: 360px) {
-  .ac-stage { grid-template-columns: 1fr; }
+/* phones: the privacy lists one under the other (two ~150 px columns break every line) */
+@media (max-width: 419px) {
   .ac-privacy__cols { grid-template-columns: 1fr; }
 }

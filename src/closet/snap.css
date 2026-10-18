@@ -1,4 +1,4 @@
-/* OWNER: B7. Snap-to-list (/bag/add) + the bag's "+ Add an item" / "Pet rules" row and NEW badge.
+/* OWNER: B7. Snap-to-list (/bag/add) + the bag's "+ ADD AN ITEM" / "PET'S RULES" row and NEW badge.
    Pixel rules: 4 px grid, hard ink shadows, no blur, no rounded corners. Sentences in the readable UI font
    (var(--font-ui), 16 px+); the pixel label font only for short labels. */
 
@@ -15,7 +15,7 @@
 }
 .snap-help { opacity: 0.85; }
 .snap-issue { font-weight: 700; opacity: 1; }
-.snap-link { align-self: center; font-size: 12px; }
+.snap-link { align-self: center; }
 
 /* ---------------------------------------------------------------- 1 · snap it */
 .snap-polaroid .b-polaroid-img { image-rendering: pixelated; }

@@ -26,6 +26,7 @@ const toggle = <T,>(list: T[], v: T) => (list.includes(v) ? list.filter((x) => x
 export function NeedsScreen() {
   const closet = useApp((s) => s.closet);
   const closetStatus = useApp((s) => s.closetStatus);
+  const closetError = useApp((s) => s.closetError);
   const refreshCloset = useApp((s) => s.refreshCloset);
   const toast = useApp((s) => s.toast);
   const nav = useNavigate();
@@ -55,7 +56,15 @@ export function NeedsScreen() {
 
   if (!closet) {
     return closetStatus === "error"
-      ? <PixelPanel title="NEEDS"><div className="b-center"><PixelButton onClick={() => void refreshCloset()}>TRY AGAIN</PixelButton></div></PixelPanel>
+      ? (
+        <PixelPanel title="NEEDS">
+          <div className="b-center">
+            <p className="b-p">Couldn't open your needs.</p>
+            <p className="b-p b-small b-muted">{closetError}</p>
+            <PixelButton onClick={() => void refreshCloset()}>TRY AGAIN</PixelButton>
+          </div>
+        </PixelPanel>
+      )
       : <div className="b-center"><Chip tone="cream">LOADING…</Chip></div>;
   }
 

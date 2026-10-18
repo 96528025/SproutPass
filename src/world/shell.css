@@ -241,6 +241,12 @@
   justify-content: center;
   touch-action: manipulation;
 }
+/* a 32px face with a 44px (--tap) hit area (the inset counts from inside the 4px border) */
+.mt::after {
+  content: "";
+  position: absolute;
+  inset: -10px;
+}
 .mt:active {
   transform: translate(2px, 2px);
 }
@@ -264,7 +270,7 @@
   --grass-h: clamp(208px, 35%, 296px);
   position: relative;
   height: var(--screen-h);
-  min-height: 640px;
+  min-height: 640px; /* the handheld (>= 600px wide) scrolls a short window; on a phone the title fits the screen (below) */
   overflow: hidden;
   background: var(--sky);
   color: var(--ink);
@@ -557,6 +563,22 @@
   .ts__l2 { font-size: 40px; line-height: 40px; }
   .ts__intro { top: 216px; gap: 8px; }
   .ts:not(.ts--title) .ts__promise { display: none; }
+}
+/* phones: exactly one screen, never taller (a box that scrolls inside the page won't take a swipe in iOS Safari) */
+@media (max-width: 599px) {
+  .ts { min-height: 0; }
+}
+/* once a panel is up (the picker is ~320px tall) the pitch steps aside, so the panel never covers half of it */
+@media (max-height: 680px) {
+  .ts:not(.ts--title) .ts__intro { display: none; }
+}
+/* very short screens (iPhone SE in Safari shows ~548px): a lower grass band, and the wordmark (still clear of the
+   mute toggle), the pitch and the panels move up, so every button stays on screen */
+@media (max-height: 640px) {
+  .ts { --grass-h: 168px; }
+  .ts__mark { top: 48px; }
+  .ts__intro { top: 168px; }
+  .ts__action { bottom: calc(16px + env(safe-area-inset-bottom, 0px)); }
 }
 
 @media (prefers-reduced-motion: reduce) {

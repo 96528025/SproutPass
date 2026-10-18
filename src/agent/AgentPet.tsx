@@ -2,6 +2,8 @@
 // It bobs; a pink dot appears when there's an open nudge or proposal; tapping opens
 // A's DialogBox with the pet's latest line (mirrors the iMessage thread via PetLine,
 // with a template fallback when that entity isn't there yet).
+// The dialog's title tab carries the pet's personality ("Pip · Curious and bouncy", base44/shared/c/personality.ts),
+// and AGENTS' CHAT opens this parent's latest encounter in the Agent Console (/agents?enc=<id>, or /agents).
 //
 // Props:
 //   parentId   the viewing parent
@@ -11,8 +13,11 @@
 //   onOpenTrade optional: tapped "SEE TRADE" when a proposal is open
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { DialogBox, Sprite } from "../app/ui"; // A's kit; ui's Sprite narrows a data string safely
-import { type AgentNudge, countOpenProposals, listOpenNudges, listPetLines, subscribe } from "./cApi";
+import { withQuery } from "../world/query";
+import { personalityOf } from "../../base44/shared/c/personality.ts";
+import { type AgentNudge, countOpenProposals, listEncountersFor, listOpenNudges, listPetLines, subscribe } from "./cApi";
 import "./agent.css";
 
 export interface AgentPetProps {
@@ -89,17 +94,32 @@ export function AgentPet({ parentId, pet, onChoice, onOpenTrade }: AgentPetProps
 
   const attention = Boolean(nudge) || proposals > 0;
   const text = line ?? templateFor(pet.name, nudge, proposals);
+  const persona = personalityOf(pet.name);
 
+  // How the pets talked it over, agent to agent: the latest meeting this parent was in (one read, on tap).
+  const navigate = useNavigate();
+  const openChat = async () => {
+    let enc: string | undefined;
+    try {
+      enc = (await listEncountersFor(parentId))[0]?.id;
+    } catch {
+      /* offline / rate limited: the console follows the newest meeting */
+    }
+    navigate(withQuery("/agents", { enc }));
+  };
+
+  const chat = { label: "AGENTS' CHAT", value: "chat" };
   const choices =
     proposals > 0
-      ? [{ label: "SEE TRADE", value: "trade" }, { label: "LATER", value: "close" }]
+      ? [{ label: "SEE TRADE", value: "trade" }, chat, { label: "LATER", value: "close" }]
       : nudge?.kind === "outgrow_check"
-        ? [{ label: "SELL", value: "sell" }, { label: "KEEP", value: "keep" }, { label: "LATER", value: "later" }]
-        : [{ label: "OK", value: "close" }];
+        ? [{ label: "SELL", value: "sell" }, { label: "KEEP", value: "keep" }, { label: "LATER", value: "later" }, chat]
+        : [{ label: "OK", value: "close" }, chat];
 
   const onPick = (value: string) => {
     setOpen(false);
     if (value === "trade") onOpenTrade?.();
+    else if (value === "chat") void openChat();
     else if ((value === "sell" || value === "keep" || value === "later") && nudge) onChoice?.(value, nudge);
   };
 
@@ -114,7 +134,7 @@ export function AgentPet({ parentId, pet, onChoice, onOpenTrade }: AgentPetProps
         // A's DialogBox positions itself (fixed, above the bottom bar); c-pet__dlg lifts it over B's nudge box.
         <DialogBox
           className="c-pet__dlg"
-          speaker={{ name: pet.name, sprite: pet.sprite }}
+          speaker={{ name: persona ? `${pet.name} · ${persona.traits}` : pet.name, sprite: pet.sprite }}
           portrait={<Sprite name={pet.sprite} fallback="pet_a" anim="talk" scale={3} />}
           lines={[text, "(I sent you the same note in iMessage.)"]}
           choices={choices}

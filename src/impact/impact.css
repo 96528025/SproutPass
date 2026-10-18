@@ -30,7 +30,9 @@
 .im-center { display: grid; place-items: center; text-align: center; gap: 12px; padding: 24px 0; }
 
 .im-inline-link {
-  display: inline;
+  display: inline-flex; /* a 44 px tap target inside the 16 px note */
+  align-items: center;
+  min-height: var(--tap, 44px);
   padding: 0;
   border: 0;
   background: none;

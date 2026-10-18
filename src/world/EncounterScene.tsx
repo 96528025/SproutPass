@@ -2,12 +2,16 @@
 // Timeline (steps()-timed, see encounter.css): 0.0 s flash + "alert" + "!" pops, 0.4 s parents walk to the centre
 // 96 px apart, 1.4 s pets hop out 48 px apart, then talk/idle under C's `bubbles` slot. status "proposed" slams the
 // banner and hands over to B after 1.2 s; "no_match" shrugs and asks to close. A ghost × always dismisses.
+// Once the pets are done (the banner, or the no-match box), "See the agents' chat" closes the scene and opens this
+// encounter in the Agent Console (/agents?enc=<id>). It never holds the hand-off: the 1.2 s timer runs as before.
 // me / peer are the real parents (closet.parent, getParties' PublicParty): see world/people.ts.
 import { useCallback, useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { useNavigate } from "react-router";
 import { Sprite } from "@/pixel/components/Sprite";
 import { DialogBox } from "@/pixel/components/DialogBox";
 import { sfx } from "@/pixel/sfx";
 import { asSprite, type SceneEncounter, type ScenePerson } from "@/world/people";
+import { withQuery } from "@/world/query";
 import "./encounter.css";
 
 export interface EncounterSceneProps {
@@ -106,6 +110,15 @@ export function EncounterScene({ encounter, me, peer, bubbles, talking, onPropos
     return () => window.removeEventListener("keydown", onKey);
   }, [status]);
 
+  // The agents' side of this meeting, in the console. Leaving closes the scene first (the parent saw it), so coming
+  // back to the world doesn't replay it; a trade it proposed still pops up there (B's TradeWatcher).
+  const navigate = useNavigate();
+  const openChat = () => {
+    const to = withQuery("/agents", { enc: encounter.id });
+    onClosedRef.current();
+    navigate(to);
+  };
+
   const petAnim = phase === 2 || celebrate ? "hop" : isTalking && status !== "no_match" && !banner ? "talk" : "idle";
   const walking = phase === 1;
   const out = phase >= 1;
@@ -173,7 +186,7 @@ export function EncounterScene({ encounter, me, peer, bubbles, talking, onPropos
 
       {/* what is happening, in one readable line (the no-match DialogBox takes this spot when nothing fits) */}
       {!noMatch && (
-        <div className="enc__caption" aria-live="polite">
+        <div className={`enc__caption${banner ? " enc__caption--found" : ""}`} aria-live="polite">
           <p className="enc__caption-title">
             {banner
               ? "They found a fit!"
@@ -188,6 +201,11 @@ export function EncounterScene({ encounter, me, peer, bubbles, talking, onPropos
                 ? "Your pets hop out to compare closets."
                 : "They're checking size, fit and price for you."}
           </p>
+          {banner && (
+            <button type="button" className="enc__chat" onClick={() => { sfx.play("select"); openChat(); }}>
+              See the agents' chat
+            </button>
+          )}
           <span className="enc__caption-tag">PETS SUGGEST · YOU DECIDE</span>
         </div>
       )}
@@ -196,9 +214,9 @@ export function EncounterScene({ encounter, me, peer, bubbles, talking, onPropos
         <DialogBox
           speaker={{ name: me.pet.name, sprite: asSprite(me.pet.sprite, "pet_a") }}
           lines={["Nothing fits today — maybe next walk!"]}
-          choices={[{ label: "OK", value: "ok" }]}
+          choices={[{ label: "OK", value: "ok" }, { label: "See the agents' chat", value: "chat" }]}
           portrait={<Sprite name={asSprite(me.pet.sprite, "pet_a")} anim="idle" scale={3} />}
-          onDone={() => onClosedRef.current()}
+          onDone={(value) => (value === "chat" ? openChat() : onClosedRef.current())}
         />
       )}
     </div>

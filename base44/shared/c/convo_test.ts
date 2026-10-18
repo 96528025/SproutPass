@@ -10,6 +10,7 @@ import { callB } from "../cbridge.ts";
 import { payProposal } from "../logic/trade.ts";
 import { FLOW_TTL_MS, INBOUND_PER_MINUTE, namedItem, rateGate, sendEventTexts } from "./inboxFallback.ts";
 import { NO_PERSONAL_DETAILS } from "./condition.ts";
+import { PERSONALITIES } from "./personality.ts";
 
 const itemNamed = async (w: World, name: string) => (await w.db.ClothingItem.filter({ name }))[0] as any;
 const activeListing = async (w: World, itemId: string) => (await w.db.Listing.filter({ itemId, status: "active" }))[0] as any;
@@ -39,7 +40,7 @@ Deno.test("first 'hi': answered in the same webhook request, from the parent's o
     const r = await w.text("mina", "hi");
     assertEquals(r, { accepted: 1, answered: 1 });
     assertEquals(w.inbox("mina"), [t.hello("Button")]);
-    assertEquals(t.hello("Button"), `Hi! I'm Button, your closet pet. Send me a photo or text "sell" to pass something on, or "help" for the rest.`);
+    assertEquals(t.hello("Button"), `Hello, hello! I'm Button, your closet pet. Send me a photo or text "sell" to pass something on, or "help" for the rest.`);
     const msg = w.sent.find((s) => s.path.endsWith("/messages"))!;
     assertEquals(msg.body.senderId, LINES.mina);
     assert(msg.idem, "idempotency-key on every send");
@@ -181,7 +182,7 @@ Deno.test("a nudge answered 'yes' is clarified, never guessed; 'keep' resolves i
     assertEquals(w.inbox("mina"), [t.nudgeWhich()]);
     assert((await w.db.AgentNudge.list()).every((n: any) => !n.resolved), "a bare yes decides nothing");
     await w.text("mina", "keep it, still fits");
-    assertEquals(w.inbox("mina"), [t.keep()]);
+    assertEquals(w.inbox("mina"), [t.keep("Button")]);
     assert((await w.db.AgentNudge.list()).every((n: any) => n.resolved));
   });
 });
@@ -230,8 +231,8 @@ Deno.test("trade by text: proposal → ACCEPT from both → deep link to approve
     await payProposal(w.db, { proposalId: prop.id, parentId: w.ids.jo }, { delayMs: 0 });
     assert(await sendEventTexts(w.db) >= 2, "trade:completed for both sides");
     const jo = w.inbox("jo"), mina = w.inbox("mina");
-    assertMatch(jo[0], /^Say hi to the Yellow duck romper! It should fit until ~\w{3} \d{1,2}\. I'll check in then\.$/);
-    assertEquals(mina, ["The Yellow duck romper found its next home for $18.00. Flowers all round!"]);
+    assertMatch(jo[0], /^Say hi to the Yellow duck romper! It should fit until ~\w{3} \d{1,2}\. I'll hop back and check in then\.$/);
+    assertEquals(mina, ["The Yellow duck romper found its next home for $18.00, folded with care. Flowers all round!"]);
     assertEquals([w.images("jo"), w.images("mina")], [1, 1]);
     assertEquals(jo.length, 1); // the welcome nudge doesn't say hi twice
     const moved = await w.db.ClothingItem.get(romper.id);
@@ -269,7 +270,7 @@ Deno.test("questions and refusals never accept a trade: 'is that a good deal?' a
     await w.text("mina", "I'll take a look");
     assertEquals(w.inbox("mina"), [t.unknown()]); // the chat line (no LLM here): no decision
     await w.text("mina", "I’ll take a look later");
-    assertEquals(w.inbox("mina"), [t.later()]);
+    assertEquals(w.inbox("mina"), [t.later("Button")]);
     let p = await w.db.MatchProposal.get(prop.id);
     assertEquals([p.status, p.sellerDecision, p.buyerDecision], ["open", "pending", "accepted"]);
     assertEquals(w.inbox("jo"), []);
@@ -494,6 +495,8 @@ Deno.test("anything else: the LLM answers in the pet's voice, phone numbers mask
     assertEquals(w.inbox("mina"), ["Sure! Call my friend at [number hidden] — or just send me a photo."]);
     const prompt = w.llm.calls.at(-1).prompt as string;
     assertMatch(prompt, /cannot buy, sell, list, accept, decline or pay anything yourself/);
+    // Button's own personality: who it is and how it talks
+    assert(prompt.includes(PERSONALITIES.button.blurb) && prompt.includes(PERSONALITIES.button.style), "the pet's blurb and style");
     w.llm.chat = null;
     await w.text("mina", "what's the weather like?");
     assertEquals(w.inbox("mina"), [t.unknown()]);

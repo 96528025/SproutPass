@@ -35,6 +35,29 @@ button { border-radius: 0; }
   scrollbar-width: none; /* like A's .hf__scroll */
 }
 .b-main::-webkit-scrollbar, .b-main--bleed::-webkit-scrollbar { display: none; }
+/* Never squeeze a panel to fit the screen (it loses its bottom edge): the screen scrolls instead. */
+.b-main:not(.b-main--bleed) > * { flex-shrink: 0; }
+/* Phones (A's HandheldFrame is full-bleed below 600 px): the PAGE scrolls, like any web page. A one-screen box that
+   scrolls inside a page that doesn't won't take a swipe reliably in iOS Safari, so a regular screen grows with its
+   content and the collapsed demo strip sticks to the top (open, its two rows of buttons would pin ~170 px over the
+   bag, so it scrolls away with the page). The full-bleed screens (title, world) keep their one-screen box. */
+@media (max-width: 599px) {
+  .b-app:has(> .b-main:not(.b-main--bleed)) {
+    height: auto;
+    min-height: calc(var(--screen-h, 100dvh) - var(--safe-top, 0px));
+  }
+  .b-app:has(> .b-main:not(.b-main--bleed)) > .b-main {
+    flex: 1 0 auto;
+    overflow-y: visible;
+    overscroll-behavior: auto;
+  }
+  .b-app:has(> .b-main:not(.b-main--bleed)) > .b-demo {
+    position: sticky;
+    top: var(--safe-top, 0px);
+    z-index: 4; /* under the bottom bar (5) and A's MuteToggle (6) */
+  }
+  .b-app:has(> .b-main:not(.b-main--bleed)) > .b-demo:has(.b-demo-body) { position: static; }
+}
 /* no demo panel above: the top-right 48 px belong to A's MuteToggle */
 .b-app--no-demo > .b-main:not(.b-main--bleed) { padding-top: 48px; }
 /* A's title and world fill the screen. They size themselves with var(--screen-h) / --safe-top, so those become

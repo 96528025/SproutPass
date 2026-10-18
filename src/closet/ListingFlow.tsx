@@ -77,7 +77,8 @@ export function ListingFlow() {
         if (!live) return;
         setSuggested(r.condition ?? null);
         if (r.condition) setCondition((c) => c ?? r.condition!);
-        if (r.note) setNote((n) => n || r.note!);
+        // The pixel-art stand-in isn't the real item: keep its condition guess, not a note about the drawing.
+        if (r.note && !photoUrl.includes("/sprites/")) setNote((n) => n || r.note!);
       })
       .catch(() => { if (live) setSuggested(null); })
       .finally(() => { if (live) setSuggesting(false); });
@@ -213,7 +214,7 @@ export function ListingFlow() {
       {step === 2 && (
         <PixelPanel title="3 · PRICE">
           <div className="b-stack">
-            <PriceReceipt original={item.originalPriceCents} pct={pct} price={price} ownerAfter={ownerAfter} />
+            <PriceReceipt original={item.originalPriceCents} pct={pct} price={price} ownerAfter={ownerAfter} stamp="Demo payment · no real charge" />
             <p className="b-p">{priceRuleText(item)}</p>
             <label className="b-toggle">
               <input type="checkbox" checked={shared} onChange={(e) => setShared(e.target.checked)} />
@@ -226,7 +227,7 @@ export function ListingFlow() {
             <div className="b-actions">
               <PixelButton variant="ghost" disabled={submitting} onClick={() => setStep(1)}>BACK</PixelButton>
               <PixelButton disabled={submitting || !photoUrl || !condition} onClick={confirm}>
-                {submitting ? "LISTING…" : `CONFIRM ${formatCents(price)}`}
+                {submitting ? "LISTING…" : `LIST FOR ${formatCents(price)}`}
               </PixelButton>
             </div>
           </div>

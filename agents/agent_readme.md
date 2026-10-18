@@ -29,13 +29,29 @@ and a 3rd owner is the item's **final home** (no selling).
 On ASI:One I only act for the parent who claimed me: until you `claim`, I just ask you to. Only the
 claimed chat gets my later lines (nudges, proposals, pay links).
 
+## Personalities
+
+Each pet has its own voice (`personality.py`, the same as the app's `personality.ts`; a parity test checks every field):
+
+| pet | closet | traits | sounds like |
+|---|---|---|---|
+| **Button** | `mina-closet` | Tidy and warm | "I have a Yellow duck romper in 6-9M, neatly folded." |
+| **Pip** | `jo-closet` | Curious and bouncy | "Sniff sniff! My little one fits it for about 4 more weeks." |
+| **Moss** | `sam-closet` | Calm and thrifty | "Sounds good — over to the humans! Good for the planet, too." |
+
+A personality changes how a pet talks, never what it says: items, sizes, prices, weeks and the safety words
+("nothing is charged until you both accept", "over to the humans") stay word for word, and no personality line names
+a parent or a child. Only the friendly lines get a voice (hello, back after STOP, keep, later, sold, the welcome, the
+meeting bubbles); accepting, declining, paying, STOP, errors and rate limits stay neutral. A pet without a
+personality says the neutral lines.
+
 ## Protocols
 
 - **AgentChatProtocol** (ASI:One) with Interactive Cards: nudges are `detail` cards, proposals are `review` cards.
 - **HandMeDownRelay 0.3.0** (agent ↔ agent): `LookingFor → HaveListings | NoFit → ProposeTrade → TradeAck`, or
   `HaveListings → Decline` when the buyer's **pet rules** say no (the parent's price limit, monthly budget, kinds of
   clothes, or "point out matches only" — checked before proposing, and again by the app). The buyer's pet says which
-  rule ("Not this one — it's over the price limit Jo set for me."), never the amount; nothing is proposed or charged,
+  rule (Pip: "Aw, not this one — it's over the price limit Jo set for me."), never the amount; nothing is proposed or charged,
   and the encounter keeps the reason. The app picks the opening side by parent id, so a pet with nothing to offer but
   its own needs answers a `LookingFor` with its own `LookingFor` (the roles swap once); `NoFit` ends it only when
   neither way fits. Only *shared* listings, *shared* needs, the child's age in months and the pets' bubble lines cross

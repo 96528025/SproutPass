@@ -79,7 +79,7 @@
   position: absolute;
   right: 0;
   bottom: 0;
-  z-index: 3;
+  z-index: 1000; /* over Leaflet's panes (200-700) like Leaflet's own controls; .map's isolation keeps it under the HUD */
   padding: 0 4px;
   background: var(--paper);
   color: var(--ink);

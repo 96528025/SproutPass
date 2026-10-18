@@ -309,11 +309,13 @@ export async function consumeChallenge(
 ): Promise<string> {
   const c = challengeOf(parent);
   if (c) await db.Parent.update(parent.id, { passkeyChallenge: noChallenge() } as Partial<Parent>);
-  if (!c || c.purpose !== purpose) throw forbidden("That approval request isn't valid any more. Please try again.");
-  if (new Date(c.expiresAt).getTime() < nowMs) throw forbidden("That approval timed out after 5 minutes. Please try again.");
+  // A payment approval shows up as a toast in the trade window: say what to tap and that no money moved.
+  const again = purpose === "pay" ? "Tap Pay to try again · nothing charged." : "Try again.";
+  if (!c || c.purpose !== purpose) throw forbidden(`That approval isn't valid any more. ${again}`);
+  if (new Date(c.expiresAt).getTime() < nowMs) throw forbidden(`That approval timed out after 5 minutes. ${again}`);
   if (purpose === "pay") {
     if (!proposal || c.proposalId !== proposal.id || !(await bindingMatches(c.challenge, proposal))) {
-      throw forbidden("That approval was for a different trade or price. Please approve again.");
+      throw forbidden("That approval was for a different trade or price. Approve again · nothing charged.");
     }
   }
   return c.challenge;

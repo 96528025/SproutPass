@@ -41,6 +41,7 @@ export function TradeWindowPlaceholder(p: { proposalId: string; onClose: () => v
       <div className="b-stack">
         <p className="b-p">{proposal ? `${proposal.snapshot.itemName} · ${proposal.status.replace("_", " ")}` : `Proposal ${p.proposalId}`}</p>
         <Chip tone="pink">NOTHING IS CHARGED UNTIL YOU BOTH ACCEPT</Chip>
+        <Chip tone="cream" plain>Demo payment · no real charge</Chip>
         <p className="b-p b-muted b-small">The trade window is on its way (Agent 2).</p>
         <PixelButton variant="ghost" onClick={p.onClose}>CLOSE</PixelButton>
       </div>

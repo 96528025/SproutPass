@@ -560,7 +560,7 @@ def test_claimed_asi_owner_gets_events_mirrored_without_a_second_text(monkeypatc
     row = app.push("mina", "event", {"type": "trade:completed", "proposalId": "p1", "role": "seller", "itemId": "romper", "priceCents": 1800})
     run(poll(ctx))
     mirrored = ctx.texts(OWNER)[seen:]
-    assert mirrored == ["The Yellow duck romper found its next home for $18.00. Flowers all round!"]  # only the new row
+    assert mirrored == ["The Yellow duck romper found its next home for $18.00, folded with care. Flowers all round!"]  # only the new row
     assert row["status"] == "pending" and before["status"] == "pending"  # never claimed: the app still texts it
     assert not app.sent  # no second iMessage from the agent
     run(poll(ctx))

@@ -1,11 +1,13 @@
 // (C) npx -y deno@2 test --no-lock -A base44/shared/c/
-// Python parity: runs agents/wording.py + agents/intents.py and checks they say exactly what wording.ts says and
-// read texts the same way, so the pet sounds the same whichever side answers. Skipped when no Python is found.
+// Python parity: runs agents/wording.py + agents/intents.py + agents/personality.py and checks they say exactly what
+// wording.ts says (in every pet's own voice), read texts the same way and hold the same personalities, so the pet
+// sounds the same whichever side answers. Skipped when no Python is found.
 
 // deno-lint-ignore-file no-explicit-any
 import {
   isTradeCommand, label, mentionsTrade, noteBit, parseCondition, parseIntent, priceRule, redactPhones, st, t, tl,
 } from "./wording.ts";
+import { PERSONALITIES, personalityOf } from "./personality.ts";
 
 function assertEquals(a: unknown, b: unknown, msg = "") {
   const x = JSON.stringify(a), y = JSON.stringify(b);
@@ -46,6 +48,33 @@ const TEXTS = [
 ];
 const CONDITION_TEXTS = ["it's like-new", "gently used I'd say", "well loved", "pretty worn", "great", ""];
 const REDACT = ["call 310.555.0100 or 13105550100", "Jo: +1 (424) 555-0102 https://app/trade/13105550100", "$18.00 on 2026-10-18"];
+
+/** Every pet with a personality, and one without (Rex: the neutral voice). */
+const PETS = [...Object.values(PERSONALITIES).map((p) => p.pet), "Rex"];
+const py = (s: string) => JSON.stringify(s); // a JSON string is a Python string literal too (ASCII here)
+const WHY = "it's over the price limit my family set for me.";
+
+/** Each pet's voiced lines: the friendly iMessage lines and every meeting line. */
+const VOICES: [string, string][] = PETS.flatMap((pet): [string, string][] => [
+  [`w.hello(${py(pet)})`, t.hello(pet)],
+  [`w.started(${py(pet)})`, t.started(pet)],
+  [`w.keep(${py(pet)})`, t.keep(pet)],
+  [`w.later(${py(pet)})`, t.later(pet)],
+  [`w.sold("Yellow duck romper", 1800, ${py(pet)})`, t.sold("Yellow duck romper", 1800, pet)],
+  [`w.completed("Yellow duck romper", "Nov 17", ${py(pet)})`, t.completed("Yellow duck romper", "Nov 17", pet)],
+  [`w.no_fit(${py(pet)})`, t.noFit(pet)],
+  [`w.t_hello(${py(pet)})`, tl.hello(pet)],
+  [`w.t_looking_for(${py(pet)}, ["6-9M", "9-12M"], ["top", "onesie"])`, tl.lookingFor(["6-9M", "9-12M"], ["top", "onesie"], pet)],
+  [`w.t_looking_for(${py(pet)}, ["6-9M"], [])`, tl.lookingFor(["6-9M"], [], pet)],
+  [`w.t_have(${py(pet)}, "Yellow duck romper", "6-9M")`, tl.have("Yellow duck romper", "6-9M", pet)],
+  [`w.t_no_fit(${py(pet)})`, tl.noFit(pet)],
+  [`w.t_fit_check(${py(pet)}, 4)`, tl.fitCheck(4, pet)],
+  [`w.t_fit_check(${py(pet)}, None)`, tl.fitCheck(null, pet)],
+  [`w.t_propose(${py(pet)}, 1800)`, tl.propose(1800, pet)],
+  [`w.t_ack(${py(pet)})`, tl.ack(pet)],
+  [`w.t_not_needed(${py(pet)})`, tl.notNeeded(pet)],
+  [`w.t_decline(${py(pet)}, ${py(WHY)})`, tl.decline(WHY, pet)],
+]);
 
 /** [python expression, the TS value]. Expressions run with `import wording as w, intents as i`. */
 const LINES: [string, string][] = [
@@ -122,6 +151,13 @@ const LINES: [string, string][] = [
   ['w.t_ack("Button")', tl.ack("Button")],
   ['w.t_not_needed("Pip")', tl.notNeeded("Pip")],
   ['w.t_decline("Pip", "too small")', tl.decline("too small", "Pip")],
+  // each pet's own voice (and Rex's neutral one), the optional pet left out, a name in any case, placeholders in facts
+  ...VOICES,
+  ["w.keep(None)", t.keep(undefined)],
+  ['w.hello(" pip ")', t.hello(" pip ")],
+  ['w.started("MOSS")', t.started("MOSS")],
+  ['w.sold("{line} hat", 1800, "Moss")', t.sold("{line} hat", 1800, "Moss")],
+  ['w.t_have("Button", "{signOff} romper", "{size}")', tl.have("{signOff} romper", "{size}", "Button")],
 ];
 
 async function runPython(code: string): Promise<any> {
@@ -141,6 +177,22 @@ const PRELUDE = "import json, wording as w, intents as i\n";
 Deno.test({ name: "parity: every iMessage line is word-for-word the same in agents/wording.py", ignore: !PY, fn: async () => {
   const py: string[] = await runPython(`${PRELUDE}print(json.dumps([${LINES.map(([e]) => e).join(", ")}], ensure_ascii=False))`);
   LINES.forEach(([expr, ts], k) => assertEquals(py[k], ts, expr));
+} });
+
+/** Same keys and the same values, all the way down (key order doesn't matter). */
+function sameFields(pyValue: any, tsValue: any, path: string) {
+  if (tsValue && typeof tsValue === "object") {
+    assertEquals(Object.keys(pyValue ?? {}).sort(), Object.keys(tsValue).sort(), `${path}: the same fields`);
+    for (const k of Object.keys(tsValue)) sameFields(pyValue[k], tsValue[k], `${path}.${k}`);
+  } else assertEquals(pyValue, tsValue, path);
+}
+
+Deno.test({ name: "parity: agents/personality.py has every personality, field for field", ignore: !PY, fn: async () => {
+  const names = ["Pip", " moss ", "BUTTON", "Rex", "", null, "constructor"];
+  const out = await runPython(`import json, personality as p\n` +
+    `print(json.dumps({"all": p.PERSONALITIES, "of": [p.personality_of(x) for x in json.loads(${py(JSON.stringify(names))})]}, ensure_ascii=False))`);
+  sameFields(out.all, PERSONALITIES, "PERSONALITIES");
+  names.forEach((name, k) => sameFields(out.of[k], personalityOf(name), `personality_of(${JSON.stringify(name)})`));
 } });
 
 Deno.test({ name: "parity: agents/intents.py reads every text the same way", ignore: !PY, fn: async () => {

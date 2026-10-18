@@ -17,6 +17,10 @@ const FOCUSABLE = 'button,[href],input,select,textarea,[tabindex]:not([tabindex=
 /** PixelPanel over a dithered backdrop. Closes on backdrop tap and Esc; traps focus. */
 export function Modal({ title, children, open = true, onClose, tone = "paper", noClose }: ModalProps) {
   const panel = useRef<HTMLDivElement>(null);
+  // Callers often pass a fresh onClose each render; it must not re-run the focus effect (that would throw focus
+  // back to × on every parent re-render, e.g. a live-sync update).
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
 
   useEffect(() => {
     if (!open) return;
@@ -26,7 +30,7 @@ export function Modal({ title, children, open = true, onClose, tone = "paper", n
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape" && !noClose) {
         e.preventDefault();
-        onClose?.();
+        onCloseRef.current?.();
         return;
       }
       if (e.key === "Tab" && panel.current) {
@@ -48,7 +52,7 @@ export function Modal({ title, children, open = true, onClose, tone = "paper", n
       window.removeEventListener("keydown", onKey);
       prev?.focus?.();
     };
-  }, [open, onClose, noClose]);
+  }, [open, noClose]);
 
   if (!open) return null;
   return (

@@ -81,7 +81,7 @@ function RulesLine({ price, paid, onEditRules }: { price: number; paid: boolean;
     <span className="tr-ok">✓ Within your pet's rules (up to {formatCents(fit.maxCents)} a trade, {left})</span>
   ) : (
     <span className="tr-bad">
-      ✗ {fit.withinMax ? "Over this month's budget" : `Over your ${formatCents(fit.maxCents)} limit a trade`}
+      ✗ {fit.withinMax ? "Over this month's budget" : `Over your ${formatCents(fit.maxCents)}-a-trade limit`}
       {onEditRules && <> · <button type="button" className="tr-inline-link" onClick={onEditRules}>Edit your pet's rules</button></>}
     </span>
   );

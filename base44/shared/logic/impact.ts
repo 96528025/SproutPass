@@ -119,7 +119,7 @@ export const BADGES: BadgeDef[] = [
   { name: "Good Neighbor", how: "Share what your child needs next with parents nearby." },
   { name: "Quick Pass", how: `List an item within ${QUICK_LIST_DAYS} days of your pet's "still fit?" nudge.` },
   { name: "First Pass", how: "Pass on your first item to another family." },
-  { name: "New Home", how: "Give a hand-me-down a new home in your closet." },
+  { name: "New Home", how: "Give a hand-me-down a new home in your bag." },
   { name: "Final Home", how: "Pass an item on to its 3rd and final home." },
   { name: "Relay Regular", how: `Take part in ${REGULAR_HANDOFFS} hand-offs, passing on or taking in.` },
 ];
@@ -337,7 +337,7 @@ export function equivalents(v: Pick<ImpactView, "co2SavedKg" | "waterSavedL" | "
   };
 }
 
-/** "210 days" · "1 year and 2 months" style wording for drinking-water days. */
+/** "45 days" · "6 months" · "3 years" wording for drinking-water days (days under 60, months under 730, then years). */
 export function daysText(days: number): string {
   const d = Math.max(0, Math.floor(days));
   if (d < 60) return `${d} day${d === 1 ? "" : "s"}`;

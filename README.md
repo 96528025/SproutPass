@@ -33,7 +33,7 @@ Requirements: Node 22 (see `.nvmrc`), and Python 3.11+ for the agents (we use 3.
 npx vite --mode mock --port 5174        # or: npm run mock
 ```
 
-Open http://localhost:5174/ for the title screen, or go straight to a family:
+Open http://localhost:5174/?demo=1 for the title screen, or go straight to a family:
 
 - http://localhost:5174/bag?as=mina&demo=1 (Mina, the seller)
 - http://localhost:5174/world?as=jo&demo=1 (Jo, the buyer), in a second tab
@@ -56,7 +56,7 @@ VITE_BASE44_APP_BASE_URL=https://base44.app
 ```
 
 then run `npm run real` (Vite on port 5176). Real mode calls the live Base44 functions, which share one rate
-limit for the whole team (see [testing.md](docs/submission/testing.md#rate-limit-notes)), so please don't loop
+limit for the whole team (see [testing.md](docs/submission/testing.md#rate-limit-notes)), so don't loop
 scripts against it.
 
 ### The Fetch.ai agents
@@ -72,6 +72,11 @@ python -m venv .venv && .venv/Scripts/python -m pip install -r requirements.txt 
 (`LookingFor → HaveListings → ProposeTrade → TradeAck` between two `agent1q…` addresses) and ends with 13 PASS
 checks. `live_bureau.py` reads `AGENT_KEY` from the environment, `agents/.env` or the repo's `.env.local`, and never
 prints it. More in [agents/agent_readme.md](agents/agent_readme.md).
+
+Each pet has its own personality: Button (Mina's) is tidy and warm, Pip (Jo's) curious and bouncy, Moss (Sam's) calm
+and thrifty. The voice changes how a pet says a line, never the item, the price or "nothing is charged until you both
+accept", and the voice itself never names a parent or a child. The agents read it from `agents/personality.py`, the
+app from `base44/shared/c/personality.ts`, and `parity_test.ts` checks that both say the same words.
 
 ---
 
@@ -109,10 +114,10 @@ How a request flows:
 | `base44/entities/*.json` | 13 entity schemas with row- and field-level access rules |
 | `base44/functions/<name>/entry.ts` | 29 Deno functions (thin wrappers around `base44/shared`) |
 | `base44/shared/logic/{closet,trade,trust,snap,impact,demo}.ts` | B's handlers |
-| `base44/shared/c/*` | C's location, encounter, iMessage and Photon helpers (Deno tests live here as `*_test.ts`) |
+| `base44/shared/c/*` | C's location, encounter, iMessage and Photon helpers, and the pets' personalities (Deno tests live here as `*_test.ts`) |
 | `src/app/*` | Shell, routes, store, `Api` interface, mock and real adapters, demo panel |
 | `src/{world,pixel,closet,trade,trust,impact,agent,console}/*` | Screens and components |
-| `agents/*` | Python uAgents: `closet_agent.py`, `relay_protocol.py`, `live_bureau.py`, `local_demo.py`, `mock_base44.py`, tests |
+| `agents/*` | Python uAgents: `closet_agent.py`, `relay_protocol.py`, `personality.py`, `live_bureau.py`, `local_demo.py`, `mock_base44.py`, tests |
 | `scripts/demo-api.mjs` | Backend smoke test that drives the whole story over HTTP (12 steps) |
 | `docs/submission/*` | Submission write-ups |
 | `NEEDS.md` | The team's running log of cross-owner requests and live-run findings |
@@ -124,11 +129,12 @@ How a request flows:
 | `/` | Title screen, location explainer, "Who's playing?" picker, links to the Agent Console and impact |
 | `/world` | Map and radar, real GPS or the `?demo=1` "WALK TOWARD …" button, encounter scene, celebration |
 | `/bag` | The closet: item slots, fit bar, nudges, needs, items passed on |
+| `/bag/needs` | What this family needs next: sizes, kinds, max price, and whether the pet may share it |
 | `/bag/add` | Snap to list: a photo of the item or its tag, the AI's guess, a check card, "Add to bag" |
 | `/bag/list/:itemId` | Listing flow: photo, condition (the pet suggests one), fixed price receipt |
 | `/bag/pet` | The pet's spending rules, passkey (Face ID) set-up, and how to text the pet on iMessage |
 | `/trade/:id` | Trade window: both decisions, receipt, pay |
-| `/agents` | Agent Console for a projector: the agents' protocol messages, the pets' lines, a privacy check, the outcome |
+| `/agents` | Agent Console, on a projector or a phone: each pet's personality, the agents' protocol messages, the pets' lines, a privacy check, the outcome. `?enc=<id>` opens one encounter; the encounter scene's "See the agents' chat" and the pet's AGENTS' CHAT link there |
 | `/impact` | Impact and rewards: new homes, CO₂e, water, landfill, money saved and earned, points, sources |
 | `/log` | Relay log hub: funnel, $0 declines, ownership chains |
 
@@ -138,9 +144,9 @@ How a request flows:
 
 ```bash
 npx tsc -p tsconfig.check.json                                   # typecheck (exit 0)
-npx vitest run                                                   # 21 files, 429 tests
-npx -y deno@2 test --no-lock -A base44/shared/c/                 # 59 Deno tests (iMessage, webhook, parity)
-agents/.venv/Scripts/python.exe -m pytest -q agents/tests        # 102 Python tests
+npx vitest run                                                   # 22 files, 441 tests
+npx -y deno@2 test --no-lock -A base44/shared/c/                 # 71 Deno tests (iMessage, webhook, parity, personalities)
+agents/.venv/Scripts/python.exe -m pytest -q agents/tests        # 114 Python tests
 agents/.venv/Scripts/python.exe agents/local_demo.py             # offline Fetch.ai story, 13 PASS checks
 ```
 
@@ -165,6 +171,9 @@ runs we did are in [testing.md](docs/submission/testing.md).
   (`setMandate`), passkey set-up and a passkey-approved payment, and the iMessage conversation (sell by photo,
   accept by text, STOP, signed webhooks). Each is covered by the mock run and the tests in
   [testing.md](docs/submission/testing.md).
+- **In the repo, not deployed yet:** the pets' personalities, the Agent Console on phones (`/agents?enc=<id>`,
+  "See the agents' chat" in the encounter scene, AGENTS' CHAT in the pet's dialog), and whole-page scrolling for the
+  bag and the other regular screens on phones. They run in mock mode.
 - **Needs a human:** Photon set-up (webhook, one shared-pool number per demo phone, each phone texts "hi" once; the
   API key is already set), the Agentverse mailbox for ASI:One, and a real device for Face ID. Real Face ID approval
   has been exercised in Deno with a software authenticator and in Chrome with a virtual authenticator, not on

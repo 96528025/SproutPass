@@ -23,7 +23,7 @@ const PROPOSAL: CelebrationProposal = {
   id: "prop_dev",
   sellerId: "mina",
   buyerId: "jo",
-  snapshot: { icon: "item_romper", priceCents: 1800, previousOwners: 1 },
+  snapshot: { icon: "item_romper", priceCents: 1800, previousOwners: 1, itemName: "Yellow duck romper" },
 };
 
 const turn = (from: AgentTurn["from"], kind: AgentTurn["kind"], text: string): AgentTurn => ({

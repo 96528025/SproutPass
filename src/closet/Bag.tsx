@@ -1,6 +1,6 @@
 // OWNER: B4. The BAG (/bag): child card, 4-column inventory grid with status badges, the item card for
 // the selected slot, the PASSED ON shelf and the NEEDS button. Live: the store refreshes on entity changes.
-// B7: "+ Add an item" (→ /bag/add, AI snap-to-list) and "Pet rules" (→ /bag/pet); an item just added there
+// B7: "+ ADD AN ITEM" (→ /bag/add, AI snap-to-list) and "PET'S RULES" (→ /bag/pet); an item just added there
 // comes back selected with a NEW badge (router state { newItemId }).
 import { useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
@@ -128,8 +128,8 @@ export function Bag() {
             ))}
           </div>
           <div className="snap-bag-actions">
-            <PixelButton onClick={() => nav("/bag/add")}>+ Add an item</PixelButton>
-            <PixelButton variant="ghost" onClick={() => nav("/bag/pet")}>Pet rules</PixelButton>
+            <PixelButton onClick={() => nav("/bag/add")}>+ ADD AN ITEM</PixelButton>
+            <PixelButton variant="ghost" onClick={() => nav("/bag/pet")}>PET'S RULES</PixelButton>
           </div>
           <div className="b-row-between">
             <span className="b-label b-muted">TAP A SLOT</span>

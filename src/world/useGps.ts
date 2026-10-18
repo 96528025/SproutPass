@@ -75,7 +75,7 @@ export function useGps({
   const lastSentFix = useRef<{ lat: number; lng: number } | null>(null);
   const inFlight = useRef(false);
   const flipPending = useRef(false); // a DISCOVERABLE flip that couldn't go out yet (request in flight / no fix)
-  const waitMs = useRef(PRESENCE_MS); // grows after failures, back to 3 s after a success
+  const waitMs = useRef(PRESENCE_MS); // grows after failures, back to 10 s after a success
   const movingTimer = useRef<number | undefined>(undefined);
   const live = useRef({ parentId, simulated, discoverable, heartbeat });
   live.current = { parentId, simulated, discoverable, heartbeat };

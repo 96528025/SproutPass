@@ -144,9 +144,14 @@ Deno.test("local transcript: the pets' lines for the romper", () => {
 });
 
 Deno.test("wording mirrors agents/wording.py", () => {
-  assertEquals(tl.hello("Pip"), "Pip: Hi! Anything on your list for your little one?");
-  assertEquals(tl.notNeeded("Pip"), "Pip: Thanks, but that won't fit my little one.");
-  assertEquals(tl.lookingFor(["6-9M"], ["top", "onesie"], "Pip"), "Pip: Looking for 6-9M top or onesie!");
+  // Rex has no personality: the neutral voice
+  assertEquals(tl.hello("Rex"), "Rex: Hi! Anything on your list for your little one?");
+  assertEquals(tl.notNeeded("Rex"), "Rex: Thanks, but that won't fit my little one.");
+  assertEquals(tl.lookingFor(["6-9M"], ["top", "onesie"], "Rex"), "Rex: Looking for 6-9M top or onesie!");
+  // Pip speaks in its own voice
+  assertEquals(tl.hello("Pip"), "Pip: Ooh, hi hi! Anything on your list for your little one?");
+  assertEquals(tl.notNeeded("Pip"), "Pip: Aw, thanks, but that won't fit my little one.");
+  assertEquals(tl.lookingFor(["6-9M"], ["top", "onesie"], "Pip"), "Pip: Looking for 6-9M top or onesie! Got any?");
   assertEquals(t.notYet(), "Both of you need to accept first — nothing is charged until then.");
   assertEquals(t.inTrade("romper"), "The romper already has a trade open — answer that one first.");
   assertEquals(t.alreadyListed("romper", 1800), "The romper is already listed at $18.00. I'll tell you when a friend's pet wants it.");

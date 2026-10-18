@@ -16,7 +16,7 @@ export function MuteToggle() {
       type="button"
       className={`mt${muted ? " mt--muted" : ""}`}
       onClick={toggle}
-      aria-label={muted ? "Sound off. Tap to unmute" : "Sound on. Tap to mute"}
+      aria-label="Mute sound"
       aria-pressed={muted}
     >
       <span className="mt__glyph" aria-hidden>

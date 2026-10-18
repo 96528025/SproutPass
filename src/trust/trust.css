@@ -104,6 +104,9 @@
   border: 4px solid var(--ink, #2B2140);
   align-self: center;
 }
+/* "Remove" at the row's end (a 44 px .b-link; on a narrow phone it wraps under the label, still at the right) */
+.tr-key-remove { margin-left: auto; align-self: center; }
+.tr-key-remove:disabled { opacity: 0.5; cursor: default; }
 
 .tr-footer { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; }
 
@@ -213,8 +216,9 @@
 }
 .tr-demo-tools > summary {
   cursor: pointer;
-  min-height: 32px;
+  min-height: var(--tap, 44px);
   padding: 4px 8px;
+  line-height: 36px; /* 36 + 8 = a 44 px target, text centred, and the summary keeps its ▸ marker (no flex) */
   color: var(--ink-soft, #4a3f5c);
   text-decoration: underline;
   text-underline-offset: 3px;

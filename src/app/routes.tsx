@@ -1,6 +1,7 @@
 // OWNER: B4. Every route in the app. A owns / and /world (+ the dev pages /kit, /dev/art, /dev/encounter),
 // Agent 2 owns /trade/:id and /log (mounted from their files, lazily; placeholders if a file crashes).
-import { Route, Routes, useNavigate, useParams } from "react-router-dom";
+import { useLayoutEffect } from "react";
+import { Route, Routes, useLocation, useNavigate, useParams } from "react-router-dom";
 import { optional } from "./optional";
 import {
   DevPagePlaceholder, RelayLogPlaceholder, TitlePlaceholder, TradeWatcherPlaceholder, TradeWindowPlaceholder,
@@ -44,7 +45,17 @@ function TradeRoute() {
   );
 }
 
+/** A new screen opens at its top: the page on phones (b.css), the screen box in the desktop handheld. */
+function useTopOnNavigate() {
+  const { pathname } = useLocation();
+  useLayoutEffect(() => {
+    (document.scrollingElement ?? document.documentElement).scrollTop = 0;
+    document.querySelectorAll<HTMLElement>(".b-main, .hf__scroll").forEach((el) => { el.scrollTop = 0; });
+  }, [pathname]);
+}
+
 export function AppRoutes() {
+  useTopOnNavigate();
   return (
     <Routes>
       <Route path="/" element={<TitleScreen />} />
