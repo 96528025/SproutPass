@@ -6,6 +6,8 @@
   "scripts": {
     "dev": "vite",
     "dev:mock": "vite --mode mock",
+    "mock": "vite --mode mock --port 5174",
+    "real": "vite --mode real --port 5176",
     "build": "vite build",
     "preview": "vite preview",
     "test": "vitest run",
@@ -15,7 +17,9 @@
     "@base44/sdk": "^0.8.54",
     "@base44/vite-plugin": "^1.0.47",
     "react": "^19.3.1",
-    "react-dom": "^19.3.1"
+    "react-dom": "^19.3.1",
+    "react-router-dom": "^7.18.4",
+    "zustand": "^5.0.15"
   },
   "devDependencies": {
     "@types/react": "^19.3.0",
