@@ -25,7 +25,7 @@ Recorded from the local offline demo with staged inventory and simulated locatio
 
 ## Phone-view feature tour
 
-Captured from the local offline demo using the app's phone layout. These screenshots show staged inventory, simulated proximity and simulated payment—not live user validation, a real charge, or iMessage delivery. The offer, celebration and receipt belong to the same sample trade.
+The first five screenshots are captured from the local offline demo using the app's phone layout. They show staged inventory, simulated proximity and simulated payment. The offer, celebration and receipt belong to the same sample trade. The sixth screenshot is from an actual phone's iMessage conversation and shows a separate $19.20 sleep-sack transaction; it is not the $21.60 jacket trade in the video. No real payment or parent validation is claimed.
 
 <table>
   <tr>
@@ -51,12 +51,12 @@ Captured from the local offline demo using the app's phone layout. These screens
   <tr>
     <td><img src="docs/screenshots/05-trade-success.jpg" width="260" alt="Phone view: flowers celebrate completion of the local sample trade"></td>
     <td><img src="docs/screenshots/06-visa-simulation.jpg" width="260" alt="Phone view: $21.60 Visa simulation receipt explicitly states no Visa API, real charge or funds transfer"></td>
-    <td>Real-phone screenshot pending. Photon connects private iMessage threads; the offline demo cannot demonstrate message delivery. See the <a href="docs/submission/demo-script.md">phone verification instructions</a>.</td>
+    <td><img src="docs/screenshots/07-real-imessage.webp" width="260" alt="Actual phone screenshot: iMessage received a $19.20 sleep-sack trade update, simulated-payment receipt and illustration attachments"></td>
   </tr>
   <tr>
     <td>The sample jacket finds a new home after buyer approval. No physical handoff is demonstrated.</td>
     <td>Local simulation with amount, authorization reference and saved timestamp. No money moves.</td>
-    <td>Verify the offer, garment image and receipt on the actual receiving phones before claiming delivery.</td>
+    <td>Actual iMessage received on one participant's phone: a separate $19.20 sleep-sack offer and simulated-payment receipt, with illustration attachments. No real money moves; this does not prove delivery to both participants.</td>
   </tr>
 </table>
 
