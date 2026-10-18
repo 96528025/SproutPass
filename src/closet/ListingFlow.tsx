@@ -107,7 +107,7 @@ export function ListingFlow() {
 
   const price = priceFor(item)!;
   const ownerAfter = (item.ownerCount + 1) as 2 | 3;
-  const pct = RESALE_PCT[item.ownerCount as 1 | 2];
+  const pct = Math.round(RESALE_PCT[item.ownerCount as 1 | 2] * 100); // A's PriceReceipt takes 60, not 0.6
   const fallbackPhoto = item.photos[0] ?? new URL(`/sprites/${item.icon}.png`, window.location.origin).href;
   const shownPhoto = preview ?? photoUrl;
 

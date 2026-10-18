@@ -1,5 +1,8 @@
 // A3: query-string helpers every screen uses. ?as=mina|jo|sam (current parent) and ?demo=1 travel with every navigation.
+// B's store (src/app/store.ts) owns ?as= / ?demo=1: it remembers them per tab and Shell writes them back into the URL,
+// so the hooks below read the store first and the URL second. withQuery/carryQuery stay for building links.
 import { useLocation } from "react-router";
+import { useApp } from "@/app/store";
 
 export type ParentId = "mina" | "jo" | "sam";
 export const PARENT_IDS: readonly ParentId[] = ["mina", "jo", "sam"];
@@ -41,20 +44,31 @@ export function carryQuery(path: string, search: string, extra: Record<string, s
   return `${pathname}${qs ? `?${qs}` : ""}${hash}`;
 }
 
-/** withQuery("/world") -> "/world?as=jo&demo=1" when the current URL has them. */
+/** withQuery("/world") -> "/world?as=jo&demo=1" when the current URL (or B's store) has them. */
 export function withQuery(path: string, extra?: Record<string, string | undefined>): string {
   const search = typeof window === "undefined" ? "" : window.location.search;
-  return carryQuery(path, search, extra);
+  const { parentKey, demo } = useApp.getState();
+  const fromStore: Record<string, string | undefined> = {
+    as: !parseParent(search) && isParentId(parentKey) ? parentKey : undefined,
+    demo: demo && !isDemo(search) ? "1" : undefined,
+  };
+  // params already on `path` win over the store's, like carried ones; `extra` wins over everything
+  const own = new URLSearchParams(path.split("#")[0].split("?")[1] ?? "");
+  for (const k of Object.keys(fromStore)) if (own.has(k)) fromStore[k] = undefined;
+  for (const [k, v] of Object.entries(extra ?? {})) if (v !== undefined) fromStore[k] = v;
+  return carryQuery(path, search, fromStore);
 }
 
-/** Current parent from ?as= (default "mina"). Re-renders on navigation. */
+/** Current parent's seed key: B's store (?as=, remembered per tab), else ?as=, else "mina". Re-renders on change. */
 export function useQueryParent(): ParentId {
+  const key = useApp((s) => s.parentKey);
   const { search } = useLocation();
-  return parseParent(search) ?? "mina";
+  return (isParentId(key) ? key : null) ?? parseParent(search) ?? "mina";
 }
 
-/** True when ?demo=1 is set. Re-renders on navigation. */
+/** True in demo mode: B's store (?demo=1, remembered per tab) or ?demo=1 on the URL. Re-renders on change. */
 export function useDemo(): boolean {
+  const demo = useApp((s) => s.demo);
   const { search } = useLocation();
-  return isDemo(search);
+  return demo || isDemo(search);
 }

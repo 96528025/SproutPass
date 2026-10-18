@@ -250,7 +250,8 @@
   position: fixed;
   left: var(--u2);
   right: var(--u2);
-  bottom: calc(var(--bottom-bar) + var(--u2) + env(safe-area-inset-bottom, 0px));
+  /* inside HandheldFrame, --bottom-bar already includes the home-indicator inset */
+  bottom: calc(var(--bottom-bar) + var(--u2));
   z-index: var(--z-dialog);
 }
 .dlg--inline {
@@ -362,7 +363,7 @@
   position: relative;
   width: 100%;
   max-width: 358px;
-  max-height: calc(100dvh - 32px);
+  max-height: calc(var(--screen-h, 100dvh) - 32px); /* the handheld screen, not the window */
   overflow: auto;
   padding: 8px 4px 4px 0; /* room for the title tab and the hard shadow */
 }
@@ -385,6 +386,8 @@
   position: fixed;
   top: calc(var(--u2) + env(safe-area-inset-top, 0px));
   left: 50%;
+  width: max-content;
+  max-width: calc(100% - 2 * var(--u4)); /* long messages wrap instead of running off the screen */
   z-index: var(--z-toast);
   transform: translate(-50%, 0);
   animation: toast-in 160ms steps(8, end) both;
@@ -404,8 +407,8 @@
 .toast__body {
   display: inline-flex;
   align-items: center;
-  height: 40px;
-  padding: 0 var(--u4);
+  min-height: 40px;
+  padding: var(--u2) var(--u4);
   border: var(--border-ink);
   box-shadow: var(--shadow-hard);
   font-family: var(--font-label);
@@ -414,7 +417,8 @@
   text-transform: uppercase;
   background: var(--paper);
   color: var(--ink);
-  white-space: nowrap;
+  white-space: normal;
+  text-align: center;
 }
 .toast--ink  .toast__body { background: var(--ink); color: var(--paper); }
 .toast--gold .toast__body { background: var(--gold); }

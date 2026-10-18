@@ -10,7 +10,7 @@ type Loader = () => Promise<Record<string, unknown>>;
 // Literal globs only (Vite resolves them at build time).
 const FILES: Record<string, Loader> = {
   ...import.meta.glob<Record<string, unknown>>("../trade/{TradeWindow,TradeWatcher,RelayLog}.tsx"),
-  ...import.meta.glob<Record<string, unknown>>("../world/{TitleScreen,WorldScreen}.tsx"),
+  ...import.meta.glob<Record<string, unknown>>("../world/{TitleScreen,WorldScreen,KitPage,ArtPage,EncounterDev}.tsx"),
   ...import.meta.glob<Record<string, unknown>>("../agent/AgentPet.tsx"),
 };
 

@@ -59,3 +59,12 @@ export function RelayLogPlaceholder() {
 export function TradeWatcherPlaceholder() {
   return null;
 }
+
+/** A's dev pages (/kit, /dev/art, /dev/encounter) if their file is missing or crashed. */
+export function DevPagePlaceholder() {
+  return (
+    <PixelPanel title="DEV PAGE">
+      <p className="b-p">This dev page didn't load. Try /world or /bag.</p>
+    </PixelPanel>
+  );
+}

@@ -2,7 +2,7 @@
 // the selected slot, the PASSED ON shelf and the NEEDS button. Live: the store refreshes on entity changes.
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Chip, ItemIcon, PixelButton, PixelPanel, Sprite } from "../app/ui";
+import { Chip, ItemIcon, PixelButton, PixelPanel, Sprite, isItemIconName } from "../app/ui";
 import { useApp } from "../app/store";
 import { shortDate } from "../app/format";
 import type { ClosetView, ClothingItem } from "../app/types";
@@ -17,7 +17,7 @@ function badgeFor(item: ClothingItem): Badge {
   return null;
 }
 
-/** Fallback text under the sprite, so slots read even before A's sprites land. */
+/** Text instead of the sprite when an item's icon isn't one of A's (ItemIcon would draw a stand-in). */
 const shortName = (item: ClothingItem) => item.name.split(" ").slice(-1)[0];
 
 function Slot(p: { item?: ClothingItem; selected?: boolean; passed?: boolean; alert?: boolean; onSelect?: () => void }) {
@@ -27,8 +27,9 @@ function Slot(p: { item?: ClothingItem; selected?: boolean; passed?: boolean; al
   return (
     <button type="button" aria-label={label} aria-pressed={p.selected}
       className={`b-slot${p.selected ? " selected" : ""}${p.passed ? " passed" : ""}`} onClick={p.onSelect}>
-      <span className="b-slot-name">{shortName(p.item)}</span>
-      <span className="b-slot-icon"><ItemIcon icon={p.item.icon} size={1} /></span>
+      {isItemIconName(p.item.icon)
+        ? <span className="b-slot-icon"><ItemIcon icon={p.item.icon} size={1} /></span>
+        : <span className="b-slot-name">{shortName(p.item)}</span>}
       {badge && <span className={`b-badge ${badge.cls}`}>{badge.label}</span>}
       {p.alert && <span className="b-alert" aria-hidden>!</span>}
     </button>
@@ -46,7 +47,7 @@ function ChildCard({ closet }: { closet: ClosetView }) {
   return (
     <PixelPanel>
       <div className="b-child">
-        <Sprite name={parent.pet.sprite} anim="idle" scale={3} />
+        <Sprite name={parent.pet.sprite} fallback="pet_a" anim="idle" scale={3} />
         <div className="b-stack" style={{ gap: 8 }}>
           <div className="b-h1">
             {child ? `${child.nickname} · ${childAgeMonths} MONTH${childAgeMonths === 1 ? "" : "S"}` : parent.name}

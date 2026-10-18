@@ -1,15 +1,16 @@
 // A3: "/" — tap to start: unlock audio, explain + ask for location once, pick a parent (unless ?as= is set), go to /world.
+// The parent picker is B's (src/app/ParentPicker): it sets this tab's parent in B's store (which owns ?as=).
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router";
 import { PixelPanel } from "@/pixel/components/PixelPanel";
 import { PixelButton } from "@/pixel/components/PixelButton";
 import { Chip } from "@/pixel/components/Chip";
 import { sfx } from "@/pixel/sfx";
-import { ParentPicker } from "@/mocks/a3"; // TODO: ParentPicker from B
+import { ParentPicker } from "@/app/ParentPicker";
+import { useApp } from "@/app/store";
 import { Sprite } from "@/pixel/components/Sprite";
-import { MuteToggle } from "./MuteToggle";
 import { pixelShadow } from "./BottomBar";
-import { parseParent, withQuery, type ParentId } from "./query";
+import { isParentId, parseParent, withQuery, type ParentId } from "./query";
 import { useAudioUnlock } from "./useAudioUnlock";
 import { useGeoPermission } from "./useGeoPermission";
 import "./shell.css";
@@ -23,7 +24,8 @@ const PETS = ["pet_a", "pet_b", "pet_c"] as const;
 export function TitleScreen() {
   const navigate = useNavigate();
   const { search } = useLocation();
-  const preset = parseParent(search);
+  const storeKey = useApp((s) => s.parentKey);
+  const preset = (isParentId(storeKey) ? storeKey : null) ?? parseParent(search);
   const { unlock } = useAudioUnlock();
   const geo = useGeoPermission();
   const [stage, setStage] = useState<Stage>("title");
@@ -49,8 +51,12 @@ export function TitleScreen() {
     return () => window.removeEventListener("keydown", onKey);
   }, [stage, start]);
 
-  const go = (id: ParentId | null, demo: boolean) =>
+  const go = (id: ParentId | null, demo: boolean) => {
+    const app = useApp.getState();
+    if (id && app.parentKey !== id) app.setParent(id);
+    if (demo && !app.demo) app.setDemo(true); // no GPS: demo mode sticks for this tab (B's store keeps ?demo=1)
     navigate(withQuery("/world", { as: id ?? undefined, demo: demo ? "1" : undefined }));
+  };
 
   const onOk = async () => {
     setStage("asking");
@@ -110,7 +116,7 @@ export function TitleScreen() {
       </div>
 
       {stage === "title" && <button type="button" className="ts__tap" onClick={start} aria-label="Press start" />}
-      <MuteToggle />
+      {/* MuteToggle: B's Shell mounts it once for every screen */}
     </div>
   );
 }

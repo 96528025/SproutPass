@@ -25,6 +25,9 @@ export interface DialogBoxProps {
   className?: string;
 }
 
+// Keys pressed in a field or on another control belong to that control, not to the dialog.
+const CONTROL = 'input, textarea, select, button, a[href], [contenteditable]:not([contenteditable="false"])';
+
 const prefersReduced = () =>
   typeof window !== "undefined" && window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
 
@@ -44,11 +47,13 @@ export function DialogBox({
   const [shown, setShown] = useState(0);
   const [cursor, setCursor] = useState(0);
   const timer = useRef<number | null>(null);
+  const root = useRef<HTMLDivElement>(null);
   const line = lines[lineIdx] ?? "";
   const typing = shown < line.length;
   const last = lineIdx >= lines.length - 1;
   const showChoices = !!choices?.length && last && !typing;
   const linesKey = lines.join("\u0001"); // stable even when the caller passes a fresh array each render
+  const choicesKey = choices?.map((c) => c.value).join("\u0001") ?? "";
 
   // reset when the lines change
   useEffect(() => {
@@ -56,6 +61,12 @@ export function DialogBox({
     setShown(0);
     setCursor(0);
   }, [linesKey]);
+
+  // a different menu (e.g. C's pet swaps SELL/KEEP/LATER for SEE TRADE/LATER) starts at its first choice,
+  // so the cursor never points past the end
+  useEffect(() => {
+    setCursor(0);
+  }, [choicesKey]);
 
   // typewriter
   useEffect(() => {
@@ -107,9 +118,13 @@ export function DialogBox({
     [onChoice, onDone],
   );
 
-  // keyboard: space/enter advance; arrows move the cursor
+  // keyboard: space/enter advance; arrows move the cursor. Not while typing in a field or pressing another
+  // control (a choice button's own Enter/Space click still works), and only one open dialog takes each key.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      if (e.defaultPrevented || e.isComposing) return;
+      const target = e.target instanceof Element ? e.target : null;
+      if (target?.closest(CONTROL) && !(e.key.startsWith("Arrow") && root.current?.contains(target))) return;
       if (showChoices && choices) {
         if (e.key === "ArrowDown") {
           e.preventDefault();
@@ -125,7 +140,8 @@ export function DialogBox({
         }
         if (e.key === "Enter" || e.key === " ") {
           e.preventDefault();
-          pick(choices[cursor].value);
+          const choice = choices[Math.min(cursor, choices.length - 1)];
+          if (choice) pick(choice.value);
           return;
         }
       }
@@ -139,7 +155,7 @@ export function DialogBox({
   }, [advance, pick, showChoices, choices, cursor]);
 
   return (
-    <div className={`dlg ${inline ? "dlg--inline" : ""} ${className ?? ""}`.trim()} role="dialog" aria-label={speaker.name}>
+    <div ref={root} className={`dlg ${inline ? "dlg--inline" : ""} ${className ?? ""}`.trim()} role="dialog" aria-label={speaker.name}>
       <PixelPanel tone="paper" title={speaker.name}>
         <div className="dlg__box" onClick={advance}>
           <div className="dlg__portrait" data-sprite={speaker.sprite}>

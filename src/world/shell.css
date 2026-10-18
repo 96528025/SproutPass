@@ -185,6 +185,12 @@
   outline: 4px solid var(--sky);
   outline-offset: 2px;
 }
+.bb__label {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: clip;
+  white-space: nowrap;
+}
 .bb__icon {
   position: relative;
   width: 16px;

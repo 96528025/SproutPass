@@ -135,6 +135,11 @@
   width: 358px;
   bottom: calc(var(--parent-h) + 16px);
 }
+/* C's <AgentBubbles> caps its log at 240 px; pin it to the bottom so the newest line stays in view and older
+   ones scroll off the top (the slot is bottom-anchored above the parents). */
+.enc__bubbles .c-bubbles {
+  justify-content: flex-end;
+}
 
 /* ---- TRADE PROPOSAL! banner ---- */
 .enc__banner {

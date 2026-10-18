@@ -11,13 +11,14 @@
 //   onOpenTrade optional: tapped "SEE TRADE" when a proposal is open
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { DialogBox, Sprite } from "../app/ui"; // B's shim today; re-exports A's kit once it lands
+import { DialogBox, Sprite } from "../app/ui"; // A's kit; ui's Sprite narrows a data string safely
 import { type AgentNudge, countOpenProposals, listOpenNudges, listPetLines, subscribe } from "./cApi";
 import "./agent.css";
 
 export interface AgentPetProps {
   parentId: string;
-  pet: { name: string; sprite: "pet_a" | "pet_b" | "pet_c" };
+  /** Parent.pet; `sprite` is backend data ("pet_a" | "pet_b" | "pet_c"), unknown names fall back to pet_a. */
+  pet: { name: string; sprite: string };
   onChoice?: (choice: "sell" | "keep" | "later", nudge: AgentNudge) => void;
   onOpenTrade?: () => void;
 }
@@ -105,20 +106,21 @@ export function AgentPet({ parentId, pet, onChoice, onOpenTrade }: AgentPetProps
   return (
     <>
       <button className="c-pet" aria-label={`${pet.name}, your closet pet`} onClick={() => setOpen(true)}>
-        <Sprite name={pet.sprite} anim={attention ? "cheer" : "idle"} scale={4} />
+        <Sprite name={pet.sprite} fallback="pet_a" anim={attention ? "cheer" : "idle"} scale={4} />
         {attention && <span className="c-pet__dot" aria-hidden />}
         {attention && !open && <span className="c-pet__hint">{proposals > 0 ? "TRADE!" : "PSST"}</span>}
       </button>
       {open && (
-        <div className="b-dock c-pet__dock" role="dialog" aria-label={`${pet.name} says`}>
-          <DialogBox
-            speaker={{ name: pet.name, sprite: pet.sprite }}
-            lines={[text, "(I said the same thing in iMessage.)"]}
-            choices={choices}
-            onDone={() => setOpen(false)}
-            onChoose={onPick}
-          />
-        </div>
+        // A's DialogBox positions itself (fixed, above the bottom bar); c-pet__dlg lifts it over B's nudge box.
+        <DialogBox
+          className="c-pet__dlg"
+          speaker={{ name: pet.name, sprite: pet.sprite }}
+          portrait={<Sprite name={pet.sprite} fallback="pet_a" anim="talk" scale={3} />}
+          lines={[text, "(I said the same thing in iMessage.)"]}
+          choices={choices}
+          onDone={() => setOpen(false)}
+          onChoice={onPick}
+        />
       )}
     </>
   );

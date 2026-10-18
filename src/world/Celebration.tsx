@@ -9,13 +9,23 @@ import { PixelButton } from "@/pixel/components/PixelButton";
 import { Hearts } from "@/pixel/components/Hearts";
 import { createBurst } from "@/pixel/particles";
 import { sfx } from "@/pixel/sfx";
-import type { MatchProposal, Parent } from "@/mocks/a5";
+import { asItemIcon, asSprite, type ScenePerson } from "@/world/people";
+import { markCelebrationOpen } from "@/world/celebrationOpen";
 import "./celebration.css";
 
+/** The fields Celebration reads; the contract's MatchProposal (e.g. the "trade:paid" event detail) fits. */
+export interface CelebrationProposal {
+  id: string;
+  sellerId: string;
+  buyerId: string;
+  snapshot: { icon: string; priceCents: number; previousOwners: number; wearWeeksLeft?: number };
+}
+
 export interface CelebrationProps {
-  proposal: MatchProposal;
-  me: Parent;
-  peer: Parent;
+  proposal: CelebrationProposal;
+  /** closet.parent; peer = the other party (getParties' PublicParty). */
+  me: ScenePerson;
+  peer: ScenePerson;
   onDone: () => void;
 }
 
@@ -42,6 +52,9 @@ export function Celebration({ proposal, me, peer, onDone }: CelebrationProps) {
   const [panel, setPanel] = useState(false);
   const onDoneRef = useRef(onDone);
   onDoneRef.current = onDone;
+
+  // /world pauses its polling while this is up (see celebrationOpen.ts).
+  useEffect(() => markCelebrationOpen(), []);
 
   // measure the overlay (it is fixed to the handheld screen, not the window)
   useEffect(() => {
@@ -139,7 +152,7 @@ export function Celebration({ proposal, me, peer, onDone }: CelebrationProps) {
             className={`cel__item ${arc === ARC_STEPS ? "is-landed" : ""}`}
             style={{ left: ix - ITEM / 2, top: iy - ITEM / 2 } as CSSProperties}
           >
-            <ItemIcon icon={proposal.snapshot.icon} size={2} />
+            <ItemIcon icon={asItemIcon(proposal.snapshot.icon)} size={2} />
           </div>
           <canvas ref={canvas} className="cel__canvas" aria-hidden />
         </>
@@ -164,12 +177,12 @@ export function Celebration({ proposal, me, peer, onDone }: CelebrationProps) {
   );
 }
 
-function Avatar({ who, x, top }: { who: Parent; x: number; top: number }) {
+function Avatar({ who, x, top }: { who: ScenePerson; x: number; top: number }) {
   return (
     <div className="cel__avatar" style={{ left: x - AVATAR / 2, top, width: AVATAR }}>
-      <Sprite name={who.avatar.sprite} anim="cheer" scale={AVATAR_SCALE} />
+      <Sprite name={asSprite(who.avatar.sprite, "parent_a")} anim="cheer" scale={AVATAR_SCALE} />
       <div className="cel__pet">
-        <Sprite name={who.pet.sprite} anim="hop" scale={3} />
+        <Sprite name={asSprite(who.pet.sprite, "pet_a")} anim="hop" scale={3} />
       </div>
       <div className="cel__name px-label-12">{who.name}</div>
     </div>

@@ -149,7 +149,7 @@ function TradeDetails({ p, me, upsert, close, gone }: {
     }
   }
 
-  const pct = RESALE_PCT[(s.previousOwners >= 2 ? 2 : 1) as 1 | 2];
+  const pct = Math.round(RESALE_PCT[(s.previousOwners >= 2 ? 2 : 1) as 1 | 2] * 100); // A's PriceReceipt: 60, not 0.6
   const ownerAfter = (Math.min(3, s.previousOwners + 1) >= 3 ? 3 : 2) as 2 | 3;
   const hearts = Math.max(1, Math.min(3, s.previousOwners)) as 1 | 2 | 3;
   const cond = CONDITION_TEXT[s.condition] ?? CONDITION_TEXT.gently_used;
@@ -192,7 +192,8 @@ function TradeDetails({ p, me, upsert, close, gone }: {
           <span className="t-label">{s.previousOwners} PREVIOUS OWNER{s.previousOwners === 1 ? "" : "S"}</span>
         </div>
         <PriceReceipt original={s.originalPriceCents} pct={pct} price={s.priceCents} ownerAfter={ownerAfter} />
-        <DialogBox speaker={{ name: speaker.name, sprite: speaker.sprite }} lines={[p.reason]} />
+        <DialogBox inline speaker={{ name: speaker.name, sprite: speaker.sprite }} lines={[p.reason]}
+          portrait={<Sprite name={speaker.sprite} fallback="pet_a" anim="talk" scale={3} />} />
         {s.wearWeeksLeft != null && (
           <div><Chip tone="mint">FITS ~{s.wearWeeksLeft} MORE WEEK{s.wearWeeksLeft === 1 ? "" : "S"}</Chip></div>
         )}

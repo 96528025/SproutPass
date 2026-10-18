@@ -1,25 +1,205 @@
-// A4: ?demo=1 only. While active, calls C's demoWalk every 1 s until an encounter exists, then stops itself.
-import { useCallback, useEffect, useState } from "react";
-import { demoWalk } from "@/mocks/a4"; // C: swap for the real api when it lands
-import type { ParentId } from "@/world/query";
+// A4: ?demo=1 only. "WALK TOWARD …" calls C's demoWalk (B's api → base44/functions/demoWalk) every 2.5 s, which
+// moves this parent's SIMULATED presence 20 m toward the target and runs the same encounter check as updatePresence.
+//   - the first call of each walk passes reset: true (C puts the walker 120 m north of the target), so a walk is
+//     6 calls / ~13 s: 120 → 100 → 80 → 60 → 40 → 20 m (Base44's Free-plan rate limit is shared by the whole team);
+//   - the walk ends when the encounter shows up (or the target is <= 25 m away): the parent has "arrived";
+//   - after arriving, a slow hold tick (every 4 s, 1 m) keeps C's local fallback ticking (it resolves a meeting
+//     still "talking" after 8 s) and the simulated presence fresh, instead of updatePresence (`owns` = true: useGps
+//     pauses its heartbeat). It stops as soon as the encounter is resolved (proposed / no_match), or after 30 s at
+//     most, or while `paused` (a trade is open): the walk is then "done" and useGps' 10 s keepalive takes over
+//     (C keeps a simulated presence where the walk left it, so that never pulls the walker back);
+//   - one request at a time (the next is scheduled when the last answers), nothing while the tab is hidden,
+//     failures back off up to 15 s.
+// The target is a seed key ("mina"); its real Parent id is resolved once per tab: from the radar when that parent
+// is on it (same name), else one getCloset({ parentKey }) (demo only, only the id is kept), cached in
+// sessionStorage. (A demoWalk that took the target's seed key would make that fallback unnecessary: NEEDS.)
+import { useCallback, useEffect, useRef, useState } from "react";
+import { api, ApiError } from "@/app/api";
+import type { NearbyParent } from "@/app/types";
+import { seedName } from "@/world/people";
 
-export function useDemoWalk(
-  parentId: ParentId,
-  toward: ParentId,
-  { enabled, encountered }: { enabled: boolean; encountered: boolean },
-): { active: boolean; start: () => void; stop: () => void } {
-  const [started, setStarted] = useState(false);
-  const active = enabled && started && !encountered;
+export type WalkPhase = "idle" | "walking" | "arrived" | "done";
+
+const WALK_MS = 2500;
+const WALK_STEP_M = 20;
+const HOLD_MS = 4000;
+const HOLD_STEP_M = 1;
+const HOLD_MAX_MS = 30_000;
+const ARRIVED_M = 25;
+const MAX_BACKOFF_MS = 15_000;
+const IDS_KEY = "relay:world:parentIds";
+
+// ---- seed key → real Parent id, cached per tab --------------------------------------------------------------------
+
+function readIds(): Record<string, string> {
+  try {
+    return JSON.parse(sessionStorage.getItem(IDS_KEY) ?? "{}") as Record<string, string>;
+  } catch {
+    return {};
+  }
+}
+const ids: Record<string, string> = typeof window === "undefined" ? {} : readIds();
+function remember(key: string, id: string | null) {
+  if (id) ids[key] = id;
+  else delete ids[key];
+  try {
+    sessionStorage.setItem(IDS_KEY, JSON.stringify(ids));
+  } catch {
+    /* private mode: memory only */
+  }
+}
+
+const resolving = new Map<string, Promise<string>>();
+async function resolveParentId(key: string, nearby: NearbyParent[]): Promise<string> {
+  if (ids[key]) return ids[key];
+  const onRadar = nearby.find((p) => p.name === seedName(key));
+  if (onRadar) {
+    remember(key, onRadar.parentId);
+    return onRadar.parentId;
+  }
+  let p = resolving.get(key);
+  if (!p) {
+    p = api
+      .getCloset({ parentKey: key })
+      .then((c) => {
+        remember(key, c.parent.id);
+        return c.parent.id;
+      })
+      .finally(() => resolving.delete(key));
+    resolving.set(key, p);
+  }
+  return p;
+}
+
+// ---- the hook --------------------------------------------------------------------------------------------------------
+
+export interface DemoWalk {
+  /** idle → walking → arrived (hold ticks) → done (the walk is over; WALK AGAIN starts a new one). */
+  phase: WalkPhase;
+  /** Walking right now (the button reads "WALKING… 80 M"). */
+  active: boolean;
+  /** The walk drives this parent's simulated position (walking, or holding after arrival): useGps must not send. */
+  owns: boolean;
+  /** Target's real id once resolved (to find it on the radar). */
+  targetId: string | null;
+  /** Last distance to the target reported by demoWalk, metres. */
+  distanceM: number | null;
+  start: () => void;
+  stop: () => void;
+}
+
+export interface DemoWalkOptions {
+  enabled: boolean;
+  /** Status of my current (unsettled) encounter, or null. Its arrival ends the walk; its resolution ends the hold. */
+  encounter: "talking" | "proposed" | "no_match" | null;
+  /** No hold ticks (a trade is open / celebrating). A walk the parent started still finishes its few steps. */
+  paused: boolean;
+  /** The radar's latest list (read when resolving the target's id). */
+  nearby: { readonly current: NearbyParent[] };
+}
+
+export function useDemoWalk(parentId: string | null, targetKey: string, { enabled, encounter, paused, nearby }: DemoWalkOptions): DemoWalk {
+  const [state, setState] = useState<WalkPhase>("idle");
+  const [targetId, setTargetId] = useState<string | null>(() => ids[targetKey] ?? null);
+  const [distanceM, setDistanceM] = useState<number | null>(null);
+  const [visible, setVisible] = useState(() => typeof document === "undefined" || document.visibilityState === "visible");
+  const fresh = useRef(true); // next walk call passes reset: true
+  const arrivedAt = useRef(0);
 
   useEffect(() => {
-    if (!active) return;
-    const step = () => void demoWalk({ parentId, towardParentId: toward }).catch(() => {});
-    step();
-    const id = window.setInterval(step, 1000);
-    return () => window.clearInterval(id);
-  }, [active, parentId, toward]);
+    const onVis = () => setVisible(document.visibilityState === "visible");
+    document.addEventListener("visibilitychange", onVis);
+    return () => document.removeEventListener("visibilitychange", onVis);
+  }, []);
 
-  const start = useCallback(() => setStarted(true), []);
-  const stop = useCallback(() => setStarted(false), []);
-  return { active, start, stop };
+  // A new parent / target / leaving demo mode: start over.
+  useEffect(() => {
+    setState("idle");
+    setDistanceM(null);
+    setTargetId(ids[targetKey] ?? null);
+  }, [parentId, targetKey, enabled]);
+
+  // The encounter showed up: this walk is over. Once it is resolved, so is the hold.
+  useEffect(() => {
+    if (!encounter) return;
+    if (state === "walking") {
+      arrivedAt.current = Date.now();
+      setState("arrived");
+    } else if (state === "arrived" && encounter !== "talking") {
+      setState("done");
+    }
+  }, [encounter, state]);
+
+  // The hold never outlives HOLD_MAX_MS (no meeting came, the agents went quiet, a trade opened meanwhile, ...).
+  useEffect(() => {
+    if (state !== "arrived") return;
+    const t = window.setTimeout(() => setState((s) => (s === "arrived" ? "done" : s)), Math.max(0, arrivedAt.current + HOLD_MAX_MS - Date.now()));
+    return () => window.clearTimeout(t);
+  }, [state]);
+
+  const ticking = state === "walking" || (state === "arrived" && !paused);
+  useEffect(() => {
+    if (!enabled || !parentId || !visible || !ticking) return;
+    let alive = true;
+    let timer: number | undefined;
+    const walking = state === "walking";
+    const base = walking ? WALK_MS : HOLD_MS;
+    let wait = base;
+    const tick = async () => {
+      try {
+        const target = await resolveParentId(targetKey, nearby.current);
+        if (!alive) return;
+        setTargetId(target);
+        const reset = walking && fresh.current;
+        const res = await api.demoWalk({
+          parentId,
+          targetParentId: target,
+          ...(reset ? { reset: true } : { stepM: walking ? WALK_STEP_M : HOLD_STEP_M }),
+        });
+        if (reset) fresh.current = false;
+        if (!alive) return;
+        wait = base;
+        if (typeof res?.distanceM === "number") {
+          setDistanceM(res.distanceM);
+          if (walking && (res.distanceM <= ARRIVED_M || (res.encounters?.length ?? 0) > 0)) {
+            arrivedAt.current = Date.now();
+            setState("arrived");
+            return; // the hold loop takes over (its first tick comes HOLD_MS later)
+          }
+        }
+      } catch (e) {
+        // a stale cached id (re-seeded db) → resolve it again next time
+        if (e instanceof ApiError && e.code === "not_found") {
+          remember(targetKey, null);
+          setTargetId(null);
+        }
+        wait = Math.min(MAX_BACKOFF_MS, wait * 2);
+      }
+      if (alive) timer = window.setTimeout(tick, wait);
+    };
+    // A walk steps at once (the reset call puts the walker on the start line); the hold waits a beat first.
+    timer = window.setTimeout(tick, walking ? 0 : HOLD_MS);
+    return () => {
+      alive = false;
+      window.clearTimeout(timer);
+    };
+  }, [enabled, parentId, targetKey, visible, state, ticking, nearby]);
+
+  const start = useCallback(() => {
+    fresh.current = true;
+    setDistanceM(null);
+    setState("walking");
+  }, []);
+  const stop = useCallback(() => setState("idle"), []);
+
+  const phase: WalkPhase = enabled ? state : "idle";
+  return {
+    phase,
+    active: phase === "walking",
+    owns: phase === "walking" || phase === "arrived",
+    targetId,
+    distanceM,
+    start,
+    stop,
+  };
 }
