@@ -1,5 +1,5 @@
 // Match eval table: every case is { name, setup, expected }. The base scenario is the demo meet on Oct 18:
-// Mina's romper (6-9M, $18.00, gently used) vs Jo's shared need for 6-9M tops/onesies, Pea 7 months old.
+// Caesar's romper (6-9M, $18.00, gently used) vs Olivia's shared need for 6-9M tops/onesies, Pea 7 months old.
 import { describe, expect, it } from "vitest";
 import { checkEligibility, findMatches, reasonLine } from "./match.ts";
 import { DEMO_DATES } from "./seed.ts";
@@ -37,7 +37,7 @@ const addListing = (s: Scenario, id: string, itemOver: Partial<ClothingItem>, li
 };
 
 const CASES: Case[] = [
-  { name: "fits: the demo romper matches Jo with 4 weeks left", setup: () => {}, expected: { ok: true, weeks: 4 } },
+  { name: "fits: the demo romper matches Olivia with 4 weeks left", setup: () => {}, expected: { ok: true, weeks: 4 } },
   { name: "size miss", setup: (s) => { s.needs[0].sizes = ["9-12M"]; }, expected: { ok: false, reason: "size not in need" } },
   { name: "category miss", setup: (s) => { s.needs[0].categories = ["bottom"]; }, expected: { ok: false, reason: "category not wanted" } },
   { name: "no categories means any category", setup: (s) => { s.needs[0].categories = undefined; s.items[0].category = "bottom"; }, expected: { ok: true, weeks: 4 } },
@@ -91,7 +91,7 @@ describe("match eval table", () => {
       const s = base();
       c.setup(s);
       const matches = findMatches({ listings: s.listings, items: s.items, needs: s.needs, buyerChildren: s.children,
-        buyerId: s.buyerId, buyerName: "Jo", now: s.now });
+        buyerId: s.buyerId, buyerName: "Olivia", now: s.now });
       const e = c.expected;
       if ("order" in e) {
         expect(matches.map((m) => m.listingId)).toEqual(e.order);
@@ -114,28 +114,28 @@ describe("findMatches output", () => {
   it("carries a reason line and a score that orders like the ranking keys", () => {
     const s = base();
     addListing(s, "new", {}, { condition: "like_new" });
-    const m = findMatches({ listings: s.listings, items: s.items, needs: s.needs, buyerChildren: s.children, buyerId: JO, buyerName: "Jo", now: s.now });
+    const m = findMatches({ listings: s.listings, items: s.items, needs: s.needs, buyerChildren: s.children, buyerId: JO, buyerName: "Olivia", now: s.now });
     expect(m[0].score).toBeGreaterThan(m[1].score);
-    expect(m[1].reason).toBe(reasonLine("Jo", s.items[0], 4));
+    expect(m[1].reason).toBe(reasonLine("Olivia", s.items[0], 4));
   });
 });
 
 describe("reasonLine", () => {
   it("is deterministic, plain, and names the buyer, size and weeks", () => {
     const romper = { name: "Yellow duck romper", size: "6-9M" as const };
-    const line = reasonLine("Jo", romper, 4);
-    expect(reasonLine("Jo", romper, 4)).toBe(line);
-    expect(line).toMatch(/Jo/);
+    const line = reasonLine("Olivia", romper, 4);
+    expect(reasonLine("Olivia", romper, 4)).toBe(line);
+    expect(line).toMatch(/Olivia/);
     expect(line).toMatch(/6-9M/);
     expect(line).toMatch(/yellow duck romper/);
     expect(line).toMatch(/about 4 more weeks/);
-    expect(reasonLine("Jo", romper, 1)).toMatch(/about 1 more week\b/);
-    expect(reasonLine("Jo", romper, 0)).toMatch(/fits right now/);
+    expect(reasonLine("Olivia", romper, 1)).toMatch(/about 1 more week\b/);
+    expect(reasonLine("Olivia", romper, 0)).toMatch(/fits right now/);
   });
 
   it("varies across matches", () => {
     const lines = new Set<string>();
-    for (const buyer of ["Jo", "Sam", "Mina", "Ana", "Lee", "Kai"]) {
+    for (const buyer of ["Olivia", "Freja", "Caesar", "Ana", "Lee", "Kai"]) {
       for (const weeks of [1, 2, 3, 4, 5]) lines.add(reasonLine(buyer, { name: "Mint onesie", size: "6-9M" }, weeks).replace(buyer, "X").replace(/\d+ more weeks?/, "N"));
     }
     expect(lines.size).toBeGreaterThan(1);

@@ -115,12 +115,15 @@ export async function makeWorld(opts: { imessage?: boolean } = {}): Promise<Worl
     },
   };
 
-  // ---- stub Photon (and the flowers GIF) -------------------------------------------------------------------------
+  // ---- stub Photon (and the images the pet attaches: the flowers GIF, a trade's product photo) --------------------
   const sent: Sent[] = [];
   const real = globalThis.fetch;
   globalThis.fetch = (async (input: Request | URL | string, init?: RequestInit) => {
     const url = String(input instanceof Request ? input.url : input);
     if (url.endsWith("/fx/flowers.gif")) return new Response(new Uint8Array([71, 73, 70, 56]), { status: 200, headers: { "content-type": "image/gif" } });
+    if (!url.startsWith("https://api.photon.codes/") && /\.(?:jpe?g|png)$/i.test(new URL(url).pathname)) {
+      return new Response(new Uint8Array([255, 216, 255]), { status: 200, headers: { "content-type": "image/jpeg" } });
+    }
     if (!url.startsWith("https://api.photon.codes/")) throw new Error(`unexpected fetch ${url}`);
     const path = new URL(url).pathname;
     const method = init?.method ?? "GET";

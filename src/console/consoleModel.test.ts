@@ -110,8 +110,8 @@ describe("engine + outcome", () => {
       .toEqual({ at: 2, rules: true, reason: "over the budget the buyer set for their pet" });
     expect(refusalOf(decline(declineSummary({ rule: null, phrase: "another trade is already open on it" }))))
       .toEqual({ at: 2, rules: false, reason: "another trade is already open on it" });
-    expect(refusalOf({ status: "no_match", agentLog: [], noMatchReason: "It costs more than the price limit Jo set for Pip." }))
-      .toEqual({ at: -1, rules: true, reason: "It costs more than the price limit Jo set for Pip" });
+    expect(refusalOf({ status: "no_match", agentLog: [], noMatchReason: "It costs more than the price limit Olivia set for Pip." }))
+      .toEqual({ at: -1, rules: true, reason: "It costs more than the price limit Olivia set for Pip" });
     expect(refusalOf({ status: "no_match", agentLog: [entry({}), entry({ type: "NoFit" })] })).toBeNull();
     expect(refusalOf({ status: "proposed", agentLog: [entry({ type: "Decline" })] })).toBeNull();
     expect(CLOSING_TYPES.has("Decline") && CLOSING_TYPES.has("NoFit") && !CLOSING_TYPES.has("HaveListings")).toBe(true);
@@ -123,21 +123,21 @@ describe("privacy scan", () => {
   it("passes clean protocol messages and pet lines", () => {
     const log = [entry({ summary: "Looking for size 6-9M (top, onesie) for a 7-month-old." }),
       entry({ summary: "Proposes the Yellow duck romper at $18.00 (60% of $30.00, 2nd owner)." })];
-    const scan = scanPrivacy(log, [turn("p", "propose", "Pip: How about $18.00?")], ["Mina", "Jo"]);
+    const scan = scanPrivacy(log, [turn("p", "propose", "Pip: How about $18.00?")], ["Caesar", "Olivia"]);
     expect(scan).toEqual({ messages: 2, lines: 1, findings: [] });
   });
 
   it("flags names, phones, coordinates and birthdates, saying where", () => {
     const log = [
-      entry({ summary: "Jo's kid wants it" }),
+      entry({ summary: "Olivia's kid wants it" }),
       entry({ summary: "call +13105551234" }),
       entry({ summary: "meet at 34.06891, -118.44520" }),
       entry({ summary: "child born 2025-12-10" }),
     ];
-    const kinds = scanPrivacy(log, [], ["Jo"]).findings.map((f) => `${f.kind}@${f.where}`);
+    const kinds = scanPrivacy(log, [], ["Olivia"]).findings.map((f) => `${f.kind}@${f.where}`);
     expect(kinds).toEqual(["name@message 1", "phone@message 2", "location@message 3", "birthdate@message 4"]);
-    // "Joggers" is not "Jo"
-    expect(scanPrivacy([entry({ summary: "Sage cotton joggers. Joggers!" })], [], ["Jo"]).findings).toEqual([]);
+    // "Joggers" is not "Olivia"
+    expect(scanPrivacy([entry({ summary: "Sage cotton joggers. Joggers!" })], [], ["Olivia"]).findings).toEqual([]);
   });
 });
 

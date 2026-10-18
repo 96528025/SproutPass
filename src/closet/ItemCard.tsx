@@ -58,7 +58,7 @@ export function ItemCard(p: { item: ClothingItem; closet: ClosetView; onClose?: 
               {p.onClose && <button type="button" className="b-link" onClick={p.onClose} aria-label="Close item">✕</button>}
             </div>
             <div className="b-row">
-              <Chip tone="cream">{item.size}</Chip>
+              <Chip tone="cream">{item.size === "unknown" ? "SIZE NEEDED" : item.size}</Chip>
               <Hearts filled={item.ownerCount} />
               <span className="b-label">{item.ownerCount} OWNER{item.ownerCount > 1 ? "S" : ""}</span>
             </div>
@@ -70,9 +70,15 @@ export function ItemCard(p: { item: ClothingItem; closet: ClosetView; onClose?: 
           <FitBar until={item.predictedOutgrowDate.slice(0, 10)} now={closet.now.slice(0, 10)} from={since.slice(0, 10)} />
         )}
 
+        {item.photos?.[0] && <img src={item.photos[0]} alt={item.name} style={{ width: "100%", maxHeight: 260, objectFit: "contain", borderRadius: 8 }} />}
         <dl className="b-facts">
-          <dt>BOUGHT NEW</dt>
-          <dd>{shortDate(item.originalPurchaseDate)} · {formatCents(item.originalPriceCents)}</dd>
+          <dt>{item.sourceMessageId ? "ADDED" : "BOUGHT NEW"}</dt>
+          <dd>{shortDate(item.originalPurchaseDate)} · {item.photoMetadata?.priceConfirmed === false ? "Price needed" : formatCents(item.originalPriceCents)}</dd>
+          {item.photoMetadata && <>
+            <dt>PHOTO DETAILS</dt>
+            <dd>{[item.photoMetadata.brand, item.photoMetadata.color, item.photoMetadata.material, item.photoMetadata.pattern,
+              item.photoMetadata.condition.replaceAll("_", " "), item.photoMetadata.note].filter(Boolean).join(" · ")}</dd>
+          </>}
           {!passed && since !== item.originalPurchaseDate && (<><dt>YOURS SINCE</dt><dd>{shortDate(since)}</dd></>)}
           <dt>STATUS</dt>
           <dd>{passed ? "PASSED ON" : STATUS_TEXT[item.status]}</dd>
@@ -93,6 +99,8 @@ export function ItemCard(p: { item: ClothingItem; closet: ClosetView; onClose?: 
             </div>
             <PixelButton variant="ghost" disabled={busy || !listing} onClick={withdraw}>{busy ? "…" : "WITHDRAW"}</PixelButton>
           </div>
+        ) : item.size === "unknown" || item.photoMetadata?.priceConfirmed === false ? (
+          <p className="b-p">Saved from iMessage. Reply to your pet with the size and original price (for example, 6-9M $24) before selling.</p>
         ) : finalHome ? (
           <div className="b-final">Final home 💛 This one stays with you.</div>
         ) : (

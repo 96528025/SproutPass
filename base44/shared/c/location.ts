@@ -16,7 +16,15 @@
 // caller's Parent once, and the pair bookkeeping (PairState, or recent Encounters when PairState isn't pushed)
 // only while somebody is within 40 m, on the walk's reset, or about once per 10 s (recheckDue). The talking-
 // encounter query runs only around a recent meeting or on such a recheck. `recheck: true` (B's mock, where
-// reads are free) reads everything on every tick.
+// reads are free) reads everything on every tick. A NEW meeting also runs B's findMatches both ways once (hasMatch),
+// and a re-armed pair inside its cooldown costs one look at its last meeting (PairState mode: two filters) plus one
+// MatchProposal read when that meeting may have had a trade (releasedBy), and findMatches both ways when that meeting
+// found nothing to trade — only on that rare path. A real-GPS pair still standing together after a meeting that found
+// nothing (or whose trade was paid) gets the same look on a recheck tick, at most once per 30 s (STAND_AGAIN_MS).
+//
+// Pop-up rule (A's /world): a meeting pops up on both phones only when something shared fits, one way or the other.
+// Every meeting is still written (Encounter + both inbox rows: the Fetch agents negotiate them all and the Agent
+// Console keeps them), with Encounter.hasMatch saying whether anything fits; the app hides hasMatch === false.
 
 // deno-lint-ignore-file no-explicit-any
 import {
@@ -44,7 +52,7 @@ import { callB, findMatches as bFindMatches } from "../cbridge.ts";
 import { getNow } from "../db.ts";
 import { bad, notFound } from "../errors.ts";
 import { checkMandate, type MandateRule, mandateOf, monthTotals } from "../logic/trust.ts";
-import type { AgentLogEntry, Category } from "../types.ts";
+import type { AgentLogEntry, Category, EncounterStart, PairCooldown } from "../types.ts";
 
 /** No Fetch agents on duty: the local fallback starts the pets' talk 8 s after the meeting. */
 export const FALLBACK_AFTER_MS = 8_000;
@@ -68,6 +76,16 @@ export const MAX_SPEED_MPS = 30;
 const RECENT_ENCOUNTERS = 50;
 /** Safety valve: a pair nobody saw walk apart (both tabs closed) is armed again an hour after its last meeting. */
 const DISARM_MAX_MS = 60 * 60_000;
+/**
+ * A real-GPS pair still together since its last meeting (disarmed: nobody walked > 40 m away) gets another look once
+ * that meeting is this old, and at most this often per pair (standLookDue).
+ */
+export const STAND_AGAIN_MS = 30_000;
+/**
+ * A walk step toward the family the walker already stands with (WALK AGAIN) counts as walking out and back once their
+ * last meeting is this old: never for a meeting the other phone's tick started while this walk was still stepping in.
+ */
+export const WALK_AGAIN_AFTER_MS = 10_000;
 
 // ---------------------------------------------------------------- B's findMatches contract (NEEDS.md)
 
@@ -171,6 +189,8 @@ interface Pairs {
   view(a: string, b: string): PairView & { known: boolean };
   rearm(a: string, b: string, d: number): Promise<void>;
   disarm(a: string, b: string, d: number): Promise<void>;
+  /** The pair's latest Encounter row, or null (encounters mode: from the rows already read; PairState: one query). */
+  latest(a: string, b: string): Promise<any | null>;
   /** encounters mode: the recent rows (newest first), so the fallback needs no second read. */
   encounters?: any[];
 }
@@ -218,6 +238,7 @@ function pairStatePairs(db: any, rows: any[], nowMs: number): Pairs {
     },
     rearm: (a, b, d) => save(pairKey(a, b), { armed: true, lastDistanceM: d }),
     disarm: (a, b, d) => save(pairKey(a, b), { armed: false, lastEncounterAt: iso(nowMs), lastDistanceM: d }),
+    latest: (a, b) => latestEncounter(db, a, b),
   };
 }
 
@@ -240,27 +261,96 @@ function encounterPairs(db: any, encounters: any[], nowMs: number): Pairs {
     async disarm() {
       /* the new encounter IS the disarm */
     },
+    latest: async (a, b) => latest(a, b) ?? null,
   };
+}
+
+/** The pair's latest Encounter row (either order), or null: two filtered reads. */
+export async function latestEncounter(db: any, a: string, b: string): Promise<any | null> {
+  const rows = await db.Encounter.filter({ aId: a, bId: b }, "-startedAt", 1);
+  const rows2 = await db.Encounter.filter({ aId: b, bId: a }, "-startedAt", 1);
+  const both = [rows?.[0], rows2?.[0]].filter((e: any) => e && ms(e.startedAt));
+  return both.length ? both.reduce((x: any, y: any) => (ms(y.startedAt) > ms(x.startedAt) ? y : x)) : null;
 }
 
 /** Latest Encounter.startedAt for the pair, in ms (0 = never met). */
 export async function lastEncounterAt(db: any, a: string, b: string): Promise<number> {
-  const rows = await db.Encounter.filter({ aId: a, bId: b }, "-startedAt", 1);
-  const rows2 = await db.Encounter.filter({ aId: b, bId: a }, "-startedAt", 1);
-  const t = [rows?.[0], rows2?.[0]].filter(Boolean).map((e: any) => ms(e.startedAt)).filter(Boolean);
-  return t.length ? Math.max(...t) : 0;
+  return ms((await latestEncounter(db, a, b))?.startedAt);
+}
+
+/**
+ * The pair cooldown only counts a meeting that could have popped up on the parents' screens. What frees a pair from its
+ * last meeting (`prev`): "no_fit" when that meeting found nothing shared to trade (hasMatch false: the app never showed
+ * it), or "paid" when its trade was PAID (they are done with it: a two-way pair trades the other direction at the next
+ * meeting, so they may meet again right away). null = it holds, as before: an open or declined trade, a match the
+ * buyer's pet rules stopped (it popped, the pets said why), and an unknown meeting (no row, or an older row without
+ * hasMatch). A row newer than the meeting this tick's own bookkeeping knows (`knownAt`, taken before any Encounter row
+ * is read: 0 for a pair PairState has no row for yet) is another tick's meeting in flight: it holds.
+ * The caller frees a "no_fit" pair only when something fits NOW (pairHasMatch): a pair with nothing to trade keeps
+ * its cooldown, so two parents crossing 25 m / 40 m around one playground don't start a meeting (two inbox rows and
+ * an agent talk) at every crossing. One MatchProposal read, only for a meeting that may have had a trade.
+ */
+async function releasedBy(db: any, prev: any | null, knownAt: number): Promise<"no_fit" | "paid" | null> {
+  if (!prev?.id || ms(prev.startedAt) > knownAt) return null;
+  if (prev.hasMatch === false) return "no_fit";
+  if (prev.status === "no_match") return null; // popped, no trade came of it (the pets' rules said no)
+  const paid = (await db.MatchProposal.filter({ encounterId: prev.id, status: "paid" }, undefined, 1).catch(() => [])) ?? [];
+  return paid.length ? "paid" : null;
+}
+
+const standLookAt = new Map<string, number>(); // pairKey → last look at a real-GPS pair standing together (this isolate)
+
+/** A real-GPS pair standing together is looked at again at most once per STAND_AGAIN_MS (per isolate). */
+function standLookDue(key: string, nowMs: number): boolean {
+  const last = standLookAt.get(key);
+  if (last !== undefined && nowMs >= last && nowMs - last < STAND_AGAIN_MS) return false;
+  if (standLookAt.size > 500) standLookAt.clear(); // a long-lived isolate never grows it without bound
+  standLookAt.set(key, nowMs);
+  return true;
+}
+
+/**
+ * Does anything shared fit, either way? B's findMatches a→b, then b→a only when a→b found nothing: a shared active
+ * listing of one parent that fits a shared need of the other, BEFORE the buyer's pet rules (a match those rules stop
+ * still pops up: the pets say which rule). undefined when a read failed (the app then shows the meeting, as before).
+ */
+export async function pairHasMatch(db: any, a: string, b: string, findMatches: FindMatches = bFindMatches): Promise<boolean | undefined> {
+  try {
+    for (const [buyerId, sellerId] of [[a, b], [b, a]]) {
+      if (((await findMatches(db, { buyerId, sellerId })) ?? []).length) return true;
+    }
+    return false;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Encounter.create WITH hasMatch. The live schema may not know the field until `entities push` and refuse the write:
+ * then it is created again without it, so the meeting itself always starts (hasMatch stays unknown: the app shows it).
+ */
+async function createEncounter(db: any, row: Record<string, unknown>, hasMatch: boolean | undefined): Promise<any> {
+  if (hasMatch === undefined) return await db.Encounter.create(row);
+  try {
+    return await db.Encounter.create({ ...row, hasMatch });
+  } catch {
+    return await db.Encounter.create(row);
+  }
 }
 
 /**
  * Two ticks can pass the checks at once (Base44 has no compare-and-set): after creating, look at the pair's
- * encounters from the last cooldown and keep only the FIRST created (Base44's created_date, else startedAt, else
- * id). The loser deletes its row before any inbox row is written. Returns true when `mine` lost.
+ * encounters from the last cooldown that started AFTER `after` (the pair's previous meeting as this tick's checks saw
+ * it, ms; 0 = never met) and keep only the FIRST created (Base44's created_date, else startedAt, else id). Only
+ * concurrent creations of THIS meeting count: when releasedBy let the pair meet again past a no-match (or paid)
+ * meeting, that meeting is still inside the window and must not make the new one delete itself. The loser deletes its
+ * row before any inbox row is written. Returns true when `mine` lost.
  */
-async function lostRace(db: any, mine: any, a: string, b: string, cooldown: number, nowMs: number): Promise<boolean> {
+async function lostRace(db: any, mine: any, a: string, b: string, cooldown: number, nowMs: number, after: number): Promise<boolean> {
   const rows = [
     ...((await db.Encounter.filter({ aId: a, bId: b }, "-startedAt", 3)) ?? []),
     ...((await db.Encounter.filter({ aId: b, bId: a }, "-startedAt", 3)) ?? []),
-  ].filter((e: any) => e?.id && nowMs - ms(e.startedAt) < cooldown);
+  ].filter((e: any) => e?.id && ms(e.startedAt) > after && nowMs - ms(e.startedAt) < cooldown);
   if (rows.length < 2) return false;
   const key = (e: any) => [ms(e.created_date) || ms(e.startedAt), String(e.id)] as const;
   const first = rows.reduce((x: any, y: any) => {
@@ -275,7 +365,13 @@ async function lostRace(db: any, mine: any, a: string, b: string, cooldown: numb
 // ---------------------------------------------------------------- encounter detection
 
 export interface EncounterResult {
-  created: { id: string; peerId: string }[];
+  /** The meetings this call started, with hasMatch as stored on the row (false = nothing fits: the app hides it). */
+  created: EncounterStart[];
+  /**
+   * Pairs this tick could judge (within 25 m, re-armed or walked to again, both discoverable) that their last
+   * meeting's cooldown still holds (see releasedBy), with the seconds until they can meet again. Absent when none.
+   */
+  cooldown?: PairCooldown[];
   /** True when the pair bookkeeping was read on this tick (the fallback then looks at talking encounters). */
   checked?: boolean;
   /** A meeting of the caller's started within the last 3 min (or was just created). */
@@ -298,6 +394,15 @@ export interface DetectOpts {
   mover?: boolean;
   /** Read the pair bookkeeping even when nobody is within 40 m (recheckDue, the walk's reset, B's mock). */
   recheck?: boolean;
+  /** B's ranking, for a new meeting's hasMatch (default: cbridge's findMatches, like the fallback). */
+  findMatches?: FindMatches;
+  /**
+   * The walk's target (demoWalk): only this pair is judged, so a walk meets the family it heads for, never one it
+   * passes or stands next to on the way (their re-arm bookkeeping still runs).
+   */
+  onlyPeer?: string;
+  /** The walker stepped toward its target on this tick (a walk step, not A's 1 m hold tick after arriving). */
+  walking?: boolean;
 }
 
 /**
@@ -306,6 +411,19 @@ export interface DetectOpts {
  * Two simulated parents only move through demoWalk, so only the walker's tick STARTS an encounter for that pair:
  * the target's own heartbeat never races the walker into a second one (it still keeps the re-arm bookkeeping and
  * keeps the fallback ticking). Returns the encounters created on this call.
+ * The cooldown only counts a last meeting that could have popped up (releasedBy): a pair whose last meeting found
+ * nothing to trade (hasMatch false) meets again as soon as it is re-armed AND something fits now; one whose trade was
+ * paid, as soon as it is re-armed. A pair it does hold is returned in `cooldown` with the seconds left, so the
+ * walker's tab can say why nothing popped.
+ * A pair that never walked apart after its meeting (disarmed) gets another look:
+ *   - a walk step toward them again (demoWalk, WALK AGAIN from where the last walk stopped) counts as walking out and
+ *     back once that meeting is 10 s old: the cooldown rule above decides (meet / `cooldown`), as the old 120 m reset
+ *     walk did. The walk's hold ticks never do, so a walk never re-judges the meeting it just made;
+ *   - a real-GPS pair standing together whose meeting freed it (nothing fit, or its trade was paid) meets again as
+ *     soon as something fits — e.g. one parent lists the item while they talk — looked at on recheck ticks once that
+ *     meeting is 30 s old, at most once per 30 s per pair (standLookDue). Anything else waits until they walk > 40 m
+ *     apart, as before.
+ * A new meeting gets hasMatch (pairHasMatch, both ways) on its row.
  */
 export async function detectEncounters(
   db: any,
@@ -318,6 +436,7 @@ export async function detectEncounters(
   const cooldown = me.simulated ? COOLDOWN_DEMO_MS : COOLDOWN_MS;
   const result: EncounterResult = { created: [] };
   const parentOf = asLookup(parents, db);
+  const find = opts.findMatches ?? bFindMatches;
 
   const meParent = await parentOf(me.parentId);
   if (!meParent?.discoverable) return result;
@@ -326,7 +445,8 @@ export async function detectEncounters(
   const cands: { other: PresenceLike; d: number; judge: boolean }[] = [];
   for (const other of others) {
     if (other.parentId === me.parentId || !isFresh(other, nowMs)) continue;
-    cands.push({ other, d: haversineM(me, other), judge: !(me.simulated && other.simulated) || !!opts.mover });
+    const judge = (!(me.simulated && other.simulated) || !!opts.mover) && (!opts.onlyPeer || other.parentId === opts.onlyPeer);
+    cands.push({ other, d: haversineM(me, other), judge });
   }
   if (!cands.length) return result;
   // Far apart: nothing can start; the re-arm bookkeeping waits for a recheck tick.
@@ -338,12 +458,28 @@ export async function detectEncounters(
 
   for (const { other, d, judge } of cands) {
     let state = pairs.view(me.parentId, other.parentId);
+    // The last meeting as the pair bookkeeping itself knows it, taken before any Encounter row is read below: a newer
+    // row is another tick's meeting in flight (releasedBy). A pair PairState has no row for yet knows none (0).
+    const knownAt = state.lastAt;
     if (state.lastAt && nowMs - state.lastAt < RECENT_MEETING_MS) result.recent = true;
 
     // Re-arm bookkeeping: once a pair has separated beyond 40 m they can meet again.
+    let standing = false; // a real-GPS pair still together since its meeting, looked at again (see the doc above)
     if (!state.armed) {
-      if (d > REARM_M) await pairs.rearm(me.parentId, other.parentId, d);
-      continue; // still inside (or just left) the old encounter
+      if (d > REARM_M) {
+        await pairs.rearm(me.parentId, other.parentId, d);
+        continue;
+      }
+      // Still inside (or just left) the old encounter. A walk step toward them again counts as out and back; a
+      // real-GPS pair gets a look on a recheck tick (see the doc above). Anything else: wait for them to walk apart.
+      if (!judge || !withinEncounter(me, other)) continue;
+      const age = nowMs - state.lastAt;
+      if (opts.mover) {
+        if (!opts.walking || age < WALK_AGAIN_AFTER_MS) continue;
+      } else {
+        if (age < STAND_AGAIN_MS || !opts.recheck || !standLookDue(pairKey(me.parentId, other.parentId), nowMs)) continue;
+        standing = true;
+      }
     }
     if (!judge || !withinEncounter(me, other)) continue;
 
@@ -351,13 +487,32 @@ export async function detectEncounters(
     if (!peer?.discoverable) continue;
 
     // PairState without a row for this pair yet (first meeting since the entity was added): the encounters say.
+    let prev: any | null | undefined; // the pair's latest Encounter row, read at most once (undefined = not read)
     if (!state.known || (pairs.mode === "pairstate" && !state.lastAt)) {
-      state = { ...state, lastAt: Math.max(state.lastAt, await lastEncounterAt(db, me.parentId, other.parentId)) };
+      prev = await latestEncounter(db, me.parentId, other.parentId);
+      state = { ...state, lastAt: Math.max(state.lastAt, ms(prev?.startedAt)) };
     }
-    if (state.lastAt && nowMs - state.lastAt < cooldown) continue;
+    let hasMatch: boolean | undefined | null = null; // null = not judged yet (judged at most once per pair)
+    const held = !!state.lastAt && nowMs - state.lastAt < cooldown;
+    if (held || standing) {
+      if (prev === undefined) prev = await pairs.latest(me.parentId, other.parentId);
+      const why = await releasedBy(db, prev, knownAt);
+      // Nothing fit last time: only a fit now frees them. A paid trade lifts the cooldown; a pair standing together
+      // still meets again only for something that fits (a meeting with nothing to say would just repeat).
+      if (why === "no_fit" || (why === "paid" && standing)) hasMatch = await pairHasMatch(db, me.parentId, other.parentId, find);
+      const freed = why === "paid" ? !standing || hasMatch === true : why === "no_fit" && hasMatch === true;
+      if (!freed) {
+        if (!standing) {
+          const heldSince = Math.max(state.lastAt, ms(prev?.startedAt));
+          (result.cooldown ??= []).push({ peerId: other.parentId, retryInS: Math.max(1, Math.ceil((heldSince + cooldown - nowMs) / 1000)) });
+        }
+        continue;
+      }
+    }
 
     const simulated = me.simulated || other.simulated;
-    const enc = await db.Encounter.create({
+    if (hasMatch === null) hasMatch = await pairHasMatch(db, me.parentId, other.parentId, find);
+    const enc = await createEncounter(db, {
       aId: me.parentId,
       bId: other.parentId,
       band: "<25m",
@@ -365,11 +520,13 @@ export async function detectEncounters(
       status: "talking",
       startedAt: iso(nowMs),
       transcript: [],
-    });
-    if (await lostRace(db, enc, me.parentId, other.parentId, cooldown, nowMs)) continue;
+    }, hasMatch);
+    // Only rows newer than the previous meeting can be this meeting's twin (state.lastAt: that meeting, 0 = never met).
+    if (await lostRace(db, enc, me.parentId, other.parentId, cooldown, nowMs, state.lastAt)) continue;
 
     // One inbox row per parent → each agent learns who it met (address only,
-    // never coordinates, names or phones — rule 3).
+    // never coordinates, names or phones — rule 3). Written for EVERY meeting, hasMatch false too: the agents
+    // still talk it through (their no-fit exchange), only the app keeps it off the screen.
     for (const [self, peerP] of [[meParent, peer], [peer, meParent]] as const) {
       await db.AgentInbox.create({
         parentId: self.id,
@@ -388,7 +545,9 @@ export async function detectEncounters(
 
     await pairs.disarm(me.parentId, other.parentId, d);
     pairs.encounters?.unshift(enc);
-    result.created.push({ id: enc.id, peerId: other.parentId });
+    // hasMatch as the row holds it: a create retried without the field (old live schema) reports it unknown, so the
+    // walker's tab and the EncounterScene (which reads the row) never disagree.
+    result.created.push({ id: enc.id, peerId: other.parentId, ...(typeof enc.hasMatch === "boolean" ? { hasMatch: enc.hasMatch } : {}) });
     result.recent = true;
   }
   return result;
@@ -680,8 +839,15 @@ export function blockedTranscript(
 }
 
 /**
- * The best match each way, a→b (a buys) first, then b→a; each with the template lines the pets would say. The best
- * match the buyer's pet rules allow wins; when they allow none, the plan is the best match marked `blocked`.
+ * The best match each way, the lexically smaller parentId buying first, then the other: the same rule as the inbox
+ * `role` (detectEncounters) and the Python agents (closet_agent.py: the smaller id opens as the buyer, the roles swap
+ * once), whoever walked or ticked (aId / bId), so the fallback and the agents never pick opposite directions. Each
+ * plan comes with the template lines the pets would say. The best match the buyer's pet rules allow wins; when they
+ * allow none, the plan is the best match marked `blocked`. One proposal per meeting (B's createProposal needs the
+ * encounter still "talking"): a pair that fits both ways trades the other direction at its next meeting, which
+ * releasedBy allows at once after a paid trade. Known limit of the rule: a DECLINED trade relists the item and keeps
+ * the need, so the smaller id's match comes back first at every later meeting; the other direction comes after that
+ * trade is paid (or the listing / need goes away). Same in the Python agents (their fit offers it again).
  * `first`: stop at the first plan that can be proposed. `parents`: rows this request already read (filled further by
  * the one Parent.list, see loadParents), for the pets' voices.
  */
@@ -694,7 +860,8 @@ export async function planLocalMatch(
 ): Promise<LocalPlan[]> {
   const rows: ParentRows = opts.parents ?? new Map();
   const plans: LocalPlan[] = [];
-  for (const [buyerId, sellerId] of [[enc.aId, enc.bId], [enc.bId, enc.aId]]) {
+  const [lo, hi] = enc.aId < enc.bId ? [enc.aId, enc.bId] : [enc.bId, enc.aId];
+  for (const [buyerId, sellerId] of [[lo, hi], [hi, lo]]) {
     const ranked = ((await findMatches(db, { buyerId, sellerId })) ?? []).slice(0, 5);
     if (!ranked.length) continue;
     await loadParents(db, rows, [buyerId, sellerId]);
@@ -1019,6 +1186,7 @@ export interface UpdatePresenceBody {
  * so the heartbeat never undoes a demo walk and two ?demo=1 tabs never stack on one spot.
  * A real fix for a parent who is live on real GPS can't jump faster than MAX_SPEED_MPS (+ accuracy slack): such a
  * fix is ignored, so nobody can teleport a live parent's dot around (or use it to triangulate others).
+ * Returns { ok, encounters: [{id, peerId, hasMatch?}], fallback, cooldown? } (types.ts UpdatePresenceRes).
  */
 export async function updatePresence(db: any, body: UpdatePresenceBody, deps: LocationDeps = {}) {
   const nowMs = deps.nowMs ?? Date.now();
@@ -1047,7 +1215,15 @@ export async function updatePresence(db: any, body: UpdatePresenceBody, deps: Lo
 
   const pos: LatLng = !simulated ? { lat, lng } : existing?.simulated ? { lat: existing.lat, lng: existing.lng } : demoHome(parent);
   const row = { parentId, lat: pos.lat, lng: pos.lng, accuracyM: acc, simulated, updatedAt: iso(nowMs) };
-  await writePresence(db, existing, row);
+  // A heartbeat may have read the presence before an in-flight walk moved it.
+  // Refresh only freshness/accuracy; never write those stale coordinates back.
+  if (simulated && existing?.simulated && existing.id) {
+    const saved = await db.Presence.update(existing.id, { accuracyM: acc, updatedAt: row.updatedAt });
+    row.lat = saved.lat;
+    row.lng = saved.lng;
+  } else {
+    await writePresence(db, existing, row);
+  }
   all.set(parentId, row);
 
   // The parent rows this tick reads are kept for the fallback (the pets' voices) instead of being read again.
@@ -1059,10 +1235,14 @@ export async function updatePresence(db: any, body: UpdatePresenceBody, deps: Lo
     return p;
   };
   const recheck = deps.recheck || recheckDue(nowMs);
-  const det = await detectEncounters(db, row, parentOf, nowMs, { presences: [...all.values()], recheck });
+  const det = await detectEncounters(db, row, parentOf, nowMs, { presences: [...all.values()], recheck, findMatches: deps.findMatches });
   const fallback = await fallbackTick(db, det, deps, recheck, nowMs, rows);
-  return { ok: true as const, encounters: det.created, fallback };
+  return { ok: true as const, encounters: det.created, fallback, ...cooldownOf(det),
+    ...(simulated ? { position: { lat: row.lat, lng: row.lng, updatedAt: row.updatedAt } } : {}) };
 }
+
+/** `cooldown` for a response, only when a pair is held (A's walk: "Your pets can meet again in 1:20"). */
+const cooldownOf = (det: EncounterResult): { cooldown?: PairCooldown[] } => (det.cooldown?.length ? { cooldown: det.cooldown } : {});
 
 /**
  * listNearby — bands + bearing out (A's radar). You only see others while you are discoverable
@@ -1120,10 +1300,16 @@ export interface DemoWalkBody {
  * demoWalk — "WALK TOWARD JO" for indoor judging (rule 5). Moves the caller's SIMULATED presence `stepM`
  * (default 5 m) toward the target and runs the same encounter check as updatePresence. A calls it every 1 s
  * until an encounter fires (A's hook then keeps a slow `stepM: 1` hold tick going, which keeps the walker's
- * simulated presence fresh and the fallback ticking). The walk starts 120 m due north of the target on the
- * first call, with `reset: true` (A sends it at the start of every walk), or when the caller was on real GPS.
+ * simulated presence fresh and the fallback ticking). The walk continues from the saved position or the family demo home.
+ * Only an explicit `reset: true` places the walker 120 m north of the target.
  * A target with no presence — or a real-GPS presence gone stale (that phone left /world) — is parked on its
  * demo spot as simulated, and a simulated target is kept fresh, so a single laptop with two tabs always works.
+ * Like updatePresence, each started meeting carries hasMatch, and `cooldown` says when an arrived walker's pair is
+ * still held by its last meeting (A ends the walk with "Your pets can meet again in 1:20" instead of silence).
+ * Only the target pair is judged (onlyPeer): a walk never meets a family it passes or was parked next to. A walk to
+ * the family the walker already stands with (WALK AGAIN, no reset) counts as walking out and back once their last
+ * meeting is 10 s old (detectEncounters), so it meets again, or says how long the cooldown still holds. A `stepM: 1`
+ * tick is A's hold tick: it never does that.
  */
 export async function demoWalk(db: any, body: DemoWalkBody, deps: LocationDeps = {}) {
   const nowMs = deps.nowMs ?? Date.now();
@@ -1153,7 +1339,8 @@ export async function demoWalk(db: any, body: DemoWalkBody, deps: LocationDeps =
   // Caller presence.
   const me = all.get(parentId) ?? null;
   const start = () => destination(target, 0, DEMO_START_M); // 120 m due north: the radar's 100–300 m ring
-  const pos: LatLng = !me || body.reset || !me.simulated ? start() : stepToward(me, target, stepM);
+  const origin = me?.simulated ? me : demoHome(parentsById.get(parentId));
+  const pos: LatLng = body.reset ? start() : stepToward(origin, target, stepM);
   const row = { parentId, lat: pos.lat, lng: pos.lng, accuracyM: DEMO_ACCURACY_M, simulated: true, updatedAt: nowIso };
   await writePresence(db, me, row);
   all.set(parentId, row);
@@ -1162,13 +1349,19 @@ export async function demoWalk(db: any, body: DemoWalkBody, deps: LocationDeps =
   const det = await detectEncounters(db, row, parentsById, nowMs, {
     presences: [...all.values()],
     mover: true,
+    onlyPeer: targetParentId, // a walk meets the family it heads for, never one it passes or stands next to
+    walking: Boolean(body.reset) || stepM > 1, // A's hold tick after arriving is a 1 m step
     recheck: recheck || Boolean(body.reset), // the reset tick re-arms the pair at once
+    findMatches: deps.findMatches,
   });
   const fallback = await fallbackTick(db, det, deps, recheck, nowMs, parentsById);
   return {
     ok: true as const,
     distanceM: Math.round(haversineM(row, target)),
+    position: { ...pos, updatedAt: nowIso },
+    bearingDeg: Math.round(bearingDeg(row, target) / 5) * 5,
     encounters: det.created,
     fallback,
+    ...cooldownOf(det),
   };
 }

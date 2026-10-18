@@ -4,7 +4,7 @@ import { createFakeDb, type FakeDb } from "../testing/fakeDb.ts";
 import { applySeed, seedPlan, DEMO_DATES } from "../seed.ts";
 import { priceFor } from "../pricing.ts";
 import type { AgentInbox, ClothingItem, Encounter, InboxEvent, Listing } from "../types.ts";
-import { createProposal, decideProposal, getParties, payProposal, PROPOSAL_TTL_MS } from "./trade.ts";
+import { approveDemoTrade, createProposal, decideProposal, getParties, payProposal, PROPOSAL_TTL_MS } from "./trade.ts";
 
 let db: FakeDb;
 let ids: { mina: string; jo: string; sam: string };
@@ -55,7 +55,7 @@ describe("createProposal", () => {
       itemName: "Yellow duck romper", icon: "item_romper", photo: "romper.jpg", size: "6-9M",
       originalPriceCents: 3000, previousOwners: 1, priceCents: 1800, wearWeeksLeft: 4, condition: "gently_used",
     });
-    expect(p.reason).toMatch(/Jo/);
+    expect(p.reason).toMatch(/Olivia/);
     expect((await item()).status).toBe("pending_trade");
   });
 
@@ -91,7 +91,7 @@ describe("createProposal", () => {
 
   it("two buyers at once: the first-created proposal wins and the other gets 409 already_open", async () => {
     const [samChild] = await db.Child.filter({ parentId: ids.sam });
-    await db.Child.update(samChild.id, { birthDate: "2026-03-01T00:00:00.000Z" }); // a 6-9M baby, like Jo's
+    await db.Child.update(samChild.id, { birthDate: "2026-03-01T00:00:00.000Z" }); // a 6-9M baby, like Olivia's
     await db.Need.create({ parentId: ids.sam, childId: samChild.id, sizes: ["6-9M"], shared: true, createdAt: DEMO_DATES.nudge });
     const [jo, sam] = await Promise.allSettled([
       propose(),
@@ -119,8 +119,7 @@ describe("createProposal", () => {
   });
 
   it("not_eligible when the buyer has no shared need", async () => {
-    const [need] = await db.Need.filter({ parentId: ids.jo });
-    await db.Need.update(need.id, { shared: false });
+    for (const need of await db.Need.filter({ parentId: ids.jo })) await db.Need.update(need.id, { shared: false });   // seed: 2 needs
     await expect(propose()).rejects.toMatchObject({ code: "not_eligible", message: "buyer has no shared need" });
   });
 
@@ -155,7 +154,7 @@ describe("createProposal", () => {
 
   it("writes proposal:new for both sides", async () => {
     const p = await propose();
-    // peerPet = the other side's pet (C's agents: "Pip found a buyer…"): Mina's Button, Jo's Pip.
+    // peerPet = the other side's pet (C's agents: "Pip found a buyer…"): Caesar's Button, Olivia's Pip.
     expect(await events(ids.mina)).toContainEqual({ type: "proposal:new", proposalId: p.id, role: "seller", peerPet: "Pip" });
     expect(await events(ids.jo)).toContainEqual({ type: "proposal:new", proposalId: p.id, role: "buyer", peerPet: "Button" });
   });
@@ -175,7 +174,7 @@ describe("createProposal", () => {
 });
 
 describe("happy path", () => {
-  it("both accept → pay → Jo owns the romper, ownerCount 2, listing sold", async () => {
+  it("both accept → pay → Olivia owns the romper, ownerCount 2, listing sold", async () => {
     const p = await propose();
     const a = await decideProposal(db, { parentKey: "mina", proposalId: p.id, decision: "accepted" });
     expect(a).toMatchObject({ status: "open", sellerDecision: "accepted", buyerDecision: "pending" });
@@ -298,7 +297,7 @@ describe("guards", () => {
     const p = await propose();
     await decideProposal(db, { parentKey: "mina", proposalId: p.id, decision: "accepted" });
     await decideProposal(db, { parentKey: "jo", proposalId: p.id, decision: "accepted" });
-    // Simulate step 1 done, then a crash: the item already belongs to Jo but the proposal is still both_accepted.
+    // Simulate step 1 done, then a crash: the item already belongs to Olivia but the proposal is still both_accepted.
     const before = await item();
     const [joChild] = await db.Child.filter({ parentId: ids.jo });
     await db.ClothingItem.update(romper.id, {
@@ -364,12 +363,13 @@ describe("inbox", () => {
     const mina = await events(ids.mina);
     const jo = await events(ids.jo);
     const both = { proposalId: p.id, status: "both_accepted", sellerDecision: "accepted", buyerDecision: "accepted" };
-    expect(mina).toContainEqual({ type: "proposal:updated", role: "seller", ...both, otherName: "Jo" });
-    expect(jo).toContainEqual({ type: "proposal:updated", role: "buyer", ...both, otherName: "Mina" });
+    expect(mina).toContainEqual({ type: "proposal:updated", role: "seller", ...both, otherName: "Olivia" });
+    expect(jo).toContainEqual({ type: "proposal:updated", role: "buyer", ...both, otherName: "Caesar" });
     const moved = await item();
     const done = {
       proposalId: p.id, itemId: romper.id, priceCents: 1800, buyerId: ids.jo, sellerId: ids.mina,
       snapshot: p.snapshot, predictedOutgrowDate: moved.predictedOutgrowDate,
+      visaSimulation: (await db.MatchProposal.get(p.id)).visaSimulation,
     };
     expect(mina).toContainEqual({ type: "trade:completed", role: "seller", ...done });
     expect(jo).toContainEqual({ type: "trade:completed", role: "buyer", ...done });
@@ -385,10 +385,10 @@ describe("inbox", () => {
     await decideProposal(db, { parentKey: "jo", proposalId: p.id, decision: "accepted" });
     await payProposal(db, { parentKey: "jo", proposalId: p.id }, { delayMs: 0 });
     const done = (await events(ids.jo)).find((e) => e.type === "trade:completed");
-    if (done?.type !== "trade:completed") throw new Error("no trade:completed for Jo");
+    if (done?.type !== "trade:completed") throw new Error("no trade:completed for Olivia");
     expect(done.snapshot).toMatchObject({ itemName: "Yellow duck romper", size: "6-9M", priceCents: 1800, previousOwners: 1 });
     expect(done).toMatchObject({ buyerId: ids.jo, sellerId: ids.mina });
-    // the buyer's child's date, not the seller's: Jo's Pea is younger than Mina's Bean
+    // the buyer's child's date, not the seller's: Olivia's Pea is younger than Caesar's Bean
     expect(done.predictedOutgrowDate).toBe((await item()).predictedOutgrowDate);
     expect(done.predictedOutgrowDate).not.toBe(romper.predictedOutgrowDate);
   });
@@ -396,16 +396,16 @@ describe("inbox", () => {
   it("proposal:updated names the other parent for each side (seller hears the buyer's name and vice versa)", async () => {
     const p = await propose();
     await decideProposal(db, { parentKey: "mina", proposalId: p.id, decision: "accepted" });
-    expect(await events(ids.mina)).toContainEqual(expect.objectContaining({ type: "proposal:updated", role: "seller", status: "open", otherName: "Jo" }));
-    expect(await events(ids.jo)).toContainEqual(expect.objectContaining({ type: "proposal:updated", role: "buyer", status: "open", otherName: "Mina" }));
+    expect(await events(ids.mina)).toContainEqual(expect.objectContaining({ type: "proposal:updated", role: "seller", status: "open", otherName: "Olivia" }));
+    expect(await events(ids.jo)).toContainEqual(expect.objectContaining({ type: "proposal:updated", role: "buyer", status: "open", otherName: "Caesar" }));
   });
 
   it("an expired proposal's proposal:updated still names the other parent", async () => {
     const p = await propose();
     await setClock(new Date(new Date(DEMO_DATES.meet).getTime() + PROPOSAL_TTL_MS + 1000).toISOString());
     await expect(decideProposal(db, { parentKey: "jo", proposalId: p.id, decision: "accepted" })).rejects.toMatchObject({ code: "expired" });
-    expect(await events(ids.jo)).toContainEqual(expect.objectContaining({ type: "proposal:updated", status: "expired", otherName: "Mina" }));
-    expect(await events(ids.mina)).toContainEqual(expect.objectContaining({ type: "proposal:updated", status: "expired", otherName: "Jo" }));
+    expect(await events(ids.jo)).toContainEqual(expect.objectContaining({ type: "proposal:updated", status: "expired", otherName: "Caesar" }));
+    expect(await events(ids.mina)).toContainEqual(expect.objectContaining({ type: "proposal:updated", status: "expired", otherName: "Olivia" }));
   });
 
   it("decline writes proposal:updated for both with $0", async () => {
@@ -423,8 +423,8 @@ describe("getParties", () => {
   it("returns each party's public card, in the order asked", async () => {
     const res = await getParties(db, { parentIds: [ids.jo, ids.mina] });
     expect(res).toEqual([
-      { id: ids.jo, name: "Jo", avatar: { sprite: "parent_b", palette: "mint" }, pet: { sprite: "pet_b", name: "Pip" } },
-      { id: ids.mina, name: "Mina", avatar: { sprite: "parent_a", palette: "peach" }, pet: { sprite: "pet_a", name: "Button" } },
+      { id: ids.jo, name: "Olivia", avatar: { sprite: "parent_b", palette: "mint" }, pet: { sprite: "pet_b", name: "Pip" } },
+      { id: ids.mina, name: "Caesar", avatar: { sprite: "parent_a", palette: "peach" }, pet: { sprite: "pet_a", name: "Button" } },
     ]);
   });
 
@@ -441,7 +441,7 @@ describe("getParties", () => {
 
   it("skips unknown ids and dedupes", async () => {
     const res = await getParties(db, { parentIds: ["nope", ids.sam, ids.sam, "former_ana"] });
-    expect(res.map((p) => p.name)).toEqual(["Sam"]);
+    expect(res.map((p) => p.name)).toEqual(["Freja"]);
     expect(await getParties(db, { parentIds: ["nope"] })).toEqual([]);
   });
 
@@ -487,7 +487,7 @@ describe("the buyer's mandate (createProposal)", () => {
 
   it("no proposal when the parent told the pet only to point out matches", async () => {
     await mandate({ agentMayPropose: false });
-    await refused(/Jo asked Pip to only point out matches/);
+    await refused(/Olivia asked Pip to only point out matches/);
   });
 
   it("no proposal above the price limit (the limit itself is fine)", async () => {
@@ -540,7 +540,7 @@ describe("the buyer's mandate (createProposal)", () => {
 });
 
 describe("Face ID approval (payProposal)", () => {
-  const passkey = { key: "pk_1", credentialId: "cred-1", publicKey: "", counter: 0, transports: [], label: "Jo's phone",
+  const passkey = { key: "pk_1", credentialId: "cred-1", publicKey: "", counter: 0, transports: [], label: "Olivia's phone",
     createdAt: DEMO_DATES.meet, rpID: "localhost" };
   async function accepted() {
     const p = await propose();
@@ -596,5 +596,87 @@ describe("Face ID approval (payProposal)", () => {
     await db.Parent.update(ids.mina, { passkeys: [passkey] });
     const p = await accepted();
     expect((await payProposal(db, { parentKey: "jo", proposalId: p.id }, { delayMs: 0 })).proposal.status).toBe("paid");
+  });
+});
+
+describe("one approval per person", () => {
+  it("waits for both people, then transfers once with no separate pay step", async () => {
+    const p = await propose();
+    expect((await approveDemoTrade(db, { parentId: ids.mina, proposalId: p.id, decision: "accepted" })).status).toBe("open");
+    expect((await item()).currentOwnerId).toBe(ids.mina);
+    expect((await approveDemoTrade(db, { parentId: ids.jo, proposalId: p.id, decision: "accepted" })).status).toBe("paid");
+    const once = await item();
+    expect(once.currentOwnerId).toBe(ids.jo);
+    await approveDemoTrade(db, { parentId: ids.jo, proposalId: p.id, decision: "accepted" });
+    expect((await item()).ownershipHistory).toEqual(once.ownershipHistory);
+  });
+  it("two people approving at the same time finish the trade without another click", async () => {
+    const p = await propose();
+    await Promise.all([ids.mina, ids.jo].map(parentId => approveDemoTrade(db, { parentId, proposalId: p.id, decision: "accepted" })));
+    expect((await db.MatchProposal.get(p.id)).status).toBe("paid");
+    expect((await item()).currentOwnerId).toBe(ids.jo);
+    expect((await item()).ownerCount).toBe(2);
+  });
+  it("a decline never transfers ownership", async () => {
+    const p = await propose();
+    await approveDemoTrade(db, { parentId: ids.mina, proposalId: p.id, decision: "accepted" });
+    expect((await approveDemoTrade(db, { parentId: ids.jo, proposalId: p.id, decision: "declined" })).status).toBe("declined");
+    expect((await item()).currentOwnerId).toBe(ids.mina);
+  });
+  it("preserves an explicit requirement for biometric payment approval", async () => {
+    const p = await propose();
+    const buyer = await db.Parent.get(ids.jo);
+    await db.Parent.update(ids.jo, { mandate: { ...buyer.mandate!, requirePasskey: true }, passkeys: [{ key: "pk", credentialId: "saved-key", publicKey: "key", counter: 0, transports: [], label: "Saved phone", rpID: "localhost", createdAt: DEMO_DATES.meet }] });
+    await approveDemoTrade(db, { parentId: ids.mina, proposalId: p.id, decision: "accepted" });
+    expect((await approveDemoTrade(db, { parentId: ids.jo, proposalId: p.id, decision: "accepted" })).status).toBe("both_accepted");
+    expect((await item()).currentOwnerId).toBe(ids.mina);
+  });
+});
+
+it("the buyer alone approves a shared listing and completes the demo trade", async () => {
+  const p = await propose();
+  expect(p.sellerDecision).toBe("pending");
+  const final = await approveDemoTrade(db, { parentId: ids.jo, proposalId: p.id, decision: "accepted" });
+  expect(final.status).toBe("paid");
+  expect(final.buyerDecision).toBe("accepted");
+  expect((await item()).currentOwnerId).toBe(ids.jo);
+});
+it("a buyer cannot auto-approve an offer the seller stopped sharing", async () => {
+  const p = await propose();
+  await db.Listing.update(listing.id, { shared: false });
+  await expect(approveDemoTrade(db, { parentId: ids.jo, proposalId: p.id, decision: "accepted" })).rejects.toThrow("no longer sharing");
+  expect((await item()).currentOwnerId).toBe(ids.mina);
+});
+
+ describe("Visa simulation", () => {
+  it("buyer approval saves the exact price, authorization and capture, then sends both receipts", async () => {
+    const p = await propose();
+    const paid = await approveDemoTrade(db, { parentId: ids.jo, proposalId: p.id, decision: "accepted" });
+    expect(paid.visaSimulation).toMatchObject({
+      simulated: true, network: "Visa", status: "captured", amountCents: 1800, currency: "USD",
+      reference: paid.paymentRef, token: `SIM-TOKEN-${p.id}`,
+    });
+    const v = paid.visaSimulation!;
+    expect(v.authorizationCode).toMatch(/^SIM-/);
+    expect(Date.parse(v.startedAt)).toBeLessThanOrEqual(Date.parse(v.authorizedAt!));
+    expect(Date.parse(v.authorizedAt!)).toBeLessThanOrEqual(Date.parse(v.capturedAt!));
+    expect((await item()).currentOwnerId).toBe(ids.jo);
+    for (const id of [ids.jo, ids.mina]) expect(await events(id)).toContainEqual(expect.objectContaining({ type: "trade:completed", visaSimulation: v }));
+    const again = await approveDemoTrade(db, { parentId: ids.jo, proposalId: p.id, decision: "accepted" });
+    expect(again.visaSimulation).toEqual(v);
+  });
+
+  it("a simulated issuer decline has no capture and keeps the seller's inventory", async () => {
+    const p = await propose();
+    await decideProposal(db, { parentId: ids.mina, proposalId: p.id, decision: "accepted" });
+    await decideProposal(db, { parentId: ids.jo, proposalId: p.id, decision: "accepted" });
+    const res = await payProposal(db, { parentId: ids.jo, proposalId: p.id, fail: true }, { delayMs: 0 });
+    expect(res.proposal.status).toBe("payment_failed");
+    expect(res.proposal.visaSimulation).toMatchObject({ simulated: true, status: "declined", amountCents: 1800 });
+    expect(res.proposal.visaSimulation?.capturedAt).toBeUndefined();
+    expect(res.proposal.visaSimulation?.authorizationCode).toBeUndefined();
+    expect(res.item.currentOwnerId).toBe(ids.mina);
+    expect(res.item.status).toBe("listed");
+    expect((await events(ids.jo)).some(e => e.type === "trade:completed")).toBe(false);
   });
 });

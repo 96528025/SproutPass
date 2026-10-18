@@ -1,6 +1,9 @@
 // A4: /world. A's pixelated real map (Leaflet, follows me at zoom 17; ZONE shows the Los Angeles zone) + radar
 // rings at real metres + my avatar + other parents sliding between rings, real GPS feeding C's updatePresence,
-// the ?demo=1 walk (C's demoWalk), and A5's EncounterScene with C's <AgentBubbles> when C's useEncounter fires.
+// the ?demo=1 walk (C's demoWalk) with its WALK TO picker (the other two families; ?walk= picks one too), and A5's
+// EncounterScene with C's <AgentBubbles> when C's useEncounter fires. The scene only pops when something fits:
+// useEncounter skips a meeting where nothing on either list fits, and the walk says so in a Toast instead (or that
+// the pair met a moment ago and when their pets can meet again).
 // Only my own position is a lat/lng on the map; other parents are placed by bearing + band and never get coordinates.
 // Wired to the real backend (W2): "me" is B's closet.parent (real Base44 id; ?as= is the seed key in B's store),
 // the peer card comes from getParties (Agent 2's usePublicParent), the proposal from closet.proposals.
@@ -10,6 +13,7 @@
 // a demo walk of ~6 calls; and while I have a trade open (or its Celebration is up) every loop here pauses: no radar,
 // no presence, no hold ticks, no encounter poll (realtime still listens).
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useNavigate } from "react-router";
 import { AgentBubbles } from "@/agent/AgentBubbles";
 import { useEncounter } from "@/agent/useEncounter";
 import type { Encounter } from "@/agent/cApi";
@@ -26,18 +30,21 @@ import { HudButton } from "@/world/HudButton";
 import { FOLLOW_ZOOM, MapLayer, metersPerPixel } from "@/world/MapLayer";
 import { NearbySprites } from "@/world/NearbySprites";
 import { Radar } from "@/world/Radar";
-import { asSprite, demoFix, demoTargetKey, seedName, seedParent, type ScenePerson } from "@/world/people";
-import { band as bandOf, destination } from "../../base44/shared/c/geo.ts";
+import { asSprite, demoFix, seedName, seedParent, walkTargets, type ScenePerson } from "@/world/people";
+import { band as bandOf } from "../../base44/shared/c/geo.ts";
 import { useCelebrationOpen } from "@/world/celebrationOpen";
-import { useDemo, useQueryParent } from "@/world/query";
-import { useDemoWalk } from "@/world/useDemoWalk";
+import { isParentId, useDemo, useQueryParent, useWalkTarget } from "@/world/query";
+import { useDemoWalk, walkNoteText } from "@/world/useDemoWalk";
 import { useGps } from "@/world/useGps";
+import { geoHelp, useGeoPermission } from "@/world/useGeoPermission";
 import { BAND_LABEL, useNearby, type NearbyPin } from "@/world/useNearby";
 import { useZone } from "@/world/useZone";
+import { latestPosition } from "./walkPosition";
 import "./world.css";
 
 const HINT_KEY = "relay.worldHint";
 const GLIDE_MS = 2500; // = useDemoWalk's step interval: the map pans through a 20 m step instead of hopping
+const NOTE_MS = 5000; // the walk's "nothing fits" / "met a moment ago" Toast: two short sentences, read on the move
 
 function useFirstEntryHint(): [boolean, () => void] {
   const [show, setShow] = useState(() => {
@@ -115,6 +122,7 @@ function usePeer(peerId: string | null, nearby: NearbyParent[]): ScenePerson | n
 }
 
 export function WorldScreen() {
+  const navigate = useNavigate();
   const meKey = useQueryParent();
   const demo = useDemo();
   const closetParent = useApp((s) => s.closet?.parent ?? null);
@@ -123,10 +131,12 @@ export function WorldScreen() {
   const me = closetParent?.key === meKey ? closetParent : null;
   const meId = me?.id ?? null;
   const meCard = me ?? seedParent(meKey);
-  const targetKey = demoTargetKey(meKey);
+  // Who the demo walk heads for: ?walk=, else this tab's pick (WALK TO), else Jo → Mina and everyone else → Jo.
+  const [targetKey, pickTarget] = useWalkTarget(meKey);
 
   const [discoverableSet, setDiscoverable] = useState<boolean | null>(null);
   const discoverable = discoverableSet ?? me?.discoverable ?? true;
+  useEffect(() => setDiscoverable(null), [meId]);
   const [hint, hideHint] = useFirstEntryHint();
   const [zoomedOut, setZoomedOut] = useState(false);
 
@@ -176,22 +186,35 @@ export function WorldScreen() {
     return {
       parentId: walk.targetId,
       band: b,
-      bearingDeg: 180,
+      bearingDeg: walk.bearingDeg ?? 180,
       distanceM: Math.round(walk.distanceM / 5) * 5,
       ...(seed ? { name: seed.name, sprite: seed.avatar.sprite, pet: seed.pet.sprite } : {}),
     };
-  }, [walk.active, walk.targetId, walk.distanceM, targetKey]);
+  }, [walk.active, walk.targetId, walk.distanceM, walk.bearingDeg, targetKey]);
   const simFix = useMemo(() => demoFix(meKey), [meKey]);
-  const gps = useGps({ parentId: meId, simulated: demo, simFix, discoverable, heartbeat: !walk.owns && !paused });
+  const geo = useGeoPermission();
+  const [gpsRetry, setGpsRetry] = useState(0);
+  const [locationAttempted, setLocationAttempted] = useState(false);
+  const gps = useGps({ parentId: meId, simulated: demo, simFix, discoverable, heartbeat: !walk.owns && !paused, retryKey: gpsRetry });
+  async function enableLocation() {
+    setLocationAttempted(true);
+    if (await geo.request() !== "granted") return;
+    useApp.getState().setDemo(false);
+    // Replace the URL too: the query intentionally wins over remembered mode.
+    const url = new URL(window.location.href);
+    url.searchParams.set("demo", "0");
+    navigate(`${url.pathname}${url.search}${url.hash}`, { replace: true });
+    setGpsRetry(n => n + 1);
+  }
 
-  // My position on the map: the real fix, or in ?demo=1 the simulated one. C's demoWalk starts the walker due north
-  // of the target's demo spot and steps straight toward it, so "distanceM north of the target" is where C has me
-  // (and where C keeps me after the walk); before any walk it is my family's demo spot.
-  const glideM = useGlide(demo ? walk.distanceM : null, GLIDE_MS);
-  const here = useMemo(() => {
-    if (demo) return glideM !== null ? destination(demoFix(targetKey), 0, glideM) : simFix;
-    return gps.lat !== null && gps.lng !== null ? { lat: gps.lat, lng: gps.lng } : null;
-  }, [demo, glideM, targetKey, simFix, gps.lat, gps.lng]);
+  // Base44 owns simulated positions. A newer heartbeat or walk reply wins, including after navigation.
+  const savedPosition = latestPosition(walk.position, gps.position);
+  const targetLat = demo ? savedPosition?.lat ?? simFix.lat : gps.lat;
+  const targetLng = demo ? savedPosition?.lng ?? simFix.lng : gps.lng;
+  const shownLat = useGlide(targetLat, GLIDE_MS);
+  const shownLng = useGlide(targetLng, GLIDE_MS);
+  const here = useMemo(() => shownLat !== null && shownLng !== null
+    ? { lat: shownLat, lng: shownLng } : null, [shownLat, shownLng]);
   const mpp = metersPerPixel(here?.lat ?? 34.07, FOLLOW_ZOOM);
   const { zone, inside } = useZone(here);
 
@@ -209,6 +232,7 @@ export function WorldScreen() {
   const distM = walk.distanceM ?? target?.distanceM;
   const distLabel = distM !== undefined && distM !== null ? `${distM} M` : target ? BAND_LABEL[target.band] : "…";
   const targetName = seedName(targetKey).toUpperCase();
+  const encUp = !!encounter && !settled;
 
   // Quiet HUD: a chip only when something needs saying. A good real fix shows nothing; SIMULATED GPS is required
   // by rule 5 whenever positions are simulated. Every chip fits the row's 216px on a 360px phone.
@@ -240,7 +264,7 @@ export function WorldScreen() {
             <NearbySprites items={items} />
             {meCard && (
               <div className={`ws__me ${discoverable ? "" : "ws__me--hidden"}`} data-me={meId ?? meKey}>
-                <Sprite name={asSprite(meCard.avatar.sprite, "parent_a")} anim={moving ? "walk" : "idle"} scale={5} facing={facing} />
+                <Sprite name={asSprite(meCard.avatar.sprite, "parent_a")} anim={moving ? "walk" : "idle"} scale={3} facing={facing} />
               </div>
             )}
           </>
@@ -275,13 +299,13 @@ export function WorldScreen() {
           {!encounter && !walk.active && walk.phase === "idle" && (
             <p className="ws__walk-hint">Your pets meet when you're within 25 m.</p>
           )}
-          {/* A walk that ended reads WALK AGAIN (a new walk starts over 120 m out); never while my trade is open. */}
+          {/* A walk that ended reads WALK AGAIN (a new walk continues from the current position); never while my trade is open. */}
           <PixelButton
-            disabled={(!!encounter && !settled) || !meId || (paused && !walk.active)}
+            disabled={encUp || !meId || (paused && !walk.active)}
             pressed={walk.active}
             onClick={() => (walk.active ? walk.stop() : walk.start())}
           >
-            {encounter && !settled
+            {encUp
               ? `MET ${(peer?.name && peer.name !== "…" ? peer.name : seedName(targetKey)).toUpperCase()}!`
               : walk.active
                 ? `WALKING… ${distLabel}`
@@ -289,20 +313,50 @@ export function WorldScreen() {
                   ? `WALK TOWARD ${targetName}`
                   : "WALK AGAIN"}
           </PixelButton>
+          {/* WALK TO: the other two families. It keeps its row (hidden) while walking or meeting, so the button above
+              never jumps under a thumb; it leaves while my trade is open (the trade pill takes that spot). */}
+          {!paused && (
+            <div className={`ws__walk-to${encUp || walk.active ? " ws__walk-to--away" : ""}`} role="group" aria-label="Walk to">
+              <span className="ws__walk-to-label" aria-hidden="true">WALK TO</span>
+              {walkTargets(meKey).filter(isParentId).map((key) => {
+                const on = key === targetKey;
+                return (
+                  <PixelButton
+                    key={key}
+                    small
+                    variant={on ? "primary" : "ghost"}
+                    aria-pressed={on}
+                    icon={<Sprite name={asSprite(seedParent(key)?.pet.sprite, "pet_a")} scale={1} />}
+                    onClick={() => pickTarget(key)}
+                  >
+                    {seedName(key).toUpperCase()}
+                  </PixelButton>
+                );
+              })}
+            </div>
+          )}
+          {!encUp && !paused && !walk.active && <PixelButton small variant="ghost" disabled={geo.status === "asking"} onClick={() => void enableLocation()}>{geo.status === "asking" ? "ASKING FOR LOCATION…" : "USE MY REAL LOCATION"}</PixelButton>}
+          {locationAttempted && geo.status !== "granted" && geo.status !== "asking" && <p className="ws__walk-hint" role="status">{geoHelp(geo.status)}</p>}
         </div>
+      )}
+
+      {/* The walk met someone and nothing will pop: say why (nothing fits either way / they met a moment ago). */}
+      {demo && walk.note && (
+        <Toast key={walk.note.seq} text={walkNoteText(walk.note)} tone="lav" duration={NOTE_MS} onHide={walk.clearNote} />
       )}
 
       {/* no location outside demo mode: say so, and offer the same switch the title screen makes */}
       {noFix && (
         <div className="ws__walk">
-          <p className="ws__walk-hint">Can't find your location. Turn it on, or take the demo walk.</p>
-          <PixelButton onClick={() => useApp.getState().setDemo(true)}>TAKE THE DEMO WALK</PixelButton>
+          <p className="ws__walk-hint" role="status">{locationAttempted ? geoHelp(geo.status) : demo ? "Using a simulated location. Switch to your phone’s location to find nearby families." : geoHelp(gps.status === "denied" ? "denied" : "unavailable")}</p>
+          <PixelButton disabled={geo.status === "asking" || walk.active} onClick={() => void enableLocation()}>{geo.status === "asking" ? "ASKING FOR LOCATION…" : "ENABLE LOCATION"}</PixelButton>
+          {!demo && <PixelButton variant="ghost" onClick={() => useApp.getState().setDemo(true)}>USE DEMO</PixelButton>}
         </div>
       )}
 
       {hint && !demo && <Toast text="Keep this screen open while you walk." duration={4000} onHide={hideHint} />}
 
-      {encounter && !settled && me && peer && (
+      {encUp && me && peer && (
         <EncounterLayer key={encounter.id} encounter={encounter} proposalId={proposalId} me={me} peer={peer} onDone={dismiss} />
       )}
     </div>
@@ -340,7 +394,7 @@ function EncounterLayer({
 
   return (
     <EncounterScene
-      encounter={{ id: encounter.id, status: encounter.status, proposalId }}
+      encounter={{ id: encounter.id, status: encounter.status, proposalId: proposalId ?? encounter.proposalId, startedAt: encounter.startedAt, noMatchReason: encounter.noMatchReason }}
       me={me}
       peer={peer}
       talking={typing || (encounter.status === "talking" && turns.length === 0)}
@@ -349,6 +403,7 @@ function EncounterLayer({
         // the right, so the peer is passed as `me` to keep every bubble over the pet that says it.
         <AgentBubbles
           transcript={turns}
+          catchUp
           me={peer.id}
           petNames={petNames}
           onBlip={() => sfx.play("blip")}

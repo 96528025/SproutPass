@@ -21,7 +21,7 @@ const nudge = (over: Partial<AgentNudge>): AgentNudge => ({
 const scan = (over: Partial<ScanInput>) => scanForNudges({
   items: [romper()], listings: [], existing: [], now: DEMO_DATES.nudge,
   children: [{ id: "c_bean", parentId: MINA, nickname: "Bean", birthDate: "2025-12-10T00:00:00.000Z" }],
-  parentsById: { [MINA]: { name: "Mina", petName: "Button" }, [JO]: { name: "Jo", petName: "Pip" } },
+  parentsById: { [MINA]: { name: "Caesar", petName: "Button" }, [JO]: { name: "Olivia", petName: "Pip" } },
   ...over,
 });
 

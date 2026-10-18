@@ -100,8 +100,8 @@
   align-items: center;
   pointer-events: none;
 }
-.ws__me { z-index: 200; margin-left: -80px; margin-top: -96px; width: 160px; } /* ×5 sprite, feet a little below centre */
-.ns { margin-left: -48px; margin-top: -48px; width: 96px; }
+.ws__me { z-index: 200; margin-left: -48px; margin-top: -58px; width: 96px; } /* ×3 sprite, feet a little below centre */
+.ns { margin-left: -32px; margin-top: -32px; width: 64px; }
 .ws__me .name,
 .ns__name {
   position: relative;
@@ -207,6 +207,30 @@
   from { transform: translateY(8px); }
   to   { transform: translateY(0); }
 }
+/* WALK TO picker (?demo=1): an ink tag and the other two families as 44px chips (A's small PixelButton), under the
+   walk button. Hidden, not removed, while a walk is on or the pets meet, so the button keeps its place. ~300px wide:
+   fits a 360px phone with the 16px gutters, and sits below C's corner pet (which starts 72px above the bar). */
+.ws__walk-to {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--u2);
+  max-width: calc(100% - 2 * var(--u4));
+}
+.ws__walk-to--away { visibility: hidden; }
+.ws__walk-to-label {
+  flex: none;
+  padding: 2px 6px;
+  background: var(--ink);
+  color: var(--paper);
+  font-family: var(--font-label);
+  font-size: var(--fs-tag, 12px);
+  line-height: 16px;
+  letter-spacing: var(--track-label);
+  white-space: nowrap;
+  box-shadow: 2px 2px 0 var(--paper);
+}
+.ws__walk-to .pb { flex: none; padding: var(--u) var(--u3) var(--u) var(--u2); }
 
 @media (prefers-reduced-motion: reduce) {
   .radar__sweep-arm,

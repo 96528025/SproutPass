@@ -1,8 +1,11 @@
 // A3: query-string helpers every screen uses. ?as=mina|jo|sam (current parent) and ?demo=1 travel with every navigation.
 // B's store (src/app/store.ts) owns ?as= / ?demo=1: it remembers them per tab and Shell writes them back into the URL,
 // so the hooks below read the store first and the URL second. withQuery/carryQuery stay for building links.
-import { useLocation } from "react-router";
+// ?walk=mina|jo|sam (demo only) picks who /world's demo walk heads for; useWalkTarget remembers it per tab and parent.
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { useLocation, useNavigate } from "react-router";
 import { useApp } from "@/app/store";
+import { demoTargetKey } from "@/world/people";
 
 export type ParentId = "mina" | "jo" | "sam";
 export const PARENT_IDS: readonly ParentId[] = ["mina", "jo", "sam"];
@@ -71,4 +74,61 @@ export function useDemo(): boolean {
   const demo = useApp((s) => s.demo);
   const { search } = useLocation();
   return demo || isDemo(search);
+}
+
+// ---- ?walk= : the demo walk's target ----------------------------------------------------------------------------
+
+/** ?walk= from a search string, when it names a seed family other than `me` (you can't walk to yourself). */
+export function parseWalk(search: string, me: string): ParentId | null {
+  const v = new URLSearchParams(search).get("walk");
+  return isParentId(v) && v !== me ? v : null;
+}
+
+const walkStoreKey = (me: string) => `relay:world:walkTo:${me}`;
+function readWalk(me: ParentId): ParentId | null {
+  try {
+    const v = sessionStorage.getItem(walkStoreKey(me));
+    return isParentId(v) && v !== me ? v : null;
+  } catch {
+    return null;
+  }
+}
+function writeWalk(me: ParentId, key: ParentId) {
+  try {
+    sessionStorage.setItem(walkStoreKey(me), key);
+  } catch {
+    /* private mode: this mount only */
+  }
+}
+
+/**
+ * Who `me`'s demo walk heads for: ?walk= on the URL, else this tab's last pick for `me` (sessionStorage, one per
+ * parent), else people.ts demoTargetKey (Jo → Mina, everyone else → Jo). `pick` remembers the choice, and keeps a
+ * ?walk= already on the URL in step (it never adds one: links stay clean).
+ */
+export function useWalkTarget(me: ParentId): [ParentId, (key: ParentId) => void] {
+  const { pathname, search, hash, state } = useLocation();
+  const nav = useNavigate();
+  const fromUrl = parseWalk(search, me);
+  const [picks, setPicks] = useState<Partial<Record<ParentId, ParentId>>>({});
+  const stored = useMemo(() => picks[me] ?? readWalk(me), [picks, me]);
+  // A ?walk= that arrived on the URL outlives it (in-app links drop the query).
+  useEffect(() => {
+    if (fromUrl) writeWalk(me, fromUrl);
+  }, [fromUrl, me]);
+  const pick = useCallback(
+    (key: ParentId) => {
+      if (key === me) return;
+      writeWalk(me, key);
+      setPicks((p) => ({ ...p, [me]: key }));
+      const q = new URLSearchParams(search);
+      if (q.has("walk") && q.get("walk") !== key) {
+        q.set("walk", key);
+        nav({ pathname, search: `?${q}`, hash }, { replace: true, state });
+      }
+    },
+    [me, search, pathname, hash, state, nav],
+  );
+  const fallback = demoTargetKey(me);
+  return [fromUrl ?? stored ?? (isParentId(fallback) ? fallback : "jo"), pick];
 }

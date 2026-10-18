@@ -27,7 +27,7 @@ describe("demoReset", () => {
     await demoReset(db, {});
     expect(await db.AgentNudge.list()).toHaveLength(0);
     expect(await db.AgentInbox.list()).toHaveLength(0);
-    expect(await db.ClothingItem.list()).toHaveLength(17);
+    expect(await db.ClothingItem.list()).toHaveLength(20);
   });
 });
 
@@ -98,15 +98,15 @@ describe("getStats", () => {
   it("counts, chains with names, and Earlier family for former owners", async () => {
     const s = await getStats(db);
     expect(s).toMatchObject({ encounters: 0, proposals: 0, trades: 0, declinedWithZeroCharge: 0, secondsToList: [] });
-    expect(s.items).toHaveLength(17);
+    expect(s.items).toHaveLength(20);
     const cardigan = s.items.find((i) => i.name === "Oatmeal knit cardigan")!;
-    expect(cardigan.chain.map((c) => c.ownerName)).toEqual(["Earlier family", "Earlier family", "Sam"]);
+    expect(cardigan.chain.map((c) => c.ownerName)).toEqual(["Earlier family", "Earlier family", "Freja"]);
     expect(cardigan.chain[1].priceCents).toBe(2400);
     expect(s.items[0].ownerCount).toBe(3);                                                // most-travelled first
     const sweater = s.items.find((i) => i.name === "Knit bear sweater")!;
     expect(sweater.chain).toEqual([
-      { ownerName: "Sam", from: "2025-08-15T17:00:00.000Z", to: "2026-04-28T17:00:00.000Z" },
-      { ownerName: "Mina", from: "2026-04-28T17:00:00.000Z", priceCents: 2160 },
+      { ownerName: "Freja", from: "2025-08-15T17:00:00.000Z", to: "2026-04-28T17:00:00.000Z" },
+      { ownerName: "Caesar", from: "2026-04-28T17:00:00.000Z", priceCents: 2160 },
     ]);
   });
 
@@ -157,7 +157,7 @@ describe("demoReset and Person C's tables", () => {
     await demoReset(db, {});
     expect(pair.size()).toBe(0);
     expect(lines.size()).toBe(0);
-    expect(await db.ClothingItem.list()).toHaveLength(17);
+    expect(await db.ClothingItem.list()).toHaveLength(20);
   });
 
   it("skips a C table that can't be listed (entity not pushed) and still seeds", async () => {
@@ -191,7 +191,7 @@ describe("demoReset keeps parent and child ids stable (C's agents cache them)", 
       convo: { step: "await_condition", itemId: "gone" } });
     await demoReset(db, { MINA_PHONE: "+15555550101" });
     const after = await db.Parent.get(mina.id);
-    expect(after).toMatchObject({ name: "Mina", pet: { sprite: "pet_a", name: "Button" }, phone: "+15555550101",
+    expect(after).toMatchObject({ name: "Caesar", pet: { sprite: "pet_a", name: "Button" }, phone: "+15555550101",
       agentAddress: "agent1qregistered", photonUserId: "ph_u", photonSpaceId: "ph_s", photonLineUserId: "ph_line",
       asiAddress: "asi1q", convo: { step: "idle" } });
     await demoReset(db, { MINA_AGENT: "agent1qfromsecret" });
@@ -215,7 +215,7 @@ describe("demoReset keeps parent and child ids stable (C's agents cache them)", 
 
   it("removes duplicate and unknown parents/children, and re-creates missing ones", async () => {
     const [jo] = await db.Parent.filter({ key: "jo" });
-    await db.Parent.create({ key: "jo", name: "Jo copy", avatar: { sprite: "parent_b", palette: "mint" }, pet: { sprite: "pet_b", name: "Pip" }, discoverable: true });
+    await db.Parent.create({ key: "jo", name: "Olivia copy", avatar: { sprite: "parent_b", palette: "mint" }, pet: { sprite: "pet_b", name: "Pip" }, discoverable: true });
     await db.Parent.create({ key: "stranger", name: "X", avatar: { sprite: "parent_a", palette: "peach" }, pet: { sprite: "pet_a", name: "Y" }, discoverable: true });
     await db.Child.create({ parentId: jo.id, nickname: "Twin", birthDate: "2026-03-01T00:00:00.000Z" });
     const [sam] = await db.Parent.filter({ key: "sam" });
@@ -227,6 +227,7 @@ describe("demoReset keeps parent and child ids stable (C's agents cache them)", 
     expect(await db.Child.filter({ parentId: jo.id })).toHaveLength(1);
     expect(await db.Child.list()).toHaveLength(3);
     const newSam = parents.find((p) => p.key === "sam")!;
-    expect((await db.ClothingItem.filter({ currentOwnerId: newSam.id })).length).toBe(5);
+    expect((await db.ClothingItem.filter({ currentOwnerId: newSam.id })).length).toBe(7);   // incl. the 2 listed jackets
+    expect((await db.Listing.filter({ sellerId: newSam.id })).length).toBe(2);              // their listings follow the new id
   });
 });

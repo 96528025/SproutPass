@@ -151,6 +151,67 @@
     "expiresAt": {
       "type": "string",
       "format": "date-time"
+    },
+    "visaSimulation": {
+      "type": "object",
+      "properties": {
+        "simulated": {
+          "type": "boolean",
+          "enum": [
+            true
+          ]
+        },
+        "network": {
+          "type": "string",
+          "enum": [
+            "Visa"
+          ]
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "authorizing",
+            "authorized",
+            "captured",
+            "declined"
+          ]
+        },
+        "amountCents": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "currency": {
+          "type": "string",
+          "enum": [
+            "USD"
+          ]
+        },
+        "reference": {
+          "type": "string"
+        },
+        "token": {
+          "type": "string"
+        },
+        "authorizationCode": {
+          "type": "string"
+        },
+        "startedAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "authorizedAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "capturedAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "declinedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      }
     }
   },
   "required": [

@@ -5,7 +5,7 @@
 export type ID = string;
 export type ISODate = string; // ISO 8601, UTC
 
-export type SizeLabel = "0-3M" | "3-6M" | "6-9M" | "9-12M" | "12-18M" | "18-24M" | "2T" | "3T" | "4T";
+export type SizeLabel = "0-3M" | "3-6M" | "6-9M" | "9-12M" | "12-18M" | "18-24M" | "2T" | "3T" | "4T" | "unknown";
 export type Category = "top" | "bottom" | "onesie" | "outerwear" | "dress" | "set" | "other";
 export type Condition = "like_new" | "gently_used" | "well_loved";
 
@@ -55,6 +55,11 @@ export interface ClothingItem {
   ownershipHistory: OwnershipEntry[];
   predictedOutgrowDate?: ISODate;
   status: ItemStatus;
+  sourceMessageId?: string;
+  photoMetadata?: {
+    brand: string; color: string; material: string; pattern: string;
+    condition: Condition; note: string; priceConfirmed: boolean;
+  };
 }
 
 export interface Listing {
@@ -110,6 +115,11 @@ export interface Encounter {         // C owns the logic
   agentLog?: AgentLogEntry[];        // the agents' protocol messages, for the Agent Console (C writes it)
   negotiatedBy?: "fetch" | "local";  // Fetch.ai agents, or C's local fallback matcher
   noMatchReason?: string;            // no_match because the buyer's pet rules said no: trust.ts's sentence (no amounts)
+  proposalId?: ID;                   // the trade this meeting ended in (C writes it with status "proposed")
+  rearmedAt?: ISODate;               // real time the pair was seen > 40 m apart again (pair bookkeeping without PairState)
+  hasMatch?: boolean;                // set at creation: a shared active listing of one parent fits a shared need of the
+                                     // other, either way, BEFORE the buyer's pet rules. false = nothing fits either way
+                                     // (the app never pops such a meeting); undefined = unknown (older row / schema)
 }
 
 /** One protocol message between two closet agents (Fetch.ai uAgents), shown live in the Agent Console. */
@@ -140,6 +150,22 @@ export interface ProposalSnapshot {
   wearWeeksLeft?: number;
 }
 
+/** SproutPass's own simulator. No Visa API, card details, or real funds are involved. */
+export interface VisaSimulation {
+  simulated: true;
+  network: "Visa";
+  status: "authorizing" | "authorized" | "captured" | "declined";
+  amountCents: number;
+  currency: "USD";
+  reference: string;
+  token: string;
+  startedAt: ISODate;
+  authorizationCode?: string;
+  authorizedAt?: ISODate;
+  capturedAt?: ISODate;
+  declinedAt?: ISODate;
+}
+
 export interface MatchProposal {
   id: ID;
   listingId: ID;
@@ -157,6 +183,7 @@ export interface MatchProposal {
   handover: "now" | "later";
   handoverNote?: string;
   paymentRef?: string;               // "DEMO-…" mock payment id
+  visaSimulation?: VisaSimulation;
   createdAt: ISODate;                // demo-clock time
   expiresAt: ISODate;                // demo-clock time (createdAt + 30 min)
 }
@@ -182,6 +209,7 @@ export type InboxEvent =
   | { type: "proposal:updated"; proposalId: ID; role: "buyer" | "seller"; status: ProposalStatus; sellerDecision: Decision; buyerDecision: Decision;
       otherName?: string }             // the other parent's name
   | { type: "trade:completed"; proposalId: ID; role: "buyer" | "seller"; itemId: ID; priceCents: number;
+      visaSimulation?: VisaSimulation;
       buyerId?: ID; sellerId?: ID;
       snapshot?: ProposalSnapshot;     // the proposal's snapshot (itemName, size, price…)
       predictedOutgrowDate?: ISODate }; // the item's new date, for the buyer's child
@@ -289,7 +317,13 @@ export interface UpdatePresenceReq {
   parentId: ID; lat: number; lng: number; accuracyM: number; simulated?: boolean;
   discoverable?: boolean;            // A's DISCOVERABLE toggle; C writes it to Parent.discoverable
 }
-export interface UpdatePresenceRes { ok: true; encounters: { id: ID; peerId: ID }[]; fallback: ID[] }
+/** A meeting this call started: `hasMatch` as stored on the Encounter (false = nothing fits, the app doesn't pop it). */
+export interface EncounterStart { id: ID; peerId: ID; hasMatch?: boolean }
+/** Within 25 m and re-armed, but this pair's last meeting still holds the cooldown: they can meet again in retryInS. */
+export interface PairCooldown { peerId: ID; retryInS: number }
+/** Only the caller's own simulated position; never a peer's coordinates. */
+export interface DemoPosition { lat: number; lng: number; updatedAt: string }
+export interface UpdatePresenceRes { ok: true; encounters: EncounterStart[]; fallback: ID[]; cooldown?: PairCooldown[]; position?: DemoPosition }
 export interface ListNearbyReq { parentId: ID }
 export interface NearbyParent {
   parentId: ID; name: string; sprite: string; pet: string; band: Band;
@@ -298,7 +332,7 @@ export interface NearbyParent {
 }
 export interface ListNearbyRes { me: { accuracyM: number; simulated: boolean; fresh: boolean } | null; nearby: NearbyParent[] }
 export interface DemoWalkReq { parentId: ID; targetParentId: ID; stepM?: number; reset?: boolean }
-export interface DemoWalkRes { ok: true; distanceM: number; encounters: { id: ID; peerId: ID }[]; fallback: ID[] }
+export interface DemoWalkRes { ok: true; distanceM: number; encounters: EncounterStart[]; fallback: ID[]; cooldown?: PairCooldown[]; position?: DemoPosition; bearingDeg?: number }
 
 /** Public card for a trade party: never phone, Photon ids, convo or ASI address (approved by Caesar, 00:10). */
 export type PublicParty = Pick<Parent, "id" | "name" | "avatar" | "pet">;

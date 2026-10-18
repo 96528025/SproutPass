@@ -32,7 +32,8 @@
         "18-24M",
         "2T",
         "3T",
-        "4T"
+        "4T",
+        "unknown"
       ]
     },
     "originalPriceCents": {
@@ -94,6 +95,40 @@
         "pending_trade",
         "transferred_out"
       ]
+    },
+    "sourceMessageId": {
+      "type": "string"
+    },
+    "photoMetadata": {
+      "type": "object",
+      "properties": {
+        "brand": {
+          "type": "string"
+        },
+        "color": {
+          "type": "string"
+        },
+        "material": {
+          "type": "string"
+        },
+        "pattern": {
+          "type": "string"
+        },
+        "note": {
+          "type": "string"
+        },
+        "condition": {
+          "type": "string",
+          "enum": [
+            "like_new",
+            "gently_used",
+            "well_loved"
+          ]
+        },
+        "priceConfirmed": {
+          "type": "boolean"
+        }
+      }
     }
   },
   "required": [

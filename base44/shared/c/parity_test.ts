@@ -45,6 +45,9 @@ const TEXTS = [
   "I accept", "yes, accept", "accept the trade", "I’ll take it 👍", "yes to the trade", "passing it on",
   // opt-out with polite words, yes with "please"
   "STOP please", "please stop", "Stop, thanks", "stop it!", "don’t text me", "start please", "yes please", "yes!!",
+  // the buyer's APPROVE (buyer-only approval): the same as accept, negations decline, a question never decides
+  "approve", "APPROVE", "Approved", "I approve the trade", "yes, approve", "I accepted", "Do not approve",
+  "don’t approve", "Should I approve?",
 ];
 const CONDITION_TEXTS = ["it's like-new", "gently used I'd say", "well loved", "pretty worn", "great", ""];
 const REDACT = ["call 310.555.0100 or 13105550100", "Jo: +1 (424) 555-0102 https://app/trade/13105550100", "$18.00 on 2026-10-18"];

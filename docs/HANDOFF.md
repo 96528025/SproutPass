@@ -133,3 +133,38 @@ On Windows PowerShell, `npm run x -- --flag` drops the `--`, so start Vite with 
 - **No names in agent lines:** no agent line names a parent or child, and a parent's phone never leaves the backend.
 - **Wording parity:** TS and Python pet wording must stay word for word equal (`parity_test.ts`).
 - **Deploy order:** entity push → `base44 deploy --build -y` (never a bare `npm run build`) → RESET.
+
+## 10. Oct 18 · Mac session: match-only popups + more matches
+
+Branch `proximity-match-popups` in `/Users/angelren/SproutPass`. **Not committed, not deployed.** This is separate from `779fed3` (§5): no exact pins, and it applies to demo walks and real GPS alike.
+
+- **Only a meeting where the two lists match opens a trade.** Each new `Encounter` gets `hasMatch`, which is set when a shared listing of one parent fits a shared need of the other, either way, before the buyer's pet rules. The check is `pairHasMatch` in `base44/shared/c/location.ts`. Only a matching meeting opens the trade window (on both phones). Every meeting still shows the pets' scene (the team chose to keep no-match meetings visible: "Nothing fits today"), and is written with both inbox rows, so the agents and the Agent Console see them all.
+- **Cooldown.** The pair cooldown (2 min demo, 10 min real) is skipped when the pair's last meeting had nothing to trade and something fits now, or when its trade was paid. A pair with nothing to trade keeps its cooldown, so crossing 25 m again and again doesn't start a meeting each time. A pair still held comes back as `cooldown: [{ peerId, retryInS }]` in `updatePresence` and `demoWalk`. `lostRace` now only counts rows started after the previous meeting.
+- **Still together.** Two real-GPS parents who stay within 25 m after a meeting where nothing fit (or after a paid trade) meet again as soon as something fits, for example when one of them lists the item. This is checked on recheck ticks, at most once per 30 s per pair. In the demo, WALK AGAIN to the family you already stand with (the walk no longer resets) counts as walking away and back: it meets again, or the toast says how long the cooldown still holds.
+- **Walk target only.** A demo walk only judges its target, so it never meets a family it passes or was parked next to.
+- **Direction.** One trade per meeting. The smaller parent id buys first, whoever walked, in the fallback (`planLocalMatch`), the mock agent log and the Python agents alike.
+- **/world (demo).**
+  - A walk that meets someone with nothing to trade, or a pair still in its cooldown, ends with a toast.
+  - A WALK TO picker shows the other two families. `?walk=` also picks one, and the pick is remembered per tab.
+  - Sam's demo spot now matches the server (200 m due east).
+- **Trade window.** It waits while the EncounterScene is up (20 s at most, wall clock). After you close the first live trade, the next one pops. The pill shows a count ("♥ 2 TRADE OFFERS · OPEN").
+- **Seed.** There are 3 new items, 3 listings and 3 needs. `DEMO_MATCHES` lists the four matches: romper Mina→Jo, snowsuit Sam→Mina, fleece jacket Sam→Jo, sleep sack Mina→Sam. The demo clock still creates exactly one nudge. `agents/mock_base44.py` mirrors this with `MockBase44(more_matches=True)`, and `local_demo.py --more-matches` runs it.
+- **Deploy note:** run `npx base44 entities push` before `npx base44 deploy --build -y`, because `Encounter.hasMatch` is a new field. Until it is pushed, the encounter create is retried without the field, so `hasMatch` stays unknown and the app falls back to the old behaviour of popping every meeting. Then RESET, so the live seed gets the new listings and needs.
+- **Follow-ups:**
+  - Smaller id buys first has one limit: a declined trade relists the item, so the same match comes back first at the next meeting. For Mina and Sam, the other direction comes once the first trade is paid (WALK AGAIN right after paying shows it).
+  - The Python agent re-offers an item whose trade is pending (`closet_agent._offer`). The app's matcher already skips it.
+  - Pip's opening line names only Jo's first need (`t_looking_for`, TS and Python).
+
+### Visa simulation (buyer approval)
+
+No Visa sandbox or APIs were provided. SproutPass implements its own explicitly labeled payment simulation, with no real card details, external payment requests, or transfer of funds.
+
+Demo flow: a matching encounter produces a final offer with price and image. Only the buyer approves (in their private iMessage thread or the app). The shared listing already authorizes the seller's agent. Approval creates a synthetic token, records simulated authorization, transfers the item to the buyer's Base44 inventory, and saves a captured simulation receipt. Both parties receive the receipt with the product image through their connected Photon conversation. No separate Pay button is needed with the default demo rules; saved passkey requirements remain enforced.
+
+`MatchProposal.visaSimulation` persists the amount in cents, USD currency, synthetic token, simulation reference, authorization code, and real timestamps. It survives app/server restarts. The receipt UI displays the server's recorded progress. Repeated approval of a completed trade returns the same receipt. The existing `payProposal({ fail: true })` demo path records a simulated issuer decline, leaves the item with the seller, and never captures the payment. Declining the trade creates no payment at all.
+
+Validation: 534 tests passed, including exact amounts, authorization/capture timestamps, buyer-only approval, duplicate approvals, simulated decline, and iMessage receipt labeling. No live inventory was reset or purchased to run these tests.
+
+### Photon assignment fix — October 18
+
+Photon's “your number isn’t connected to an agent yet” reply was caused by missing shared-line assignments: only Caesar had one. Added and verified active assignments for the current Freja_PHONE and OLIVIA_PHONE values in .env.photon. Agent destinations: Caesar +1 628-263-4622; Freja +1 628-316-6196; Olivia +1 628-316-7976. Each person must text their assigned destination first, then resend any message/photo that Photon rejected. Registering a Parent phone in Base44 alone does not allocate a Photon assignment. Shared lines are direct-message assignments, not a family group-chat line.

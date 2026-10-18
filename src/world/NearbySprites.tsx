@@ -14,7 +14,7 @@ export function NearbySprites({ items }: { items: SmoothParent[] }) {
           data-parent={p.parentId}
           data-band={p.band}
         >
-          <Sprite name={p.sprite} anim="idle" scale={3} facing={p.x > 0 ? "left" : "right"} />
+          <Sprite name={p.sprite} anim="idle" scale={2} facing={p.x > 0 ? "left" : "right"} />
           <span className="ns__name">{p.name}</span>
         </div>
       ))}

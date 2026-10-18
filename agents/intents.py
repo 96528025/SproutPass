@@ -23,7 +23,7 @@ _DECLINE = "|".join([
     r"\b(?:decline|reject)\b",
     r"\b(?:no|nah|nope)[\s,]+(?:deal|thanks|thank you|thx)\b",
     r"\bnot (?:interested|this (?:time|one)|a (?:good )?deal|for (?:me|us))\b",
-    r"\b(?:don'?t|do not|can'?t|cannot|won'?t|will not|wouldn'?t|not going to|not gonna)\s+(?:want|accept|take|buy|do)\b",
+    r"\b(?:don'?t|do not|can'?t|cannot|won'?t|will not|wouldn'?t|not going to|not gonna)\s+(?:want|accept|approve|take|buy|do)\b",
     r"\bpass on (?:this|that|it) one\b",
     r"\b(?:i'?ll|i will|i'?d|we'?ll|we will|gonna|going to)\s+pass\b(?!\s+(?:it|them|this|that)\s+on\b)",
     r"\bpass\b(?!\s+(?:(?:it|them|this|that)\s+)?on\b)",
@@ -44,7 +44,7 @@ _RULES = [
     ("decline", re.compile(r"^(?![\s\S]*\?)[\s\S]*?(?:" + _DECLINE + ")", re.I)),
     # Only an explicit, whole-text yes to the trade.
     ("accept", re.compile(r"^\s*(?:(?:yes|yep|yeah|ok|okay|sure)[\s,!]+)?(?:i\s+)?"
-                          r"(?:accept(?:ed)?(?:\s+(?:it|this|that|the (?:trade|deal|offer)))?|deal|it'?s a deal"
+                          r"(?:(?:accept(?:ed)?|approve(?:d)?)(?:\s+(?:it|this|that|the (?:trade|deal|offer)))?|deal|it'?s a deal"
                           r"|i'?ll take it|we'?ll take it|yes to the trade)"
                           r"(?:[\s,]+(?:please|thanks|thank you|thx))?(?:\s*(?:[.!]|👍))*\s*$", re.I)),
     ("pay", re.compile(r"\b(pay|checkout|buy now)\b", re.I)),
@@ -79,13 +79,13 @@ def parse_intent(text: str) -> str:
 
 def is_trade_command(text: str) -> bool:
     """The accept / decline command itself (answers the open proposal whatever was asked last); see wording.ts."""
-    return bool(re.search(r"^\s*(?:(?:yes|ok|okay)[\s,!]+)?(?:i\s+)?(?:accept|decline|reject)\b|\byes to the trade\b",
+    return bool(re.search(r"^\s*(?:(?:yes|ok|okay)[\s,!]+)?(?:i\s+)?(?:accept(?:ed)?|approve(?:d)?|decline|reject)\b|\byes to the trade\b",
                           _plain(text), re.I))
 
 
 def mentions_trade(text: str) -> bool:
     """Talks about the trade without deciding it ("is that a good deal?"): ask "accept or decline?", never guess."""
-    return bool(re.search(r"\b(?:accept|decline|reject|deal|take it|trade|offer|pass)\b", _plain(text), re.I))
+    return bool(re.search(r"\b(?:accept|approve|decline|reject|deal|take it|trade|offer|pass)\b", _plain(text), re.I))
 
 
 def parse_claim(text: str) -> Optional[Tuple[str, str]]:

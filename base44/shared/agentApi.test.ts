@@ -42,7 +42,7 @@ beforeEach(async () => {
 const logOf = (e: Encounter): AgentLogEntry[] => e.agentLog ?? [];
 const kinds = (e: Encounter) => (e.transcript ?? []).map((t) => t.kind);
 
-/** Mina's romper listed at $18.00 (2nd owner pays 60% of $30.00), clock at the Oct 18 meeting. */
+/** Caesar's romper listed at $18.00 (2nd owner pays 60% of $30.00), clock at the Oct 18 meeting. */
 async function listRomper(): Promise<{ listingId: string }> {
   await demoClock(db, { now: DEMO_DATES.nudge });
   const [romper] = await db.ClothingItem.filter({ name: "Yellow duck romper" });
@@ -57,7 +57,7 @@ async function talking(a = ids.mina, b = ids.jo): Promise<Encounter> {
   return await db.Encounter.create({ aId: a, bId: b, band: "<25m", simulated: true, status: "talking", startedAt: new Date().toISOString(), transcript: [] });
 }
 
-/** Jo's rules for Pip (B5's PetMandate, stored partially like setMandate would). */
+/** Olivia's rules for Pip (B5's PetMandate, stored partially like setMandate would). */
 async function joRules(m: Partial<PetMandate>) {
   await db.Parent.update(ids.jo, { mandate: m as PetMandate });
 }
@@ -147,7 +147,7 @@ describe("the agents' protocol log rides on createProposal / noMatch", () => {
     expect(log[3].ms).toBe(180);
     expect(log[0].from).toBe(MINA_AGENT);
     expect(log[3].summary).toBe("Proposes the listing at $18.00. Call me at [hidden].");
-    expect(JSON.stringify(log)).not.toMatch(/555|Mina|Jo\b/);
+    expect(JSON.stringify(log)).not.toMatch(/555|Caesar|Olivia\b/);
   });
 
   it("createProposal cleans the agents' transcript before B or the Encounter sees it", async () => {
@@ -181,12 +181,12 @@ describe("the agents' protocol log rides on createProposal / noMatch", () => {
       ...turns(ids.jo, ids.mina),
       { from: "buyer_agent", parentId: ids.jo, kind: "propose", text: "Pip: Trade proposal! $18.00", at: "2026-10-18T17:00:01.000Z" },
       { from: "seller_agent", parentId: ids.mina, kind: "ack", text: "Button: Sounds good", at: "2026-10-18T17:00:01.500Z" },
-      { from: "buyer_agent", parentId: ids.jo, kind: "decline", text: "Pip: Not this one — it's over the price limit Jo set for me.", at: "2026-10-18T17:00:02.000Z" },
+      { from: "buyer_agent", parentId: ids.jo, kind: "decline", text: "Pip: Not this one — it's over the price limit Olivia set for me.", at: "2026-10-18T17:00:02.000Z" },
     ];
-    await noMatchFromAgents(db, { encounterId: enc.id, agentLog: fetchLog().slice(0, 3), transcript: t, reason: "It costs more than the price limit Jo set for Pip." });
+    await noMatchFromAgents(db, { encounterId: enc.id, agentLog: fetchLog().slice(0, 3), transcript: t, reason: "It costs more than the price limit Olivia set for Pip." });
     const after = await db.Encounter.get(enc.id);
     expect(kinds(after)).toEqual(["looking_for", "looking_for", "decline"]);
-    expect(after.noMatchReason).toBe("It costs more than the price limit Jo set for Pip.");
+    expect(after.noMatchReason).toBe("It costs more than the price limit Olivia set for Pip.");
   });
 
   it("a late noMatch never relabels an encounter the local fallback already decided", async () => {
@@ -236,7 +236,7 @@ describe("C's local fallback writes the same log shape", () => {
   });
 
   it("nothing fits either way → LookingFor → NoFit, negotiatedBy local", async () => {
-    const enc = await talking(ids.mina, ids.sam);
+    const enc = await talking();   // Caesar and Olivia before the romper is listed: the one pair with no match yet
     const { resolved } = await runLocalFallback(db, findMatches, { fallbackAfterMs: 0, talkMs: () => 0 });
     expect(resolved).toEqual([enc.id]);
     const after = await db.Encounter.get(enc.id);
@@ -258,8 +258,8 @@ describe("C's local fallback writes the same log shape", () => {
 });
 
 describe("the buyer's pet rules are checked before anyone says 'Trade proposal!'", () => {
-  const PRICE_REASON = "It costs more than the price limit Jo set for Pip.";
-  const PRICE_LINE = "Aw, not this one — it's over the price limit Jo set for me."; // in Pip's own voice
+  const PRICE_REASON = "It costs more than the price limit Olivia set for Pip.";
+  const PRICE_LINE = "Aw, not this one — it's over the price limit Olivia set for me."; // in Pip's own voice
 
   it("agentApi fit marks each match with the buyer's verdict (price, kinds, budget, may-propose)", async () => {
     await listRomper();
@@ -269,15 +269,15 @@ describe("the buyer's pet rules are checked before anyone says 'Trade proposal!'
     expect(open.blocked).toBeUndefined(); // default rules: up to $50, $100 a month
 
     await joRules({ maxPriceCents: 1000 });
-    expect((await fit()).matches[0].blocked).toEqual({ rule: "over_price", reason: PRICE_REASON, line: "it's over the price limit Jo set for me." });
+    expect((await fit()).matches[0].blocked).toEqual({ rule: "over_price", reason: PRICE_REASON, line: "it's over the price limit Olivia set for me." });
     await joRules({ categories: ["top"] });
-    expect((await fit()).matches[0].blocked).toMatchObject({ rule: "category", line: "it isn't a kind of clothes Jo asked me to look for." });
+    expect((await fit()).matches[0].blocked).toMatchObject({ rule: "category", line: "it isn't a kind of clothes Olivia asked me to look for." });
     await joRules({ monthlyBudgetCents: 1000 });
-    expect((await fit()).matches[0].blocked).toMatchObject({ rule: "over_budget", line: "it would go over Jo's monthly budget for me." });
+    expect((await fit()).matches[0].blocked).toMatchObject({ rule: "over_budget", line: "it would go over Olivia's monthly budget for me." });
     await joRules({ agentMayPropose: false });
     expect((await fit()).matches[0].blocked).toMatchObject({ rule: "agent_may_not_propose" });
     for (const r of ["over_price", "category", "over_budget", "agent_may_not_propose"] as const) {
-      expect(rulesLine(r, "Jo")).not.toMatch(/\$|\d/); // the buyer's limits stay private: no amounts
+      expect(rulesLine(r, "Olivia")).not.toMatch(/\$|\d/); // the buyer's limits stay private: no amounts
     }
   });
 
@@ -295,7 +295,7 @@ describe("the buyer's pet rules are checked before anyone says 'Trade proposal!'
     expect(JSON.stringify(after.transcript)).not.toMatch(/Trade proposal|over to the humans|Nothing in my closet/);
     expect(logOf(after).map((e) => e.type)).toEqual(["LookingFor", "HaveListings", "Decline"]);
     expect(logOf(after)[2].summary).toBe("Buyer side declines: over the price limit the buyer set for their pet. Nothing was proposed.");
-    expect(JSON.stringify(logOf(after))).not.toMatch(/Jo|Pip|\$10/);
+    expect(JSON.stringify(logOf(after))).not.toMatch(/Olivia|Pip|\$10/);
     expect(await db.MatchProposal.filter({ encounterId: enc.id })).toEqual([]); // nothing charged, nothing proposed
   });
 
@@ -303,7 +303,7 @@ describe("the buyer's pet rules are checked before anyone says 'Trade proposal!'
     await listRomper();
     const enc = await talking();
     expect((await stageEncounter(db, enc, findMatches)).status).toBe("staged");
-    await joRules({ maxPriceCents: 1000 }); // Jo lowers the limit while the pets are still talking
+    await joRules({ maxPriceCents: 1000 }); // Olivia lowers the limit while the pets are still talking
     const staged = await db.Encounter.get(enc.id);
     expect(kinds(staged)).toContain("propose");
     expect(await resolveEncounter(db, staged, findMatches)).toBe("no_match");
@@ -321,7 +321,7 @@ describe("the buyer's pet rules are checked before anyone says 'Trade proposal!'
     const { resolved } = await runLocalFallback(db, findMatches, { fallbackAfterMs: 0, talkMs: () => 0 });
     expect(resolved).toEqual([enc.id]);
     const after = await db.Encounter.get(enc.id);
-    expect(after.noMatchReason).toBe("It would go over Jo's monthly budget for Pip.");
+    expect(after.noMatchReason).toBe("It would go over Olivia's monthly budget for Pip.");
     expect(logOf(after).at(-1)!.summary).toContain("over the budget the buyer set for their pet");
   });
 

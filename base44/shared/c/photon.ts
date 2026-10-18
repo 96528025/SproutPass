@@ -182,6 +182,7 @@ export interface InboundMessage {
   fromUserId?: string;
   lineUserId?: string; // receivedBy user id: the line this parent texts → Parent.photonLineUserId (lines.ts)
   spaceId?: string;
+  isGroup?: boolean;
   text: string;
   attachmentIds: string[];
 }
@@ -197,7 +198,8 @@ export function parseInbound(event: any): InboundMessage | null {
   if (!m) return null;
   const sentBy = m.sentBy ?? {};
   const receivedBy = m.receivedBy ?? {};
-  const content: any[] = Array.isArray(m.content) ? m.content : (m.content ? [m.content] : []);
+  const parts: any[] = Array.isArray(m.content) ? m.content : (m.content ? [m.content] : []);
+  const content: any[] = parts.flatMap((c) => c?.type === "group" && Array.isArray(c.parts) ? c.parts : [c]);
   const text = content.filter((c) => c?.type === "text").map((c) => c.text ?? "").join("\n").trim();
   const attachmentIds = content.filter((c) => c?.type === "attachment" && c.attachmentId).map((c) => c.attachmentId);
   const fromHandle = sentBy.handle ?? sentBy.address ?? sentBy.phone ?? "";
@@ -208,6 +210,7 @@ export function parseInbound(event: any): InboundMessage | null {
     fromUserId: sentBy.userId ?? sentBy.id,
     lineUserId: receivedBy.userId ?? receivedBy.id,
     spaceId: m.spaceId ?? m.space?.id,
+    ...(m.space?.kind === "group" || (m.space?.participantIds?.length ?? 0) > 2 ? { isGroup: true } : {}),
     text,
     attachmentIds,
   };

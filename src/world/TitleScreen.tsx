@@ -1,6 +1,6 @@
 // A3: "/" — tap to start: unlock audio, explain + ask for location once, pick a parent (unless ?as= is set), go to /world.
 // The parent picker is B's (src/app/ParentPicker): it sets this tab's parent in B's store (which owns ?as=).
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router";
 import { PixelPanel } from "@/pixel/components/PixelPanel";
 import { PixelButton } from "@/pixel/components/PixelButton";
@@ -12,10 +12,10 @@ import { Sprite } from "@/pixel/components/Sprite";
 import { pixelShadow } from "./BottomBar";
 import { isParentId, parseParent, withQuery, type ParentId } from "./query";
 import { useAudioUnlock } from "./useAudioUnlock";
-import { useGeoPermission } from "./useGeoPermission";
+import { geoHelp, useGeoPermission } from "./useGeoPermission";
 import "./shell.css";
 
-type Stage = "title" | "consent" | "asking" | "picker" | "go";
+type Stage = "title" | "consent" | "asking" | "picker" | "location-error";
 
 const CLOUD = ["..ww....", "wwwwww..", "wwwwwwww"];
 const CLOUD_SHADOW = pixelShadow(CLOUD, { w: "var(--paper)" });
@@ -29,10 +29,7 @@ export function TitleScreen() {
   const { unlock } = useAudioUnlock();
   const geo = useGeoPermission();
   const [stage, setStage] = useState<Stage>("title");
-  const [noGps, setNoGps] = useState(false);
-  const timer = useRef<number | undefined>(undefined);
-
-  useEffect(() => () => window.clearTimeout(timer.current), []);
+  const [demoChosen, setDemoChosen] = useState(false);
 
   const start = useCallback(() => {
     if (stage !== "title") return;
@@ -57,19 +54,23 @@ export function TitleScreen() {
   const go = (id: ParentId | null, demo: boolean) => {
     const app = useApp.getState();
     if (id && app.parentKey !== id) app.setParent(id);
-    if (demo && !app.demo) app.setDemo(true); // no GPS: demo mode sticks for this tab (B's store keeps ?demo=1)
-    navigate(withQuery("/world", { as: id ?? undefined, demo: demo ? "1" : undefined }));
+    app.setDemo(demo);
+    navigate(withQuery("/world", { as: id ?? undefined, demo: demo ? "1" : "0" }));
   };
 
   const onOk = async () => {
     setStage("asking");
     const result = await geo.request();
-    const denied = result !== "granted";
-    setNoGps(denied);
+    if (result !== "granted") return setStage("location-error");
+    setDemoChosen(false);
     if (!preset) return setStage("picker");
-    if (!denied) return go(preset, false);
-    setStage("go"); // show the chip for a beat, then continue in demo mode
-    timer.current = window.setTimeout(() => go(preset, true), 1500);
+    go(preset, false);
+  };
+
+  const chooseDemo = () => {
+    setDemoChosen(true);
+    if (preset) go(preset, true);
+    else setStage("picker");
   };
 
   return (
@@ -84,7 +85,7 @@ export function TitleScreen() {
       </h1>
       <div className="ts__intro">
         <p className="ts__tag">Your pixel pet passes outgrown kids' clothes to families you walk past.</p>
-        <p className="ts__promise">Nothing changes hands until both parents say yes.</p>
+        <p className="ts__promise">Your agent negotiates. Only the buyer approves the final trade.</p>
       </div>
 
       <div className="ts__grass" aria-hidden />
@@ -120,25 +121,28 @@ export function TitleScreen() {
               Other parents only see roughly how far away you are, never your exact spot.
             </p>
             <div className="ts__row">
-              <PixelButton onClick={() => void onOk()}>OK</PixelButton>
+              <PixelButton onClick={() => void onOk()}>ENABLE LOCATION</PixelButton>
+              <PixelButton variant="ghost" onClick={chooseDemo}>USE DEMO</PixelButton>
             </div>
           </PixelPanel>
         )}
 
         {stage === "asking" && <Chip tone="gold">ASKING FOR LOCATION…</Chip>}
 
-        {stage === "go" && noGps && <Chip tone="red">NO GPS · DEMO WALK</Chip>}
+        {stage === "location-error" && (
+          <PixelPanel title="LOCATION NOT READY" className="ts__panel">
+            <p className="ts__consent" role="status">{geoHelp(geo.status)}</p>
+            <div className="ts__row">
+              <PixelButton onClick={() => void onOk()}>TRY LOCATION AGAIN</PixelButton>
+              <PixelButton variant="ghost" onClick={chooseDemo}>USE DEMO</PixelButton>
+            </div>
+          </PixelPanel>
+        )}
 
         {stage === "picker" && (
           <PixelPanel title="WHO'S PLAYING?" className="ts__panel">
-            {noGps && (
-              // The panel's first row, so it never sits on the title tab or the pets.
-              <p className="ts__gps">
-                <Chip tone="red">NO GPS</Chip>
-                <span>You'll take a demo walk instead.</span>
-              </p>
-            )}
-            <ParentPicker onPick={(id) => go(id, noGps)} />
+            {demoChosen && <p className="ts__gps"><Chip tone="lav">SIMULATED LOCATION</Chip></p>}
+            <ParentPicker onPick={(id) => go(id, demoChosen)} />
             <p className="ts__hint">Tip: open a second tab as another parent to see both phones.</p>
           </PixelPanel>
         )}

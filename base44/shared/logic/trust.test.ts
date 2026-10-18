@@ -41,7 +41,7 @@ async function bothAccepted(): Promise<MatchProposal> {
   return decideProposal(db, { parentKey: "jo", proposalId: p.id, decision: "accepted" });
 }
 
-/** Jo registers a passkey through the mock flow; returns the credential id. */
+/** Olivia registers a passkey through the mock flow; returns the credential id. */
 async function registerJo(id = "cred-jo", label?: string): Promise<string> {
   const opts = await mockPasskeys.registerOptions(db, { parentKey: "jo" }, "localhost", T0);
   await mockPasskeys.registerVerify(db, { parentKey: "jo", response: browserResponse(id, "webauthn.create", opts.challenge as string), label }, "localhost", T0);
@@ -107,7 +107,7 @@ describe("mandate", () => {
   });
 
   it("checkMandate: each rule, in order, with plain reasons that don't reveal the buyer's amounts", () => {
-    const who = { name: "Jo", petName: "Pip" };
+    const who = { name: "Olivia", petName: "Pip" };
     const offer = { priceCents: 1800, category: "onesie" as const };
     const m = defaultMandate();
     expect(checkMandate(m, offer, 0, who)).toEqual({ ok: true });
@@ -121,7 +121,7 @@ describe("mandate", () => {
       const r = checkMandate(mandate as never, offer, committed, who);
       expect(r).toMatchObject({ ok: false, rule });
       if (r.ok) throw new Error("expected a refusal");
-      expect(r.reason).toMatch(/Jo|Pip/);
+      expect(r.reason).toMatch(/Olivia|Pip/);
       expect(r.reason).not.toMatch(/\$|\d/);
     }
     expect(checkMandate({ ...m, maxPriceCents: 1800, monthlyBudgetCents: 3000 }, offer, 1200, who)).toEqual({ ok: true }); // limits are inclusive
@@ -196,9 +196,9 @@ describe("privacy", () => {
   });
 
   it("getTrust shows a passkey's label and date, never its credential id or public key", async () => {
-    await registerJo("cred-secret-id", "  Jo's   iPhone  ");
+    await registerJo("cred-secret-id", "  Olivia's   iPhone  ");
     const t = await getTrust(db, { parentKey: "jo" });
-    expect(t.passkeys).toEqual([{ id: expect.stringMatching(/^pk_/), label: "Jo's iPhone", createdAt: new Date(T0).toISOString() }]);
+    expect(t.passkeys).toEqual([{ id: expect.stringMatching(/^pk_/), label: "Olivia's iPhone", createdAt: new Date(T0).toISOString() }]);
     expect(JSON.stringify(t)).not.toContain("cred-secret-id");
     expect(t.mandate.requirePasskey).toBe(true);
   });
@@ -302,7 +302,7 @@ describe("passkeys (mock flow)", () => {
     const jo = await parent("jo");
     expect(o).toMatchObject({
       rp: { name: "Hand-Me-Down Relay", id: "localhost" },
-      user: { id: b64url(new TextEncoder().encode(ids.jo)), name: "Jo", displayName: "Jo" },
+      user: { id: b64url(new TextEncoder().encode(ids.jo)), name: "Olivia", displayName: "Olivia" },
       challenge: challengeOf(jo)?.challenge, attestation: "none", excludeCredentials: [],
       authenticatorSelection: { userVerification: "required" },
     });
@@ -417,7 +417,7 @@ describe("passkeys (mock flow)", () => {
     const p = await bothAccepted();
     let o = await mockPasskeys.authOptions(db, { parentKey: "jo", proposalId: p.id }, "localhost", T0);
     const unknown = { parentKey: "jo", proposalId: p.id, passkey: browserResponse("someone-else", "webauthn.get", o.challenge as string) };
-    await expect(mockPasskeys.approvePayment(db, unknown, T0)).rejects.toThrow(/isn't saved for Jo/);
+    await expect(mockPasskeys.approvePayment(db, unknown, T0)).rejects.toThrow(/isn't saved for Olivia/);
     o = await mockPasskeys.authOptions(db, { parentKey: "jo", proposalId: p.id }, "localhost", T0);
     const late = { parentKey: "jo", proposalId: p.id, passkey: browserResponse("cred-jo", "webauthn.get", o.challenge as string) };
     await expect(mockPasskeys.approvePayment(db, late, T0 + CHALLENGE_TTL_MS + 1)).rejects.toThrow(/timed out/);

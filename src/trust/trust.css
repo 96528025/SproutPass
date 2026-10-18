@@ -290,3 +290,7 @@
 @media (max-width: 380px) {
   .tr-cmd { grid-template-columns: 1fr; }
 }
+.tr-visa { margin-top: 14px; padding: 14px; border: 2px solid #283a73; border-radius: 8px; background: #f4f6ff; color: #24315c; }
+.tr-visa .tr-receipt-head > strong { font: italic 800 24px/1 sans-serif; letter-spacing: 1px; }
+.tr-visa p { margin: 10px 0 0; }
+.tr-visa-steps { padding: 0; list-style: none; display: grid; gap: 8px; font-size: 12px; }

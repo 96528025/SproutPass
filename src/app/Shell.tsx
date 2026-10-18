@@ -278,8 +278,9 @@ export function Shell() {
         {!needsParent && kind !== "title" && <BottomBar petName={petName} onPetUnhandled={onPetUnhandled} />}
         <MuteToggle />
         {parentKey && !noDialogHere && calm && <Guard name="NudgeDialog" fallback={null}><NudgeDialog /></Guard>}
-        {/* The trade window waits until the player is past the title; it pops on the next screen. */}
-        {parentKey && !projector && kind !== "title" && <TradeWatcher />}
+        {/* The trade window waits until the player is past the title; it pops on the next screen. While the pets'
+            meeting is up it holds its pop, so the scene's TRADE PROPOSAL! banner plays first (20 s at most). */}
+        {parentKey && !projector && kind !== "title" && <TradeWatcher hold={encounterUp} />}
         {parentKey && !noDialogHere && calm && <Pet />}
         {paid && <PaidCelebration key={paid.id} proposal={paid} onDone={doneCelebrating} onSkip={() => setPaid(null)} />}
         {toastMsg && <Toast key={toastMsg.id} text={toastMsg.text} tone={kitTone(toastMsg.tone)} />}

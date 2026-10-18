@@ -16,7 +16,7 @@ describe("pricing", () => {
 });
 
 describe("outgrow (seed checks)", () => {
-  it("Mina's romper ≈ Aug 27, Jo's ≈ Nov 17, ~4 weeks left on Oct 18", () => {
+  it("Caesar's romper ≈ Aug 27, Olivia's ≈ Nov 17, ~4 weeks left on Oct 18", () => {
     expect(predictOutgrow("6-9M", "2025-12-10T00:00:00.000Z", "2026-05-15T17:00:00.000Z").slice(0, 10)).toBe("2026-08-27");
     expect(predictOutgrow("6-9M", "2026-03-01T00:00:00.000Z", DEMO_DATES.meet).slice(0, 10)).toBe("2026-11-17");
     expect(wearWeeksLeft("6-9M", "2026-03-01T00:00:00.000Z", DEMO_DATES.meet)).toBe(4);
@@ -25,7 +25,7 @@ describe("outgrow (seed checks)", () => {
 });
 
 describe("seed + eligibility on fakeDb", () => {
-  it("romper listed by Mina is eligible for Jo's need on Oct 18", async () => {
+  it("romper listed by Caesar is eligible for Olivia's need on Oct 18", async () => {
     const db = createFakeDb();
     const { parentIds } = await applySeed(db, seedPlan());
     const [romper] = await db.ClothingItem.filter({ name: "Yellow duck romper" });

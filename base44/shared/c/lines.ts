@@ -17,6 +17,7 @@ export interface PhotonParentIds {
 
 /** What one inbound message tells us about its sender (see photon.ts parseInbound). */
 export interface InboundIds {
+  isGroup?: boolean;
   fromUserId?: string;
   spaceId?: string;
   lineUserId?: string;
@@ -28,6 +29,8 @@ export interface InboundIds {
  */
 export function inboundParentPatch(parent: PhotonParentIds, msg: InboundIds): PhotonParentIds {
   const patch: PhotonParentIds = {};
+  // A family group must never replace the destination for private trade/payment notifications.
+  if (msg.isGroup) return patch;
   if (msg.fromUserId && parent.photonUserId !== msg.fromUserId) patch.photonUserId = msg.fromUserId;
   if (msg.spaceId && parent.photonSpaceId !== msg.spaceId) patch.photonSpaceId = msg.spaceId;
   if (msg.lineUserId && parent.photonLineUserId !== msg.lineUserId) patch.photonLineUserId = msg.lineUserId;

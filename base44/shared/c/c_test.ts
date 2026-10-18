@@ -137,7 +137,7 @@ Deno.test("destination / rounding / demo spots", () => {
 Deno.test("local transcript: the pets' lines for the romper", () => {
   const lines = localTranscript("jo", "mina", { listingId: "l", itemName: "Yellow duck romper", size: "6-9M", priceCents: 1800, wearWeeksLeft: 4 }, 0);
   assertEquals(lines.map((l) => l.kind), ["looking_for", "have", "fit_check", "propose", "ack"]);
-  assertEquals(lines[3].text, "Trade proposal! $18.00 — nothing is charged until you both accept.");
+  assertEquals(lines[3].text, "Trade proposal! $18.00 — only the buyer needs to approve.");
   assertEquals(lines.map((l) => l.parentId), ["jo", "mina", "jo", "jo", "mina"]);
   // the buyer's pet ran the fit for its own child
   assertEquals(lines[2].text, "My little one fits it for about 4 more weeks.");
@@ -171,8 +171,12 @@ Deno.test("iMessage lines: short, plain, and every pay surface says demo payment
     `That's the romper, gently used (Tiny stain on the cuff). Fair price $18.00 (2nd owner pays 60% of $30.00) — reply "yes" to list it, or tell me a different condition.`);
   assert(t.quote("romper", "well_loved", 1, 1, 1, "x".repeat(200)).includes("x".repeat(79) + "…)"), "long notes are clipped");
   assertEquals(t.status([]), "All quiet: nothing listed and no open trades. Send a photo to pass something on.");
+  // HELP lists every command plus the photo / need hints and the buyer-only rule: plain, 2 sentences, a little longer.
+  const help = t.help();
+  assert(!/[*#`]/.test(help) && help.split(/[.!?] /).length <= 2 && help.length <= 250, `help: ${help}`);
+  assert(help.includes("trades complete after the buyer approves (demo only, no real charge)"), help);
   const all = [
-    t.hello("Pip"), t.help(), t.nudge("romper", "6-9M"), t.nudgeWhich(), t.askPhoto("romper"), t.askWhich(), t.photoWhich(),
+    t.hello("Pip"), t.nudge("romper", "6-9M"), t.nudgeWhich(), t.askPhoto("romper"), t.askWhich(), t.photoWhich(),
     t.quote("romper", "like_new", 1800, 3000, 1), t.pickCondition(), t.listedNow("romper", 1800, 3000, 1), t.cancelled(),
     t.nothingToCancel(), t.approveInApp(link), t.payInApp(link), t.stopped(), t.started("Pip"), t.pausedHelp(), t.slowDown(),
     t.status(["romper listed at $18.00"]),

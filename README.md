@@ -77,6 +77,34 @@ Each pet has its own personality: Button (Mina's) is tidy and warm, Pip (Jo's) c
 and thrifty. The voice changes how a pet says a line, never the item, the price or "nothing is charged until you both
 accept", and the voice itself never names a parent or a child. The agents read it from `agents/personality.py`, the
 app from `base44/shared/c/personality.ts`, and `parity_test.ts` checks that both say the same words.
+`local_demo.py --more-matches` also walks the three other seeded matches below (17 PASS checks).
+
+### Who matches with whom
+
+The seed (`DEMO_MATCHES` in `base44/shared/seed.ts`) gives every pair of families a match on Oct 18 (and on Sep 20),
+each at its fixed `priceFor` price and within the buyer's default pet rules:
+
+| Seller → buyer | Item | Price |
+|---|---|---|
+| Mina → Jo | Yellow duck romper (listed during the demo, after the Sep 20 nudge) | $18.00 |
+| Sam → Mina | Star puffer snowsuit | $33.60 |
+| Sam → Jo | Fleece bear jacket | $21.60 |
+| Mina → Sam | Spare star sleep sack | $19.20 |
+
+Mina and Sam match both ways. Mina and Jo match only through the romper, so before it is listed they have nothing
+for each other. The rules:
+
+- **Only a meeting where the two lists match opens a trade, on both phones.** A shared listing of one parent must fit
+  a shared need of the other, either way, before the buyer's pet rules (`Encounter.hasMatch`). Every meeting still
+  shows the pets' scene on `/world` (a no-match one ends with "Nothing fits today"), the agents still talk it
+  through, and the Agent Console shows them all.
+- **One trade per meeting, and the smaller parent id buys first**, whoever walked. The app's fallback and the Python
+  agents use the same rule. A pair that fits both ways trades the other way at its next meeting.
+- **A paid trade lets the pair meet again at once.** Otherwise a pair waits 2 min (demo) or 10 min between meetings,
+  but a meeting where nothing fit doesn't count.
+- **Demo walk picker:** in `?demo=1`, `/world` shows WALK TO under the walk button with the other two families.
+  `?walk=mina|jo|sam` picks one too, and the pick is remembered per tab. A walk that meets someone with nothing to
+  trade, or a pair that met a moment ago, ends with a toast saying so ("Your pets can meet again in 1:20").
 
 ---
 
@@ -127,7 +155,7 @@ How a request flows:
 | Route | Screen |
 |---|---|
 | `/` | Title screen, location explainer, "Who's playing?" picker, links to the Agent Console and impact |
-| `/world` | Map and radar, real GPS or the `?demo=1` "WALK TOWARD …" button, encounter scene, celebration |
+| `/world` | Map and radar, real GPS or the `?demo=1` "WALK TOWARD …" button and WALK TO picker (`?walk=`), encounter scene (the trade window opens only when the two lists match), celebration |
 | `/bag` | The closet: item slots, fit bar, nudges, needs, items passed on |
 | `/bag/needs` | What this family needs next: sizes, kinds, max price, and whether the pet may share it |
 | `/bag/add` | Snap to list: a photo of the item or its tag, the AI's guess, a check card, "Add to bag" |
@@ -144,9 +172,9 @@ How a request flows:
 
 ```bash
 npx tsc -p tsconfig.check.json                                   # typecheck (exit 0)
-npx vitest run                                                   # 22 files, 441 tests
-npx -y deno@2 test --no-lock -A base44/shared/c/                 # 71 Deno tests (iMessage, webhook, parity, personalities)
-agents/.venv/Scripts/python.exe -m pytest -q agents/tests        # 114 Python tests
+npx vitest run                                                   # 32 files, 562 tests
+npx -y deno@2 test --no-lock -A base44/shared/c/                 # 74 Deno tests (iMessage, webhook, parity, personalities)
+agents/.venv/Scripts/python.exe -m pytest -q agents/tests        # 137 Python tests
 agents/.venv/Scripts/python.exe agents/local_demo.py             # offline Fetch.ai story, 13 PASS checks
 ```
 

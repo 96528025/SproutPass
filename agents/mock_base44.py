@@ -18,6 +18,9 @@ Same methods as Base44Client. It mirrors what the agents really get back from th
   * Errors as C's handle() sends them: {error: "<action>: <code>: <message>"} with B's HTTP status → Base44Error
     with .status and .code. `rate_limit_next = n` makes the next n calls fail with RateLimited.
   * Parent ids are opaque (like Base44's), not the seed key: the app's ?as= takes the key, everything else the id.
+  * `more_matches=True` (opt-in) also seeds seed.ts's extra rows (MORE_ITEMS / MORE_LISTINGS / MORE_NEEDS), so every
+    pair of families has a match at Sep 20 and Oct 18 (MORE_MATCHES mirrors seed.ts DEMO_MATCHES). The default
+    MockBase44() is the original slice: the headline story's tests and local_demo.py's checks don't see the new rows.
 """
 
 from __future__ import annotations
@@ -68,6 +71,32 @@ def clean_agent_log(raw: Any, by: str = "fetch") -> List[Dict[str, Any]]:
         out.append(entry)
     return out
 PROPOSAL_TTL = timedelta(minutes=30)
+
+# ---- more matches (opt-in): the rows B's seed.ts adds so every pair of families can trade ----------------------
+# Same values as seed.ts; ids are stable (never nid()), so the default seed's id counter is untouched.
+MORE_ITEMS = (  # (id, owner key, name, category, icon, size, originalPriceCents, originalPurchaseDate, ownerCount)
+    ("snowsuit", "sam", "Star puffer snowsuit", "outerwear", "item_jacket", "9-12M", 5600, "2025-11-20T17:00:00.000Z", 1),
+    ("fleece", "sam", "Fleece bear jacket", "outerwear", "item_jacket", "6-9M", 3600, "2025-10-02T17:00:00.000Z", 1),
+    ("spare_sack", "mina", "Spare star sleep sack", "other", "item_sleepsack", "12-18M", 3200, "2025-11-15T17:00:00.000Z", 1),  # a duplicate shower gift, never worn
+)
+# Already listed when the demo starts: active, shared, conditionNote "", priceCents = price_for(item) (pricing.ts priceFor:
+# the 2nd owner pays 60%). Listed Sep 25, so none is 30 days old by Oct 18 (no listing_reminder nudge).
+MORE_LISTINGS = (("snowsuit", 3360, "gently_used"), ("fleece", 2160, "gently_used"), ("spare_sack", 1920, "like_new"))
+MORE_LISTED_AT = "2026-09-25T17:00:00.000Z"
+MORE_NEEDS = (  # (id, parent key, sizes, categories, maxPriceCents or None, createdAt); seeded after Jo's n_jo, which stays first
+    ("n_jo_coat", "jo", ["6-9M"], ["outerwear"], 2500, "2026-10-02T17:00:00.000Z"),
+    ("n_mina", "mina", ["9-12M"], ["outerwear"], None, "2026-10-03T17:00:00.000Z"),
+    ("n_sam", "sam", ["12-18M"], ["other", "top"], None, "2026-10-04T17:00:00.000Z"),
+)
+# seed.ts DEMO_MATCHES: who can buy what from whom once the rows above are in (the romper after it is listed in the demo),
+# before the buyer's pet rules. Every pair of families matches; Mina ↔ Sam both ways (one proposal per meeting, the
+# smaller parent id's need first); Mina ↔ Jo only the romper, so the headline story is untouched.
+MORE_MATCHES = (
+    {"seller": "mina", "buyer": "jo", "itemName": "Yellow duck romper", "afterListing": True},
+    {"seller": "sam", "buyer": "mina", "itemName": "Star puffer snowsuit"},
+    {"seller": "sam", "buyer": "jo", "itemName": "Fleece bear jacket"},
+    {"seller": "mina", "buyer": "sam", "itemName": "Spare star sleep sack"},
+)
 
 DEFAULT_MANDATE = {"agentMayPropose": True, "maxPriceCents": 5000, "monthlyBudgetCents": 10000, "categories": [], "requirePasskey": False}
 
@@ -145,10 +174,11 @@ def err(action: str, code: str, message: str, status: int) -> Base44Error:
 
 
 class MockBase44(Base44Client):
-    def __init__(self, ids: Optional[Dict[str, str]] = None, rich_trade_events: bool = False):
+    def __init__(self, ids: Optional[Dict[str, str]] = None, rich_trade_events: bool = False, more_matches: bool = False):
         super().__init__(base_url="mock://", agent_key="mock")
         self.pid: Dict[str, str] = {**DEFAULT_IDS, **(ids or {})}  # seed key → Parent id
         self.rich_trade_events = rich_trade_events
+        self.more_matches = more_matches  # + seed.ts's extra items, listings and needs (MORE_*)
         self.parents: Dict[str, Dict[str, Any]] = {}
         self.children: Dict[str, Dict[str, Any]] = {}
         self.items: Dict[str, Dict[str, Any]] = {}
@@ -194,14 +224,40 @@ class MockBase44(Base44Client):
             ("cardigan", "sam", "Oatmeal knit cardigan", "outerwear", "item_sweater", "12-18M", 4000, "2025-09-01T17:00:00.000Z", 3),
             ("sunhat", "sam", "Sunflower sun hat", "other", "item_hat", "18-24M", 1400, "2026-05-09T17:00:00.000Z", 1),
         ):
-            pid = self.pid[key]
-            child = next(c for c in self.children.values() if c["parentId"] == pid)
-            self.items[iid] = {"id": iid, "name": name, "category": cat, "icon": icon, "size": size, "originalPriceCents": cents,
-                               "originalPurchaseDate": bought, "ownerCount": owners, "currentOwnerId": pid, "childId": child["id"],
-                               "photos": [], "ownershipHistory": [{"ownerId": pid, "from": bought}],
-                               "predictedOutgrowDate": predict_outgrow(size, child["birthDate"], bought), "status": "in_closet"}
+            self._seed_item(iid, key, name, cat, icon, size, cents, bought, owners)
         self.needs["n_jo"] = {"id": "n_jo", "parentId": self.pid["jo"], "childId": "c_jo", "sizes": ["6-9M"],
                               "categories": ["top", "onesie"], "shared": True, "createdAt": "2026-10-01T17:00:00.000Z"}
+        if self.more_matches:
+            self._seed_more_matches()
+
+    def _seed_item(self, iid: str, key: str, name: str, cat: str, icon: str, size: str, cents: int, bought: str,
+                   owners: int) -> Dict[str, Any]:
+        """One ClothingItem row as seed.ts applySeed writes it: in the owner's closet, sized for the owner's child."""
+        pid = self.pid[key]
+        child = next(c for c in self.children.values() if c["parentId"] == pid)
+        self.items[iid] = {"id": iid, "name": name, "category": cat, "icon": icon, "size": size, "originalPriceCents": cents,
+                           "originalPurchaseDate": bought, "ownerCount": owners, "currentOwnerId": pid, "childId": child["id"],
+                           "photos": [], "ownershipHistory": [{"ownerId": pid, "from": bought}],
+                           "predictedOutgrowDate": predict_outgrow(size, child["birthDate"], bought), "status": "in_closet"}
+        return self.items[iid]
+
+    def _seed_more_matches(self) -> None:
+        """seed.ts's extra rows: three items that start out listed (applySeed: Listing + item → "listed") and three shared
+        needs. A listed item is not "in_closet", so the demo clock's outgrow scan skips it: Sep 20 still makes exactly one
+        nudge (the romper). Needs without a cap carry no maxPriceCents key, like Jo's n_jo (Need.maxPriceCents is optional)."""
+        for row in MORE_ITEMS:
+            self._seed_item(*row)
+        for iid, cents, condition in MORE_LISTINGS:
+            it = self.items[iid]
+            lid = f"listing_{iid}"
+            self.listings[lid] = {"id": lid, "itemId": iid, "sellerId": it["currentOwnerId"], "condition": condition, "conditionNote": "",
+                                  "priceCents": cents, "shared": True, "status": "active", "createdAt": MORE_LISTED_AT}
+            it["status"] = "listed"
+        for need_id, key, sizes, cats, cap, at in MORE_NEEDS:
+            pid = self.pid[key]
+            child = next(c for c in self.children.values() if c["parentId"] == pid)
+            self.needs[need_id] = {"id": need_id, "parentId": pid, "childId": child["id"], "sizes": list(sizes), "categories": list(cats),
+                                   **({"maxPriceCents": cap} if cap is not None else {}), "shared": True, "createdAt": at}
 
     # ---- helpers ------------------------------------------------------------
     def push(self, who: str, type_: str, payload: Dict[str, Any]) -> Dict[str, Any]:

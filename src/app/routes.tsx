@@ -28,7 +28,8 @@ const SnapToList = optional("../closet/SnapToList.tsx", "SnapToList", DevPagePla
 export const TradeWindow = optional<{ proposalId: string; onClose: () => void }>(
   "../trade/TradeWindow.tsx", "TradeWindow", TradeWindowPlaceholder);
 export const RelayLog = optional("../trade/RelayLog.tsx", "RelayLog", RelayLogPlaceholder, loading);
-export const TradeWatcher = optional("../trade/TradeWatcher.tsx", "TradeWatcher", TradeWatcherPlaceholder);
+// `hold`: the Shell holds the automatic pop while A's EncounterScene is up (the placeholder ignores it).
+export const TradeWatcher = optional<{ hold?: boolean }>("../trade/TradeWatcher.tsx", "TradeWatcher", TradeWatcherPlaceholder);
 
 function TradeRoute() {
   const { proposalId = "" } = useParams();

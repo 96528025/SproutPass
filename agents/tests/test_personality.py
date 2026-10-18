@@ -63,7 +63,7 @@ NEUTRAL_TALK = {
     "no_fit": "Nothing in my closet fits today.",
     "fit_weeks": "My little one fits it for about 4 more weeks.",
     "fit_size": "Size looks right for my little one.",
-    "propose": "Trade proposal! $18.00 — nothing is charged until you both accept.",
+    "propose": "Trade proposal! $18.00 — only the buyer needs to approve.",
     "ack": "Sounds good — over to the humans!",
     "not_needed": "Thanks, but that won't fit my little one.",
     "decline": f"Not this one — {WHY}",
@@ -104,7 +104,7 @@ def test_meeting_lines_have_the_pets_voice_and_keep_every_fact(pet):
     assert "nothing in my closet fits today." in lines["no_fit"].lower()
     assert "My little one fits it for about 4 more weeks." in lines["fit_weeks"]
     # the safety words, verbatim
-    assert "Trade proposal! $18.00 — nothing is charged until you both accept." in lines["propose"]
+    assert "Trade proposal! $18.00 — only the buyer needs to approve." in lines["propose"]
     assert "over to the humans" in lines["ack"] and lines["ack"].endswith(p["signOff"])
     assert lines["decline"].endswith(f"— {WHY}")
 
@@ -139,7 +139,7 @@ def test_no_personality_line_names_a_parent_or_a_child():
 
 def test_lines_about_deciding_paying_stopping_and_errors_have_no_voice():
     link = "https://sproutpass.test/trade/p1?as=jo"
-    assert w.accept_or_decline() == 'Just to be sure: reply "accept" or "decline". Nothing is charged until you both accept.'
+    assert w.accept_or_decline() == 'Just to be sure: reply "accept" or "decline". Only the buyer needs to approve.'
     assert w.declined() == "Declined — $0 charged, and the listing is back up."
     assert w.pay_in_app(link) == f"I never pay by text. Approve it in the app (demo payment · no real charge): {link}"
     assert w.stopped() == 'Okay, I\'ll stop texting. Text "start" anytime to turn me back on — your closet is still in the app.'

@@ -67,7 +67,7 @@ const NEUTRAL_TALK = {
   noFit: "Nothing in my closet fits today.",
   fitWeeks: "My little one fits it for about 4 more weeks.",
   fitSize: "Size looks right for my little one.",
-  propose: "Trade proposal! $18.00 — nothing is charged until you both accept.",
+  propose: "Trade proposal! $18.00 — only the buyer needs to approve.",
   ack: "Sounds good — over to the humans!",
   notNeeded: "Thanks, but that won't fit my little one.",
   decline: `Not this one — ${WHY}`,
@@ -111,7 +111,7 @@ Deno.test("each pet's meeting lines: its own voice, the same facts, the safety w
     assert(lines.fitWeeks.includes("My little one fits it for about 4 more weeks."), `${p.pet} fit weeks`);
     assert(lines.fitSize.includes("Size looks right for my little one."), `${p.pet} fit size`);
     // the propose line keeps the price and the safety words verbatim; the ack keeps "over to the humans"
-    assert(lines.propose.includes("Trade proposal! $18.00 — nothing is charged until you both accept."), `${p.pet} propose`);
+    assert(lines.propose.includes("Trade proposal! $18.00 — only the buyer needs to approve."), `${p.pet} propose`);
     assert(lines.ack.includes("over to the humans") && lines.ack.endsWith(p.signOff), `${p.pet} ack: hand-over + sign-off`);
     assert(lines.notNeeded.includes("won't fit my little one."), `${p.pet} notNeeded`);
     assert(lines.decline.endsWith(`— ${WHY}`), `${p.pet} decline keeps the reason`);
@@ -121,7 +121,7 @@ Deno.test("each pet's meeting lines: its own voice, the same facts, the safety w
 Deno.test("what each pet sounds like", () => {
   assertEquals(tl.ack("Button"), "Button: Sounds good — over to the humans! Folded and ready!");
   assertEquals(tl.have(ROMPER, "6-9M", "Button"), "Button: I have a Yellow duck romper in 6-9M, neatly folded.");
-  assertEquals(tl.propose(1800, "Pip"), "Pip: Ooh! Trade proposal! $18.00 — nothing is charged until you both accept.");
+  assertEquals(tl.propose(1800, "Pip"), "Pip: Ooh! Trade proposal! $18.00 — only the buyer needs to approve.");
   assertEquals(tl.fitCheck(4, "Pip"), "Pip: Sniff sniff! My little one fits it for about 4 more weeks.");
   assertEquals(tl.have(ROMPER, "6-9M", "Moss"), "Moss: I have a Yellow duck romper in 6-9M, ready for a second life.");
   assertEquals(tl.ack("Moss"), "Moss: Sounds good — over to the humans! Good for the planet, too.");
@@ -182,7 +182,7 @@ Deno.test("no personality line ever names a parent or a child (only pets' names)
 
 Deno.test("the lines about accepting, declining, paying, STOP, errors and rate limits have no voice", () => {
   // They take no pet: every pet sends exactly these words.
-  assertEquals(t.acceptOrDecline(), `Just to be sure: reply "accept" or "decline". Nothing is charged until you both accept.`);
+  assertEquals(t.acceptOrDecline(), `Just to be sure: reply "accept" or "decline". Only the buyer needs to approve.`);
   assertEquals(t.declined(), "Declined — $0 charged, and the listing is back up.");
   assertEquals(t.notYet(), "Both of you need to accept first — nothing is charged until then.");
   assertEquals(t.payInApp(LINK), `I never pay by text. Approve it in the app (demo payment · no real charge): ${LINK}`);
@@ -192,7 +192,7 @@ Deno.test("the lines about accepting, declining, paying, STOP, errors and rate l
   assertEquals(t.busy(), "The app is busy right now — give me a minute and try again.");
   assertEquals(t.slowDown(), "That's a lot of texts at once! Give me a minute and I'll catch up.");
   assertEquals(t.proposal(ROMPER, 1800, 3000, 1, "Pip"),
-    `Pip and I found a match: the Yellow duck romper for $18.00 (2nd owner pays 60% of $30.00). Nothing is charged until you both accept — reply "accept" or "decline".`);
+    `Pip and I found a match: the Yellow duck romper for $18.00 (2nd owner pays 60% of $30.00). Final price agreed. Reply "approve" or "decline". Only the buyer approves; demo only, no real charge.`);
 });
 
 Deno.test("unlabelled: the same voice without the 'Pip: ' prefix, and the bubbles read the label back the same way", () => {
@@ -214,7 +214,7 @@ Deno.test("the local fallback's lines: each pet's voice, unlabelled (AgentBubble
     "Looking for 6-9M! Got any?",
     "I have a Yellow duck romper in 6-9M, neatly folded.",
     "Sniff sniff! My little one fits it for about 4 more weeks.",
-    "Ooh! Trade proposal! $18.00 — nothing is charged until you both accept.",
+    "Ooh! Trade proposal! $18.00 — only the buyer needs to approve.",
     "Sounds good — over to the humans! Folded and ready!",
   ]);
   assertEquals(lines.map((l) => l.parentId), ["jo", "mina", "jo", "jo", "mina"]);

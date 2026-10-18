@@ -505,13 +505,13 @@ function EmptyState() {
       <h3 className="ac-card__title">No encounters yet</h3>
       <p className="ac-card__lede">This screen lights up the moment two parents' pets meet. To make that happen:</p>
       <ol className="ac-steps">
-        <li>As Mina, put something up for hand-me-down from her bag{USE_MOCK ? " (demo: move the clock to Sep 20, answer the romper nudge with Sell, list it, then move the clock to Oct 18)" : ""}.</li>
-        <li>Open Jo's world in demo mode and tap <b>Walk toward Mina</b> (or walk within 25 m for real).</li>
+        <li>As Caesar, put something up for hand-me-down from her bag{USE_MOCK ? " (demo: move the clock to Sep 20, answer the romper nudge with Sell, list it, then move the clock to Oct 18)" : ""}.</li>
+        <li>Open Olivia's world in demo mode and tap <b>Walk toward Caesar</b> (or walk within 25 m for real).</li>
         <li>Within 25 m their agents meet, and the conversation shows up here, live.</li>
       </ol>
       <div className="ac-empty__actions">
-        <a className="ac-link" href="/world?as=jo&demo=1" target="_blank" rel="noreferrer">Open Jo's world →</a>
-        <a className="ac-link" href="/bag?as=mina&demo=1" target="_blank" rel="noreferrer">Open Mina's bag →</a>
+        <a className="ac-link" href="/world?as=jo&demo=1" target="_blank" rel="noreferrer">Open Olivia's world →</a>
+        <a className="ac-link" href="/bag?as=mina&demo=1" target="_blank" rel="noreferrer">Open Caesar's bag →</a>
       </div>
     </section>
   );

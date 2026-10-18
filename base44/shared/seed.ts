@@ -35,14 +35,27 @@ export const DEMO_DATES = {
   meet: "2026-10-18T17:00:00.000Z",
 } as const;
 
+/**
+ * Every match the seed makes possible, checked against the real matcher at Sep 20 and Oct 18
+ * (matchUseCases.test.ts). Every pair of families matches at the meet: Mina and Sam both ways, Jo and Sam one
+ * way, Mina and Jo only through the romper (listed during the demo, after the Sep 20 nudge), so the headline
+ * story has no reverse match. Each buyer's default pet rules ($50 a trade, $100 a month) allow it.
+ */
+export const DEMO_MATCHES: readonly { seller: string; buyer: string; itemName: string; afterListing?: true }[] = [
+  { seller: "mina", buyer: "jo", itemName: "Yellow duck romper", afterListing: true },
+  { seller: "sam", buyer: "mina", itemName: "Star puffer snowsuit" },
+  { seller: "sam", buyer: "jo", itemName: "Fleece bear jacket" },
+  { seller: "mina", buyer: "sam", itemName: "Spare star sleep sack" },
+];
+
 export function seedPlan(env: SeedEnv = {}): SeedPlan {
   return {
     parents: [
-      { key: "mina", name: "Mina", avatar: { sprite: "parent_a", palette: "peach" }, pet: { sprite: "pet_a", name: "Button" },
+      { key: "mina", name: "Caesar", avatar: { sprite: "parent_a", palette: "peach" }, pet: { sprite: "pet_a", name: "Button" },
         phone: env.MINA_PHONE, agentAddress: env.MINA_AGENT, discoverable: true },
-      { key: "jo", name: "Jo", avatar: { sprite: "parent_b", palette: "mint" }, pet: { sprite: "pet_b", name: "Pip" },
+      { key: "jo", name: "Olivia", avatar: { sprite: "parent_b", palette: "mint" }, pet: { sprite: "pet_b", name: "Pip" },
         phone: env.JO_PHONE, agentAddress: env.JO_AGENT, discoverable: true },
-      { key: "sam", name: "Sam", avatar: { sprite: "parent_c", palette: "lav" }, pet: { sprite: "pet_c", name: "Moss" },
+      { key: "sam", name: "Freja", avatar: { sprite: "parent_c", palette: "lav" }, pet: { sprite: "pet_c", name: "Moss" },
         phone: env.SAM_PHONE, agentAddress: env.SAM_AGENT, discoverable: true },
     ],
     children: [
@@ -51,7 +64,8 @@ export function seedPlan(env: SeedEnv = {}): SeedPlan {
       { parentKey: "sam", nickname: "Sprout", birthDate: "2025-06-01T00:00:00.000Z" },
     ],
     // Only the romper may enter its outgrow window (outgrow − 14 days) by Sep 20 or Oct 18, so the demo
-    // clock creates exactly one nudge. Everything else is a current-or-next size for its child.
+    // clock creates exactly one nudge. Everything else is a current-or-next size for its child, or already
+    // listed (outgrow_check only looks at in_closet items): the three DEMO_MATCHES items below.
     items: [
       // Mina · Bean (born 2025-12-10)
       { ownerKey: "mina", name: "Yellow duck romper", category: "onesie", icon: "item_romper", size: "6-9M",
@@ -70,6 +84,11 @@ export function seedPlan(env: SeedEnv = {}): SeedPlan {
         originalPriceCents: 3600, originalPurchaseDate: "2025-08-15T17:00:00.000Z", ownerCount: 2,
         formerOwners: [{ ownerId: "sam", from: "2025-08-15T17:00:00.000Z", to: "2026-04-28T17:00:00.000Z" }],
         ownedSince: "2026-04-28T17:00:00.000Z", paidCents: 2160 },
+      // A duplicate baby-shower gift (bought before Bean was born), never worn: listed from the start (below) for
+      // Sam's 12-18M need. Like every seeded item it is Mina's before the RESET date (May 15), where it already fits
+      // Sprout: a trade on that date is a coherent one (matchUseCases.test.ts).
+      { ownerKey: "mina", name: "Spare star sleep sack", category: "other", icon: "item_sleepsack", size: "12-18M",
+        originalPriceCents: 3200, originalPurchaseDate: "2025-11-15T17:00:00.000Z", ownerCount: 1 },
 
       // Jo · Pea (born 2026-03-01)
       { ownerKey: "jo", name: "Mint onesie three-pack", category: "onesie", icon: "item_onesie", size: "6-9M",
@@ -101,10 +120,29 @@ export function seedPlan(env: SeedEnv = {}): SeedPlan {
         originalPriceCents: 5200, originalPurchaseDate: "2026-04-25T17:00:00.000Z", ownerCount: 1 },
       { ownerKey: "sam", name: "Sunflower sun hat", category: "other", icon: "item_hat", size: "18-24M",
         originalPriceCents: 1400, originalPurchaseDate: "2026-05-09T17:00:00.000Z", ownerCount: 1 },
+      // Sprout outgrew these: listed from the start (below), one for Mina's 9-12M need, one for Jo's 6-9M need.
+      { ownerKey: "sam", name: "Star puffer snowsuit", category: "outerwear", icon: "item_jacket", size: "9-12M",
+        originalPriceCents: 5600, originalPurchaseDate: "2025-11-20T17:00:00.000Z", ownerCount: 1 },
+      { ownerKey: "sam", name: "Fleece bear jacket", category: "outerwear", icon: "item_jacket", size: "6-9M",
+        originalPriceCents: 3600, originalPurchaseDate: "2025-10-02T17:00:00.000Z", ownerCount: 1 },
     ],
-    listings: [],
+    // Shared and active from the start, so every pair of families has a match at the meet (DEMO_MATCHES).
+    // priceCents = priceFor(item) (2nd owner pays 60%). createdAt Sep 25: under 30 days old on Oct 18, so the
+    // demo clock never adds a listing_reminder and still creates exactly one nudge (the romper at Sep 20).
+    listings: [
+      { itemName: "Star puffer snowsuit", condition: "gently_used", conditionNote: "", priceCents: 3360, shared: true,
+        status: "active", createdAt: "2026-09-25T17:00:00.000Z" },
+      { itemName: "Fleece bear jacket", condition: "gently_used", conditionNote: "", priceCents: 2160, shared: true,
+        status: "active", createdAt: "2026-09-25T17:00:00.000Z" },
+      { itemName: "Spare star sleep sack", condition: "like_new", conditionNote: "", priceCents: 1920, shared: true,
+        status: "active", createdAt: "2026-09-25T17:00:00.000Z" },
+    ],
+    // Jo's top/onesie need stays first: it is the one the romper (the headline story) fills.
     needs: [
       { parentKey: "jo", sizes: ["6-9M"], categories: ["top", "onesie"], shared: true, createdAt: "2026-10-01T17:00:00.000Z" },
+      { parentKey: "jo", sizes: ["6-9M"], categories: ["outerwear"], maxPriceCents: 2500, shared: true, createdAt: "2026-10-02T17:00:00.000Z" },
+      { parentKey: "mina", sizes: ["9-12M"], categories: ["outerwear"], shared: true, createdAt: "2026-10-03T17:00:00.000Z" },
+      { parentKey: "sam", sizes: ["12-18M"], categories: ["other", "top"], shared: true, createdAt: "2026-10-04T17:00:00.000Z" },
     ],
     setting: { key: "demo", now: DEMO_DATES.start, matchVia: "fetch", imessage: true },
   };

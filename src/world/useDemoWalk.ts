@@ -1,8 +1,9 @@
 // A4: ?demo=1 only. "WALK TOWARD …" calls C's demoWalk (B's api → base44/functions/demoWalk) every 2.5 s, which
 // moves this parent's SIMULATED presence 20 m toward the target and runs the same encounter check as updatePresence.
-//   - the first call of each walk passes reset: true (C puts the walker 120 m north of the target), so a walk is
-//     6 calls / ~13 s: 120 → 100 → 80 → 60 → 40 → 20 m (Base44's Free-plan rate limit is shared by the whole team);
+//   - every step continues from the saved position; switching targets or resuming never resets the walker.
 //   - the walk ends when the encounter shows up (or the target is <= 25 m away): the parent has "arrived";
+//   - matching and no-match meetings both stop the walk and show the shared conversation.
+//     A pair still in its cooldown ends with a short note instead.
 //   - after arriving, a slow hold tick (every 4 s, 1 m) keeps C's local fallback ticking (it resolves a meeting
 //     still "talking" after 8 s) and the simulated presence fresh, instead of updatePresence (`owns` = true: useGps
 //     pauses its heartbeat). It stops as soon as the encounter is resolved (proposed / no_match), or after 30 s at
@@ -15,7 +16,7 @@
 // sessionStorage. (A demoWalk that took the target's seed key would make that fallback unnecessary: NEEDS.)
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api, ApiError } from "@/app/api";
-import type { NearbyParent } from "@/app/types";
+import type { DemoPosition, EncounterStart, NearbyParent, PairCooldown } from "@/app/types";
 import { seedName } from "@/world/people";
 
 export type WalkPhase = "idle" | "walking" | "arrived" | "done";
@@ -28,6 +29,7 @@ const HOLD_MAX_MS = 30_000;
 const ARRIVED_M = 25;
 const MAX_BACKOFF_MS = 15_000;
 const IDS_KEY = "relay:world:parentIds";
+let noteSeq = 0;
 
 // ---- seed key → real Parent id, cached per tab --------------------------------------------------------------------
 
@@ -71,6 +73,71 @@ async function resolveParentId(key: string, nearby: NearbyParent[]): Promise<str
   return p;
 }
 
+// ---- what a walk tick's answer means (pure) -----------------------------------------------------------------------
+
+/** The part of demoWalk's answer the walk reads (DemoWalkRes). */
+export interface WalkTick {
+  distanceM?: number;
+  encounters?: readonly Pick<EncounterStart, "peerId" | "hasMatch">[];
+  cooldown?: readonly PairCooldown[];
+}
+
+/** Why a walk ended with no scene: shown on /world as a Toast (UI copy, so a name is fine; never in agent lines). */
+export type WalkNote =
+  | { kind: "no_fit"; peerId: string; name: string | null }
+  | { kind: "cooldown"; peerId: string; name: string | null; retryInS: number };
+
+export interface WalkStep {
+  /** walk on / arrive (start the hold) / keep holding / the walk is over */
+  next: "walk" | "arrive" | "hold" | "done";
+  note?: { kind: "no_fit"; peerId: string } | { kind: "cooldown"; peerId: string; retryInS: number };
+}
+
+/**
+ * One tick's answer → the walk's next phase. `phase`: the tick was a walk step or an after-arrival hold tick.
+ * A meeting that fits (or might: hasMatch undefined) arrives as before: the scene pops through useEncounter. When
+ * every meeting this tick started has nothing that fits, the walk ends with a note (it goes on when that was only
+ * someone passed on the way); at the target (<= 25 m) a pair cooldown ends it with a note too. The target's entry
+ * wins when there are several.
+ */
+export function walkStep(res: WalkTick, phase: "walking" | "arrived", targetId: string | null): WalkStep {
+  const encounters = res.encounters ?? [];
+  const arrived = typeof res.distanceM === "number" && res.distanceM <= ARRIVED_M;
+  const ofTarget = <T extends { peerId: string }>(list: readonly T[]) => list.find((x) => x.peerId === targetId) ?? list[0];
+  // Both outcomes get the same meeting on both screens; no-match is a result,
+  // not a reason to hide the encounter or stop its negotiation ticks.
+  if (encounters.length) return { next: phase === "walking" ? "arrive" : "hold" };
+  const cooldown = res.cooldown ?? [];
+  if (arrived && cooldown.length) {
+    const c = ofTarget(cooldown);
+    return { next: "done", note: { kind: "cooldown", peerId: c.peerId, retryInS: c.retryInS } };
+  }
+  if (phase === "walking") return { next: arrived ? "arrive" : "walk" };
+  return { next: "hold" };
+}
+
+/** Seconds → "1:20" from a minute up, "45 s" below. */
+export function waitLabel(seconds: number): string {
+  const s = Math.max(0, Math.ceil(seconds));
+  return s >= 60 ? `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}` : `${s} s`;
+}
+
+/** The Toast line for a walk that ended with no scene. */
+export function walkNoteText(note: WalkNote): string {
+  const who = note.name ?? "another family";
+  return note.kind === "no_fit"
+    ? `You met ${who}. Nothing on either list fits right now.`
+    : `You met ${who} a moment ago. Your pets can meet again in ${waitLabel(note.retryInS)}.`;
+}
+
+/** A peer's name for the note: the walk's target, another seed family this tab resolved, else the radar's entry. */
+function nameOf(peerId: string, targetKey: string, targetId: string, nearby: NearbyParent[]): string | null {
+  if (peerId === targetId) return seedName(targetKey);
+  const key = Object.keys(ids).find((k) => ids[k] === peerId);
+  if (key) return seedName(key);
+  return nearby.find((p) => p.parentId === peerId)?.name ?? null;
+}
+
 // ---- the hook --------------------------------------------------------------------------------------------------------
 
 export interface DemoWalk {
@@ -84,6 +151,11 @@ export interface DemoWalk {
   targetId: string | null;
   /** Last distance to the target reported by demoWalk, metres. */
   distanceM: number | null;
+  position: DemoPosition | null;
+  bearingDeg: number | null;
+  /** Why the last walk ended with no scene (nothing fits / they met a moment ago); `seq` changes per note. */
+  note: (WalkNote & { seq: number }) | null;
+  clearNote: () => void;
   start: () => void;
   stop: () => void;
 }
@@ -102,8 +174,11 @@ export function useDemoWalk(parentId: string | null, targetKey: string, { enable
   const [state, setState] = useState<WalkPhase>("idle");
   const [targetId, setTargetId] = useState<string | null>(() => ids[targetKey] ?? null);
   const [distanceM, setDistanceM] = useState<number | null>(null);
+  const [location, setLocation] = useState<{ parentId: string; position: DemoPosition } | null>(null);
+  const [bearing, setBearing] = useState<number | null>(null);
+  const [note, setNote] = useState<(WalkNote & { seq: number }) | null>(null);
   const [visible, setVisible] = useState(() => typeof document === "undefined" || document.visibilityState === "visible");
-  const fresh = useRef(true); // next walk call passes reset: true
+  const inFlight = useRef(false);
   const arrivedAt = useRef(0);
 
   useEffect(() => {
@@ -116,6 +191,8 @@ export function useDemoWalk(parentId: string | null, targetKey: string, { enable
   useEffect(() => {
     setState("idle");
     setDistanceM(null);
+    setBearing(null);
+    setNote(null);
     setTargetId(ids[targetKey] ?? null);
   }, [parentId, targetKey, enabled]);
 
@@ -146,26 +223,35 @@ export function useDemoWalk(parentId: string | null, targetKey: string, { enable
     const base = walking ? WALK_MS : HOLD_MS;
     let wait = base;
     const tick = async () => {
+      if (inFlight.current) {
+        timer = window.setTimeout(tick, base);
+        return;
+      }
+      inFlight.current = true;
       try {
         const target = await resolveParentId(targetKey, nearby.current);
         if (!alive) return;
         setTargetId(target);
-        const reset = walking && fresh.current;
         const res = await api.demoWalk({
           parentId,
           targetParentId: target,
-          ...(reset ? { reset: true } : { stepM: walking ? WALK_STEP_M : HOLD_STEP_M }),
+          stepM: walking ? WALK_STEP_M : HOLD_STEP_M,
         });
-        if (reset) fresh.current = false;
         if (!alive) return;
+        if (res.position) setLocation({ parentId, position: res.position });
+        if (typeof res.bearingDeg === "number") setBearing(res.bearingDeg);
         wait = base;
-        if (typeof res?.distanceM === "number") {
-          setDistanceM(res.distanceM);
-          if (walking && (res.distanceM <= ARRIVED_M || (res.encounters?.length ?? 0) > 0)) {
-            arrivedAt.current = Date.now();
-            setState("arrived");
-            return; // the hold loop takes over (its first tick comes HOLD_MS later)
-          }
+        if (typeof res?.distanceM === "number") setDistanceM(res.distanceM);
+        const step = walkStep(res ?? {}, walking ? "walking" : "arrived", target);
+        if (step.note) setNote({ ...step.note, name: nameOf(step.note.peerId, targetKey, target, nearby.current), seq: ++noteSeq });
+        if (step.next === "arrive") {
+          arrivedAt.current = Date.now();
+          setState("arrived");
+          return; // the hold loop takes over (its first tick comes HOLD_MS later)
+        }
+        if (step.next === "done") {
+          setState("done"); // nothing will pop: no hold ticks, useGps' keepalive takes over
+          return;
         }
       } catch (e) {
         // a stale cached id (re-seeded db) → resolve it again next time
@@ -174,10 +260,12 @@ export function useDemoWalk(parentId: string | null, targetKey: string, { enable
           setTargetId(null);
         }
         wait = Math.min(MAX_BACKOFF_MS, wait * 2);
+      } finally {
+        inFlight.current = false;
       }
       if (alive) timer = window.setTimeout(tick, wait);
     };
-    // A walk steps at once (the reset call puts the walker on the start line); the hold waits a beat first.
+    // A walk steps at once; the hold waits a beat first.
     timer = window.setTimeout(tick, walking ? 0 : HOLD_MS);
     return () => {
       alive = false;
@@ -186,11 +274,11 @@ export function useDemoWalk(parentId: string | null, targetKey: string, { enable
   }, [enabled, parentId, targetKey, visible, state, ticking, nearby]);
 
   const start = useCallback(() => {
-    fresh.current = true;
-    setDistanceM(null);
+    setNote(null);
     setState("walking");
   }, []);
   const stop = useCallback(() => setState("idle"), []);
+  const clearNote = useCallback(() => setNote(null), []);
 
   const phase: WalkPhase = enabled ? state : "idle";
   return {
@@ -199,6 +287,10 @@ export function useDemoWalk(parentId: string | null, targetKey: string, { enable
     owns: phase === "walking" || phase === "arrived",
     targetId,
     distanceM,
+    position: location?.parentId === parentId ? location.position : null,
+    bearingDeg: bearing,
+    note: enabled ? note : null,
+    clearNote,
     start,
     stop,
   };

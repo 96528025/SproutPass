@@ -100,12 +100,17 @@ def test_short_date_works_on_every_os():
 
 
 def test_lines_are_short_and_plain():
-    for fn, args in [(w.nudge, ("romper", "6-9M")), (w.listed, (1800, 3000, 1)), (w.proposal, ("romper", 1800, 3000, 1, "Pip")),
+    for fn, args in [(w.nudge, ("romper", "6-9M")), (w.listed, (1800, 3000, 1)),
                      (w.completed, ("romper", "Nov 17")), (w.declined, ()), (w.hello, ("Button",)), (w.expired, ()),
                      (w.payment_failed, ()), (w.not_yet, ()), (w.already_listed, ("romper", 1800)), (w.t_hello, ("Button",))]:
         line = fn(*args)
         assert "*" not in line and "#" not in line, line  # no markdown in iMessage
         assert line.count(". ") <= 2, line  # ≤ 2 sentences-ish
+    # The final offer also carries the buyer-only approval and the demo note (wording.ts t.proposal): plain, one more
+    # short sentence, and it always says it is a demo with no real charge.
+    offer = w.proposal("romper", 1800, 3000, 1, "Pip")
+    assert "*" not in offer and "#" not in offer and offer.count(". ") <= 3, offer
+    assert 'Reply "approve" or "decline"' in offer and offer.endswith("demo only, no real charge."), offer
 
 
 # ---- cards -----------------------------------------------------------------
@@ -259,7 +264,7 @@ def test_relay_mina_opens_and_the_roles_swap(app, brains):
         "Pip: Looking for 6-9M top or onesie! Got any?",
         "Button: I have a Yellow duck romper in 6-9M, neatly folded.",
         "Pip: Sniff sniff! My little one fits it for about 4 more weeks.",
-        "Pip: Ooh! Trade proposal! $18.00 — nothing is charged until you both accept.",
+        "Pip: Ooh! Trade proposal! $18.00 — only the buyer needs to approve.",
         "Button: Sounds good — over to the humans! Folded and ready!",
     ]
     assert {x["parentId"] for x in t if x["text"].startswith("Button")} == {app.id("mina")}

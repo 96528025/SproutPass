@@ -30,7 +30,9 @@ function Slot(p: { item?: ClothingItem; selected?: boolean; passed?: boolean; al
   return (
     <button type="button" aria-label={label} aria-pressed={p.selected}
       className={`b-slot${p.selected ? " selected" : ""}${p.passed ? " passed" : ""}`} onClick={p.onSelect}>
-      {isItemIconName(p.item.icon)
+      {p.item.photos?.[0]
+        ? <img src={p.item.photos[0]} alt={p.item.name} style={{ width: "85%", height: "75%", objectFit: "contain", borderRadius: 6 }} />
+        : isItemIconName(p.item.icon)
         ? <span className="b-slot-icon"><ItemIcon icon={p.item.icon} size={1} /></span>
         : <span className="b-slot-name">{shortName(p.item)}</span>}
       {badge && <span className={`b-badge ${badge.cls}`}>{badge.label}</span>}
