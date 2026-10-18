@@ -6,7 +6,8 @@ function assert(c: unknown, msg = "assert"): asserts c { if (!c) throw new Error
 function assertEquals(a: unknown, b: unknown) { const x = JSON.stringify(a), y = JSON.stringify(b); if (x !== y) throw new Error(`expected ${y} got ${x}`); }
 import { inboundParentPatch, senderLineFor } from "./lines.ts";
 import { parseInbound } from "./photon.ts";
-import { sendToParent } from "./imessage.ts";
+import { OUTBOUND_PER_MINUTE, outboundAllowed, resetOutboundLimiter, sendToParent } from "./imessage.ts";
+import { redactPhones } from "./wording.ts";
 import { recordInbound } from "./inbound.ts";
 
 // ---- fakes ------------------------------------------------------------------------------------------------------
@@ -218,4 +219,45 @@ Deno.test("guards still win: iMessage off, phone not in SEED_PHONES", async () =
     assertEquals((await sendToParent(on, MINA.id, "x")).skipped, "phone not in SEED_PHONES");
     assertEquals(sent.length, 0);
   }, { env: { SEED_PHONES: JO.phone } });
+});
+
+// ---- trust: STOP, phone numbers, the outbound cap ----------------------------------------------------------------
+
+const KNOWN = { ...MINA, photonLineUserId: "L_A", photonSpaceId: "sp", photonUserId: "u" };
+
+Deno.test("a parent who texted STOP gets no iMessage (the in-app pet still speaks), except the HELP answer", async () => {
+  resetOutboundLimiter();
+  const db = fakeDb([{ ...KNOWN, convo: { step: "idle", optedOut: true } }], setting());
+  await withPhoton(async (sent) => {
+    assertEquals(await sendToParent(db, MINA.id, "Pip found a match!"), { sent: false, skipped: "parent texted STOP" });
+    assertEquals(sent.length, 0);
+    assertEquals(db.petLines.map((l) => l.text), ["Pip found a match!"]);
+    assert((await sendToParent(db, MINA.id, "I'm paused.", undefined, { evenIfOptedOut: true })).sent);
+    assertEquals(messages(sent).length, 1);
+  });
+});
+
+Deno.test("phone numbers are masked before they leave (links untouched)", async () => {
+  resetOutboundLimiter();
+  const db = fakeDb([KNOWN], setting());
+  await withPhoton(async (sent) => {
+    assert((await sendToParent(db, MINA.id, "Jo is at +1 (424) 555-0102, link https://app/trade/p_14245550102?as=jo")).sent);
+    assertEquals(messages(sent)[0].body.content.text, "Jo is at [number hidden], link https://app/trade/p_14245550102?as=jo");
+    assertEquals(db.petLines[0].text, "Jo is at [number hidden], link https://app/trade/p_14245550102?as=jo");
+  });
+  assertEquals(redactPhones("call 310.555.0100 or 13105550100 or +44 20 7946 0958"), "call [number hidden] or [number hidden] or [number hidden]");
+  assertEquals(redactPhones("$18.00 on Nov 17 (2nd owner pays 60% of $30.00), 2026-10-18"), "$18.00 on Nov 17 (2nd owner pays 60% of $30.00), 2026-10-18");
+});
+
+Deno.test("outbound cap: OUTBOUND_PER_MINUTE texts per parent per minute, then skipped (not queued)", async () => {
+  resetOutboundLimiter();
+  const db = fakeDb([KNOWN], setting());
+  await withPhoton(async (sent) => {
+    for (let i = 0; i < OUTBOUND_PER_MINUTE; i++) assert((await sendToParent(db, MINA.id, `line ${i}`)).sent);
+    assertEquals(await sendToParent(db, MINA.id, "one too many"), { sent: false, skipped: "rate limited" });
+    assertEquals(messages(sent).length, OUTBOUND_PER_MINUTE);
+  });
+  assert(outboundAllowed(MINA.id, Date.now() + 61_000), "a minute later it may text again");
+  assert(outboundAllowed("someone_else"), "the cap is per parent");
+  resetOutboundLimiter();
 });

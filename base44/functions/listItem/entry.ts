@@ -2,4 +2,11 @@
 import { wrap } from "../../shared/http.ts";
 import { listItem, withRetry } from "../../shared/logic/closet.ts";
 import type { ListItemReq } from "../../shared/types.ts";
-export default wrap((db, body: ListItemReq) => listItem(withRetry(db), body));
+import { sendEventTexts } from "../../shared/c/inboxFallback.ts";
+// After the action, send the pet texts it caused right away (accepted / paid + flowers GIF / nudges); best effort.
+export default wrap(async (raw, body: ListItemReq) => {
+  const db = withRetry(raw);
+  const r = await listItem(db, body);
+  await sendEventTexts(db);
+  return r;
+});
