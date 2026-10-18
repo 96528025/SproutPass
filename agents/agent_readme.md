@@ -101,7 +101,8 @@ Each process has its own budget, so give each one `CALLS_PER_MIN=3` when all thr
   `claim mina-0000` (last 4 of the phone once phones are seeded). Cards render only in ASI:One.
 - **Photon iMessage**: Base44 secrets `PHOTON_API_KEY`, `PHOTON_PROJECT_ID`, `WEBHOOK_KEY`, optional
   `SEED_PHONES`, and `APP_HOST`; `MINA_PHONE` / `JO_PHONE` / `SAM_PHONE` + one `demoReset`; the Photon
-  webhook pointed at `/functions/photonWebhook?k=<WEBHOOK_KEY>`; `Setting.imessage = true`; then text the
-  line "hi" once so the app learns its `lineUserId`. Until then `sendImessage` still writes the in-app PetLine.
+  webhook pointed at `/functions/photonWebhook?k=<WEBHOOK_KEY>`; `Setting.imessage = true`; one shared-pool assignment per demo
+  phone; then each phone texts "hi" to its own assigned number, so the app learns that parent's line
+  (`Parent.photonLineUserId`). Until then `sendImessage` only writes the in-app PetLine.
 - **Seed addresses (optional)**: `python live_bureau.py --addresses` prints `MINA_AGENT=…` lines for B's seed
   secrets. Not required: the runner registers its addresses itself.

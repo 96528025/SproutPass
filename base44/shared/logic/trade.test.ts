@@ -396,7 +396,7 @@ describe("inbox", () => {
 });
 
 describe("getParties", () => {
-  const PRIVATE = ["phone", "photonUserId", "photonSpaceId", "convo", "asiAddress", "key", "agentAddress", "discoverable"];
+  const PRIVATE = ["phone", "photonUserId", "photonSpaceId", "photonLineUserId", "convo", "asiAddress", "key", "agentAddress", "discoverable"];
 
   it("returns each party's public card, in the order asked", async () => {
     const res = await getParties(db, { parentIds: [ids.jo, ids.mina] });
@@ -408,13 +408,13 @@ describe("getParties", () => {
 
   it("never includes phone, Photon ids, convo or ASI address", async () => {
     await db.Parent.update(ids.mina, {
-      phone: "+15551234567", photonUserId: "pu_1", photonSpaceId: "ps_1",
+      phone: "+15551234567", photonUserId: "pu_1", photonSpaceId: "ps_1", photonLineUserId: "pl_1",
       convo: { step: "claim" }, asiAddress: "asi1qmina", agentAddress: "agent1qmina",
     });
     const [mina] = await getParties(db, { parentIds: [ids.mina] });
     expect(Object.keys(mina).sort()).toEqual(["avatar", "id", "name", "pet"]);
     for (const k of PRIVATE) expect(mina).not.toHaveProperty(k);
-    expect(JSON.stringify(mina)).not.toMatch(/\+1555|pu_1|ps_1|claim|asi1q|agent1q/);
+    expect(JSON.stringify(mina)).not.toMatch(/\+1555|pu_1|ps_1|pl_1|claim|asi1q|agent1q/);
   });
 
   it("skips unknown ids and dedupes", async () => {

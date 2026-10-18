@@ -1,17 +1,18 @@
 // (C) photonWebhook — iMessage in. Photon POSTs `message.received` here.
 // URL: https://<slug>.base44.app/functions/photonWebhook?k=<WEBHOOK_KEY>
 //
-// Does as little as possible and returns 200 fast (Photon retries on non-2xx):
-//   1. parse the event, map sentBy.handle → Parent (ignore unknown numbers, rule 12)
-//   2. attachments → Photon content → Base44 UploadFile → url
-//   3. remember the line's own user id (Setting.lineUserId) the first time
-//   4. write AgentInbox{type:"imessage"} for the Python agent to claim
-//   5. write a "fallback due" marker: if the agent hasn't marked it done in 5 s,
-//      the next sendImessage/agentApi tick answers with a template line.
+// Does as little as possible and returns 200 fast (Photon retries on non-2xx). Per message (shared/c/inbound.ts):
+//   1. dedupe on the Photon message id, map sentBy.handle → Parent (ignore unknown numbers, rule 12)
+//   2. remember the parent's Photon user, space and the line they texted (Parent.photonLineUserId): Photon's
+//      shared pool gives each phone its own number, and the pet must answer from it
+//   3. attachments → Photon content → Base44 UploadFile → url
+//   4. write AgentInbox{type:"imessage"} for the Python agent to claim; if nobody has answered in 5 s the next
+//      updatePresence/demoWalk/agentApi tick answers with a template line (inboxFallback.ts).
 
 // deno-lint-ignore-file no-explicit-any
-import { handle, readJson, resolveCaller, requireSecret, getSetting } from "../../shared/c/auth.ts";
-import { fetchAttachmentContent, normalizePhone, parseInbound } from "../../shared/c/photon.ts";
+import { handle, readJson, resolveCaller, requireSecret } from "../../shared/c/auth.ts";
+import { fetchAttachmentContent, parseInbound } from "../../shared/c/photon.ts";
+import { recordInbound } from "../../shared/c/inbound.ts";
 
 export default handle(async (req) => {
   const { base44, db } = await resolveCaller(req, { allowWebhook: true });
@@ -23,61 +24,27 @@ export default handle(async (req) => {
   for (const ev of events) {
     const msg = parseInbound(ev);
     if (!msg) continue;
-
-    // Dedupe on message id (webhooks can redeliver).
-    // (nested-field filters aren't documented for Base44, so compare in JS)
-    const recent: any[] = await db.AgentInbox.filter({ type: "imessage" }, "-createdAt", 50).catch(() => []);
-    if (recent.some((r) => r.payload?.messageId === msg.messageId)) continue;
-
-    const parents: any[] = await db.Parent.list();
-    const parent = parents.find((p) => p.phone && normalizePhone(p.phone) === normalizePhone(msg.fromHandle));
-    if (!parent) {
-      console.log("[C] ignoring iMessage from unknown handle");
-      continue;
-    }
-
-    // Cache the Photon ids on the Parent so sendImessage can skip steps 1–2.
-    const patch: any = {};
-    if (msg.fromUserId && parent.photonUserId !== msg.fromUserId) patch.photonUserId = msg.fromUserId;
-    if (msg.spaceId && parent.photonSpaceId !== msg.spaceId) patch.photonSpaceId = msg.spaceId;
-    if (Object.keys(patch).length) await db.Parent.update(parent.id, patch).catch(() => {});
-
-    // Save the line's own user id once.
-    if (msg.lineUserId) {
-      const s = await getSetting(db);
-      if (s.id && !s.lineUserId) await db.Setting.update(s.id, { lineUserId: msg.lineUserId });
-    }
-
-    // Attachments → public URLs the agent (and InvokeLLM) can read.
-    const photoUrls: string[] = [];
-    if (msg.attachmentIds.length) {
-      const cfg = { apiKey: requireSecret("PHOTON_API_KEY"), projectId: requireSecret("PHOTON_PROJECT_ID") };
-      for (const id of msg.attachmentIds.slice(0, 3)) {
-        try {
-          const { bytes, contentType } = await fetchAttachmentContent(cfg, id);
-          const ext = contentType.includes("png") ? "png" : contentType.includes("heic") ? "heic" : "jpg";
-          const file = new File([new Blob([bytes as unknown as ArrayBuffer])], `imsg-${id}.${ext}`, { type: contentType });
-          const up = await base44.integrations.Core.UploadFile({ file });
-          if (up?.file_url) photoUrls.push(up.file_url);
-        } catch (e) {
-          console.error("[C] attachment fetch failed", e);
-        }
-      }
-    }
-
-    await db.AgentInbox.create({
-      parentId: parent.id,
-      type: "imessage",
-      payload: {
-        messageId: msg.messageId,
-        text: msg.text,
-        photoUrls,
-        receivedAt: new Date().toISOString(),
-      },
-      status: "pending",
-      createdAt: new Date().toISOString(),
-    });
-    accepted++;
+    const out = await recordInbound(db, msg, (ids) => uploadPhotos(base44, ids));
+    if (out.result === "accepted") accepted++;
+    else if (out.result === "unknown_handle") console.log("[C] ignoring iMessage from unknown handle");
   }
   return { ok: true, accepted };
 });
+
+/** Attachments → public URLs the agent (and InvokeLLM) can read. */
+async function uploadPhotos(base44: any, attachmentIds: string[]): Promise<string[]> {
+  const cfg = { apiKey: requireSecret("PHOTON_API_KEY"), projectId: requireSecret("PHOTON_PROJECT_ID") };
+  const urls: string[] = [];
+  for (const id of attachmentIds) {
+    try {
+      const { bytes, contentType } = await fetchAttachmentContent(cfg, id);
+      const ext = contentType.includes("png") ? "png" : contentType.includes("heic") ? "heic" : "jpg";
+      const file = new File([new Blob([bytes as unknown as ArrayBuffer])], `imsg-${id}.${ext}`, { type: contentType });
+      const up = await base44.integrations.Core.UploadFile({ file });
+      if (up?.file_url) urls.push(up.file_url);
+    } catch (e) {
+      console.error("[C] attachment fetch failed", e);
+    }
+  }
+  return urls;
+}

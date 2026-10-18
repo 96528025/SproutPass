@@ -13,10 +13,12 @@ import {
   ensureUser,
   normalizePhone,
   type PhotonCfg,
+  PhotonError,
   sendAttachment,
   sendText,
   uploadAttachment,
 } from "./photon.ts";
+import { senderLineFor } from "./lines.ts";
 
 export interface SendResult {
   sent: boolean;
@@ -53,35 +55,47 @@ export async function sendToParent(
   }
   const apiKey = secret("PHOTON_API_KEY"), projectId = secret("PHOTON_PROJECT_ID");
   if (!apiKey || !projectId) return { sent: false, skipped: "no PHOTON secrets" };
-  if (!setting.lineUserId) {
-    // The line's own user id arrives with the first inbound "hi" (rule 12).
-    return { sent: false, skipped: "Setting.lineUserId empty — text the line 'hi' first" };
+  // Each parent's pet answers from the line that parent texted (Photon's shared pool gives every phone its own
+  // number, and a shared line can't send the first message). Learned from the parent's first inbound "hi".
+  const senderId = senderLineFor(parent);
+  if (!senderId) {
+    return { sent: false, skipped: "no iMessage line yet — text your assigned Photon number 'hi' first" };
   }
   const cfg: PhotonCfg = { apiKey, projectId };
 
-  let userId: string = parent.photonUserId;
-  let spaceId: string = parent.photonSpaceId;
-  if (!userId) userId = await ensureUser(cfg, parent.phone);
-  if (!spaceId) spaceId = await ensureSpace(cfg, userId);
-  if (userId !== parent.photonUserId || spaceId !== parent.photonSpaceId) {
-    await db.Parent.update(parent.id, { photonUserId: userId, photonSpaceId: spaceId }).catch(() => {});
-  }
+  let res: any;
+  try {
+    // Normally both come with the inbound message; create only what's missing, and write back only what we
+    // created so a newer {space, line} from the webhook is never overwritten.
+    let userId: string = parent.photonUserId;
+    let spaceId: string = parent.photonSpaceId;
+    const created: Record<string, string> = {};
+    if (!userId) created.photonUserId = userId = await ensureUser(cfg, parent.phone);
+    if (!spaceId) created.photonSpaceId = spaceId = await ensureSpace(cfg, senderId, userId);
+    if (Object.keys(created).length) await db.Parent.update(parent.id, created).catch(() => {});
 
-  const res = await sendText(cfg, { spaceId, senderId: setting.lineUserId, text });
-  if (imageUrl) {
-    try {
-      const r = await fetch(imageUrl);
-      const bytes = new Uint8Array(await r.arrayBuffer());
-      const contentType = r.headers.get("content-type") ?? "image/gif";
-      const attachmentId = await uploadAttachment(cfg, {
-        bytes,
-        contentType,
-        filename: imageUrl.split("/").pop() ?? "image.gif",
-      });
-      await sendAttachment(cfg, { spaceId, senderId: setting.lineUserId, attachmentId });
-    } catch (e) {
-      console.error("[C] image send failed (text was delivered)", e);
+    res = await sendText(cfg, { spaceId, senderId, text });
+    if (imageUrl) await sendImage(cfg, spaceId, senderId, imageUrl);
+  } catch (e) {
+    // Photon said no (expired assignment, rate limit, …): report it instead of failing the caller's whole step.
+    if (e instanceof PhotonError) {
+      console.error("[C] iMessage not sent", e.message);
+      return { sent: false, skipped: `photon ${e.status}` };
     }
+    throw e;
   }
   return { sent: true, messageId: res?.id };
+}
+
+/** The flowers GIF etc.: best effort after the text, same line and space. */
+async function sendImage(cfg: PhotonCfg, spaceId: string, senderId: string, imageUrl: string): Promise<void> {
+  try {
+    const r = await fetch(imageUrl);
+    const bytes = new Uint8Array(await r.arrayBuffer());
+    const contentType = r.headers.get("content-type") ?? "image/gif";
+    const attachmentId = await uploadAttachment(cfg, { bytes, contentType, filename: imageUrl.split("/").pop() ?? "image.gif" });
+    await sendAttachment(cfg, { spaceId, senderId, attachmentId });
+  } catch (e) {
+    console.error("[C] image send failed (text was delivered)", e);
+  }
 }

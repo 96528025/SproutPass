@@ -192,7 +192,13 @@ async function upsertParents(db: Db, seed: SeedPlan["parents"]): Promise<Record<
     if (!row) { create.push(p); continue; }
     kept.add(row.id);
     const defined = Object.fromEntries(Object.entries(p).filter(([, v]) => v !== undefined)) as Partial<Parent>;
-    await db.Parent.update(row.id, { ...defined, convo: { step: "idle" } });
+    // A new phone for this parent (the *_PHONE secret changed): the old phone's Photon user, space and iMessage
+    // line belong to someone else now, so drop them; the new phone's first "hi" fills them in again.
+    // Same rule as C's photonWebhook matching (shared/c/photon.ts normalizePhone): a 10-digit US number gets its 1.
+    const digits = (s?: string) => { const d = (s ?? "").replace(/\D/g, ""); return d.length === 10 ? `1${d}` : d; };
+    const newPhone = defined.phone !== undefined && digits(defined.phone) !== digits(row.phone);
+    const photonReset = newPhone ? { photonUserId: "", photonSpaceId: "", photonLineUserId: "" } : {};
+    await db.Parent.update(row.id, { ...defined, ...photonReset, convo: { step: "idle" } });
     ids[p.key] = row.id;
   }
   for (const r of existing) if (!kept.has(r.id)) await db.Parent.delete(r.id).catch(() => undefined);
