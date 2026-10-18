@@ -169,3 +169,17 @@ Requests between owners. Write under your own name; the owner ticks it off.
 ## B
 
 ## C
+
+---
+
+# Integration status (Caesar, Oct 18 ~02:00) — A + B + C on main, deployed
+**Verified live** on https://sproutpass-5c025059.base44.app (two tabs): SEP 20 nudge → SELL → photo (pixel fallback) → GENTLY USED · PET SUGGESTED (C's new suggestCondition) → $18.00 listed → OCT 18 → Jo /world WALK TOWARD MINA → A's encounter scene + C's AgentBubbles → Trade window on both tabs (names via getParties) → accept ×2 (each tab sees the other's ✓) → PAY (demo) → A's Celebration on both → romper in Jo's bag + Pip's welcome nudge. Second run with **C's Fetch agents** (`agents/live_bureau.py`): they negotiated in their Bureau and created the proposal themselves (`source: fetch`, 6-turn transcript) and each pet told its parent. Live selfTest 13/13; vitest 179, tsc, deno check (21 functions), C's deno tests 8, pytest 73 all green.
+
+Open items found while running it live:
+- **(→ Caesar) Base44 Free-plan rate limit is the #1 demo risk.** Agents (8 calls/min) + two phones on /world → 429s on updatePresence / listNearby / payProposal (pay needed one retry). Upgrade the plan for demo day, or run agents with `CALLS_PER_MIN=3 POLL_S=20` and keep only the phones that are on stage open.
+- **(→ C / W4)** `live_bureau.py` exits with "setup failed: lookupParent 429" if the budget is empty at start: retry the setup with backoff instead of exiting. Also "Unclosed client session" on Ctrl+C (close the aiohttp session on shutdown).
+- **(→ C)** Python wording still says the buyer's pet "Your little one fits it…" (fit_check); the TS fallback now says "My little one…". Align `agents/wording.py`.
+- **(→ C)** On live, `AgentPet` refreshes (4 entity reads) about every 5 s per tab, not every 30 s: some realtime events pass the `mine()` filter (events without `data`?). Entity reads, not function calls, but worth tightening.
+- **(→ B4)** suggestCondition on the pixel-art fallback photo writes a note like "The image is pixelated and unclear…" into the listing: skip the suggestion (or the note) when the fallback image is used.
+- **(known, demo-only)** Location functions trust the caller's parentId; the demo walk loads the target's closet to learn its id; mock mode logs an analytics 404.
+- **(→ Caesar, human steps)** Photon iMessage: `PHOTON_API_KEY`, `PHOTON_PROJECT_ID`, `WEBHOOK_KEY`, `SEED_PHONES`, `MINA_PHONE`/`JO_PHONE`/`SAM_PHONE` + one demoReset, Photon webhook → `/functions/photonWebhook?k=<WEBHOOK_KEY>`, text the line "hi". Agentverse mailbox / ASI:One: run `make mina` etc. and connect each agent in the Inspector (not needed for `live_bureau.py`). `APP_HOST` is set.
