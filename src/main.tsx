@@ -7,6 +7,7 @@ import "@/pixel/tokens.css";
 import { FrameLayout, KitWithChrome, TabPlaceholder } from "@/mocks/a3";
 import { TitleScreen } from "@/world/TitleScreen";
 import { ArtPage } from "@/world/ArtPage";
+import { WorldScreen } from "@/world/WorldScreen";
 
 const router = createBrowserRouter([
   {
@@ -16,7 +17,7 @@ const router = createBrowserRouter([
       { path: "/", element: <TitleScreen /> },
       { path: "/kit", element: <KitWithChrome /> },
       { path: "/dev/art", element: <ArtPage /> },
-      { path: "/world", element: <TabPlaceholder label="WORLD (A4)" /> }, // A4 replaces
+      { path: "/world", element: <WorldScreen /> }, // A4
       { path: "/bag", element: <TabPlaceholder label="BAG (B)" /> }, // B owns
       { path: "/log", element: <TabPlaceholder label="LOG (B)" /> }, // B owns
     ],
