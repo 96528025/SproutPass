@@ -6,8 +6,8 @@
 // no exact distance, no phones.
 
 // deno-lint-ignore-file no-explicit-any
-import { handle, HttpError, readJson, resolveCaller } from "../_lib/auth.ts";
-import { band, bearingDeg, haversineM, isFresh } from "../_lib/geo.ts";
+import { handle, HttpError, readJson, resolveCaller } from "../../shared/c/auth.ts";
+import { band, bearingDeg, haversineM, isFresh } from "../../shared/c/geo.ts";
 
 export default handle(async (req) => {
   const { db } = await resolveCaller(req);

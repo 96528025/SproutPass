@@ -10,8 +10,8 @@
 //      the next sendImessage/agentApi tick answers with a template line.
 
 // deno-lint-ignore-file no-explicit-any
-import { handle, readJson, resolveCaller, requireSecret, getSetting } from "../_lib/auth.ts";
-import { fetchAttachmentContent, normalizePhone, parseInbound } from "../_lib/photon.ts";
+import { handle, readJson, resolveCaller, requireSecret, getSetting } from "../../shared/c/auth.ts";
+import { fetchAttachmentContent, normalizePhone, parseInbound } from "../../shared/c/photon.ts";
 
 export default handle(async (req) => {
   const { base44, db } = await resolveCaller(req, { allowWebhook: true });

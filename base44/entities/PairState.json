@@ -1,0 +1,13 @@
+{
+  "name": "PairState",
+  "type": "object",
+  "title": "PairState",
+  "properties": {
+    "pairKey": { "type": "string" },
+    "armed": { "type": "boolean", "default": true },
+    "lastEncounterAt": { "type": "string", "format": "date-time" },
+    "lastDistanceM": { "type": "number" }
+  },
+  "required": ["pairKey"],
+  "rls": { "create": false, "read": false, "update": false, "delete": false }
+}

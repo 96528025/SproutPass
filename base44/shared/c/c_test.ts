@@ -1,4 +1,4 @@
-// (C) deno test --no-lock base44/functions/_lib/c_test.ts
+// (C) deno test --no-lock base44/shared/c/c_test.ts
 // no jsr dependency so the test runs offline
 function assert(c: unknown, msg = "assert"): asserts c { if (!c) throw new Error(msg); }
 function assertEquals(a: unknown, b: unknown) { const x = JSON.stringify(a), y = JSON.stringify(b); if (x !== y) throw new Error(`expected ${y} got ${x}`); }

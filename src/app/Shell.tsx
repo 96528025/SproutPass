@@ -3,12 +3,43 @@
 import { useEffect } from "react";
 import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import { AppRoutes, PUBLIC_PATHS, TradeWatcher } from "./routes";
-import { startLiveSync, useApp } from "./store";
+import { errorText, parentRef, startLiveSync, useApp } from "./store";
 import { ParentPicker } from "./ParentPicker";
 import { DemoPanel } from "./DemoPanel";
 import { PixelButton, PixelPanel, Toast } from "./ui";
-import { Guard } from "./optional";
+import { Guard, optional } from "./optional";
+import { api } from "./api";
 import { NudgeDialog } from "../closet/NudgeDialog";
+import type { AgentNudge } from "./types";
+
+interface AgentPetProps {
+  parentId: string;
+  pet: { name: string; sprite: string };
+  onChoice?: (choice: "sell" | "keep" | "later", nudge: AgentNudge) => void;
+  onOpenTrade?: () => void;
+}
+const AgentPet = optional<AgentPetProps>("../agent/AgentPet.tsx", "AgentPet", () => null);
+
+/** C's pet in the corner (and behind the PET tab). Its nudge answers go through the same resolveNudge as NudgeDialog. */
+function Pet() {
+  const closet = useApp((s) => s.closet);
+  const toast = useApp((s) => s.toast);
+  const nav = useNavigate();
+  if (!closet) return null;
+  const onChoice = async (choice: "sell" | "keep" | "later", nudge: AgentNudge) => {
+    try {
+      const res = await api.resolveNudge({ ...parentRef(), nudgeId: nudge.id, action: choice === "later" ? "snooze" : choice });
+      if (res.next === "open_listing") nav(`/bag/list/${res.itemId}`);
+    } catch (e) {
+      toast(errorText(e), "red");
+    }
+  };
+  const onOpenTrade = () => {
+    const p = closet.proposals.find((x) => x.status === "open" || x.status === "both_accepted");
+    if (p) nav(`/trade/${p.id}`);
+  };
+  return <AgentPet parentId={closet.parent.id} pet={closet.parent.pet} onChoice={onChoice} onOpenTrade={onOpenTrade} />;
+}
 
 /** Keep ?as= / ?demo=1 in the URL across navigations (react-router links drop the query). */
 function useQuerySync() {
@@ -86,6 +117,7 @@ export function Shell() {
         {!needsParent && <TabBar />}
         {parentKey && !noDialogHere && <Guard name="NudgeDialog" fallback={null}><NudgeDialog /></Guard>}
         {parentKey && <TradeWatcher />}
+        {parentKey && !noDialogHere && <Pet />}
       </div>
       {toastMsg && <Toast key={toastMsg.id} text={toastMsg.text} tone={toastMsg.tone} />}
     </div>

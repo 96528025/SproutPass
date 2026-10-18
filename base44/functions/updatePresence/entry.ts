@@ -7,10 +7,10 @@
 // returns another parent's coordinates.
 
 // deno-lint-ignore-file no-explicit-any
-import { handle, HttpError, readJson, resolveCaller } from "../_lib/auth.ts";
-import { detectEncounters, runLocalFallback } from "../_lib/encounter.ts";
-import { findMatches } from "../_lib/match.ts"; // (B) see NEEDS.md
-import { sweepInbox } from "../_lib/inboxFallback.ts";
+import { handle, HttpError, readJson, resolveCaller } from "../../shared/c/auth.ts";
+import { detectEncounters, runLocalFallback } from "../../shared/c/encounter.ts";
+import { findMatches } from "../../shared/cbridge.ts"; // B handlers, C-shaped (shared/cbridge.ts)
+import { sweepInbox } from "../../shared/c/inboxFallback.ts";
 
 export default handle(async (req) => {
   const { base44, db } = await resolveCaller(req);

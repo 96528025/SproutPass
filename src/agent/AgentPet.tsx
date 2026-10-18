@@ -11,7 +11,7 @@
 //   onOpenTrade optional: tapped "SEE TRADE" when a proposal is open
 
 import { useCallback, useEffect, useState } from "react";
-import { DialogBox, Sprite } from "../pixel/components";
+import { DialogBox, Sprite } from "../app/ui"; // B's shim today; re-exports A's kit once it lands
 import { type AgentNudge, countOpenProposals, listOpenNudges, listPetLines, subscribe } from "./cApi";
 import "./agent.css";
 
@@ -46,6 +46,13 @@ export function AgentPet({ parentId, pet, onChoice, onOpenTrade }: AgentPetProps
       /* offline */
     }
   }, [parentId]);
+
+  // The shell's PET tab asks "pet:open"; preventDefault tells it we handled it.
+  useEffect(() => {
+    const onOpen = (e: Event) => { e.preventDefault(); setOpen(true); };
+    window.addEventListener("pet:open", onOpen);
+    return () => window.removeEventListener("pet:open", onOpen);
+  }, []);
 
   useEffect(() => {
     void refresh();
@@ -85,13 +92,15 @@ export function AgentPet({ parentId, pet, onChoice, onOpenTrade }: AgentPetProps
         {attention && !open && <span className="c-pet__hint">{proposals > 0 ? "TRADE!" : "PSST"}</span>}
       </button>
       {open && (
-        <DialogBox
-          speaker={{ name: pet.name, sprite: pet.sprite }}
-          lines={[text, "(I said the same thing in iMessage.)"]}
-          choices={choices}
-          onDone={() => undefined}
-          onChoice={onPick}
-        />
+        <div className="b-dock c-pet__dock" role="dialog" aria-label={`${pet.name} says`}>
+          <DialogBox
+            speaker={{ name: pet.name, sprite: pet.sprite }}
+            lines={[text, "(I said the same thing in iMessage.)"]}
+            choices={choices}
+            onDone={() => setOpen(false)}
+            onChoose={onPick}
+          />
+        </div>
       )}
     </>
   );

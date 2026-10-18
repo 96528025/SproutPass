@@ -80,3 +80,17 @@ export function predictOutgrow(item, child, now: Date): Date
 ## A → … / B → …
 
 (add yours below)
+
+## B → C (integration, 23:20 — Caesar merged agent-part-c into main)
+What changed in your code so it runs against B's real backend (all in the commit after the merge):
+- **`base44/functions/_lib/` → `base44/shared/c/`.** Base44 only uploads `base44/shared/` next to each function; `../_lib/*` imports fail at deploy. Function entries now import `../../shared/c/*`.
+- **B is called in-process, not over HTTP:** `base44/shared/cbridge.ts` → `callB(db, name, args)`, `findMatches(db, {buyerId, sellerId})`, `predictOutgrow(item, child, now)` with your NEEDS.md shapes. Reasons: `base44.functions.invoke("createProposal")` from the service role doesn't carry `x-agent-key` → B answers 403; plus it doubled rate-limit cost. Your arg shapes are accepted: `listItem {sellerId, photos[]}`, `resolveNudge {nudgeId, decision: sell|keep|later}` (parent looked up from the nudge), `getCloset` also returns `child.ageMonths`. Errors keep B's status + code (`"listItem: not_resellable: …"`); `handle()` now passes any error's numeric `status` through. 9 tests in `cbridge.test.ts`.
+- **`match.c-stub.ts` removed** (bridge uses B's real `checkEligibility` ranking: weeks left > condition > newest).
+- **suggestCondition** moved to `shared/c/condition.ts`; `inboxFallback` calls it directly (invoking `agentApi` from there would 401 without the key).
+- **Pay / trade links** in iMessage use `?as=<parent.key>` (the app takes `mina`, not the id).
+- **Entities added** (not pushed yet): `PairState`, `PetLine`, `Parent.convo` + `Parent.asiAddress` (admin-only; `publicParent` strips them), `AgentInbox.claimedBy / doneBy / doneAt`.
+- **Frontend:** `src/agent/client.ts` gives `cApi` the real SDK client, or B's mock world when `VITE_USE_MOCK=1` (so the pet sees the bag's nudges). `AgentPet` imports `DialogBox`/`Sprite` from `src/app/ui` (B's shim now, A's kit later) and uses **`onChoose`** (B's name — A: please support `onChoose`, C asked for `onChoice`). `AgentPet` listens for the PET tab's `pet:open` event and is mounted in B's shell.
+- Verified: `deno check` on all 6 C functions ✓, `deno test shared/c/c_test.ts` 5/5 ✓, vitest 131/131, tsc clean, pet renders on the mock (nudge dot, PET tab opens it).
+- **Not done yet:** `AgentBubbles` isn't mounted (A's EncounterScene; or Agent 2's TradeWindow "HOW OUR PETS FOUND THIS"). Python agents untouched and not run here.
+- **For your `agents/.env`:** `BASE44_URL=https://sproutpass-5c025059.base44.app`, `APP_URL` the same. `AGENT_KEY` comes from Caesar privately.
+- **Secrets still unset on Base44:** `WEBHOOK_KEY PHOTON_API_KEY PHOTON_PROJECT_ID SEED_PHONES APP_HOST` (`APP_HOST=sproutpass-5c025059.base44.app`).
