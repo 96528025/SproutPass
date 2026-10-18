@@ -1,0 +1,80 @@
+{
+  "name": "Encounter",
+  "type": "object",
+  "title": "Encounter",
+  "properties": {
+    "aId": {
+      "type": "string"
+    },
+    "bId": {
+      "type": "string"
+    },
+    "band": {
+      "type": "string"
+    },
+    "simulated": {
+      "type": "boolean",
+      "default": false
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "talking",
+        "proposed",
+        "no_match"
+      ]
+    },
+    "startedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "transcript": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "from": {
+            "type": "string",
+            "enum": [
+              "buyer_agent",
+              "seller_agent"
+            ]
+          },
+          "parentId": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "looking_for",
+              "have",
+              "no_fit",
+              "fit_check",
+              "propose",
+              "ack",
+              "decline"
+            ]
+          },
+          "text": {
+            "type": "string"
+          },
+          "at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      }
+    }
+  },
+  "required": [
+    "aId",
+    "bId",
+    "status"
+  ],
+  "rls": {
+    "create": false,
+    "read": true,
+    "update": false,
+    "delete": false
+  }
+}

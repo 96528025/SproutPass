@@ -1,0 +1,56 @@
+{
+  "name": "Listing",
+  "type": "object",
+  "title": "Listing",
+  "properties": {
+    "itemId": {
+      "type": "string"
+    },
+    "sellerId": {
+      "type": "string"
+    },
+    "condition": {
+      "type": "string",
+      "enum": [
+        "like_new",
+        "gently_used",
+        "well_loved"
+      ]
+    },
+    "conditionNote": {
+      "type": "string"
+    },
+    "priceCents": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "shared": {
+      "type": "boolean",
+      "default": true
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "active",
+        "withdrawn",
+        "sold"
+      ]
+    },
+    "createdAt": {
+      "type": "string",
+      "format": "date-time"
+    }
+  },
+  "required": [
+    "itemId",
+    "sellerId",
+    "priceCents",
+    "status"
+  ],
+  "rls": {
+    "create": false,
+    "read": true,
+    "update": false,
+    "delete": false
+  }
+}

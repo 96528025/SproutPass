@@ -1,0 +1,27 @@
+{
+  "name": "Child",
+  "type": "object",
+  "title": "Child",
+  "properties": {
+    "parentId": {
+      "type": "string"
+    },
+    "nickname": {
+      "type": "string"
+    },
+    "birthDate": {
+      "type": "string",
+      "format": "date-time"
+    }
+  },
+  "required": [
+    "parentId",
+    "birthDate"
+  ],
+  "rls": {
+    "create": false,
+    "read": true,
+    "update": false,
+    "delete": false
+  }
+}
