@@ -13,6 +13,16 @@ Parents can send clothing photos through iMessage or upload them in the app. Bas
 - [Challenge mapping](docs/submission/tracks.md)
 - [Historical testing record](docs/submission/testing.md)
 
+## Watch the phone demo
+
+**40-second portrait walkthrough:** nearby encounter → companion matching → garment offer → buyer approval → celebration → simulated receipt.
+
+[<img src="docs/media/sproutpass-preview.gif" width="320" alt="Animated phone walkthrough of SproutPass: companions meet, propose a clothing trade, and celebrate buyer approval">](https://raw.githubusercontent.com/96528025/SproutPass/main/docs/media/sproutpass-demo.mp4)
+
+**[Watch / download the MP4](https://raw.githubusercontent.com/96528025/SproutPass/main/docs/media/sproutpass-demo.mp4)** · 1080 × 1920 · English captions · original instrumental soundtrack. The MP4 can be uploaded directly to LinkedIn.
+
+Recorded from the local offline demo with staged inventory and simulated location/payment. The offline companion dialogue is a stand-in; no live AI call, iMessage delivery, real charge, or physical handoff is demonstrated. The offer, approval and receipt are from one sample trade. See [video notes](docs/media/README.md).
+
 ## Phone-view feature tour
 
 Captured from the local offline demo using the app's phone layout. These screenshots show staged inventory, simulated proximity and simulated payment—not live user validation, a real charge, or iMessage delivery. The offer, celebration and receipt belong to the same sample trade.
