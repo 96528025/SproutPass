@@ -81,11 +81,12 @@ export interface MatchProposal {
 const START_DISTANCE_M = 250;
 const WALK_MS = 20_000;
 const STEP_CAP_MS = 1500;
-// Same lawn C's demoWalk uses (Westwood, inside the UCLA 10-minute zone). My simulated position starts here and
-// moves WALK_STEP_M per demoWalk call toward the other parent, so the map pans while walking. The other parent is
-// never given coordinates: listNearby still returns band + bearing only.
-export const DEMO_LAWN = { lat: 34.0709, lng: -118.4446 };
-const WALK_STEP_M = 12; // matches the ~12 m/s the 20-s demo countdown implies, so the map pans in step with it
+// The demo meets at the Lakeshore Learning Store in Sawtelle, West LA (OSM: Pontius Avenue). My simulated position starts
+// START_DISTANCE_M south-west of it and slides in a straight line to the store as the other parent walks in, so the map
+// pans while walking and the encounter fires within 25 m of the store. The other parent is never given coordinates:
+// listNearby still returns band + bearing only.
+export const DEMO_MEET = { lat: 34.0378, lng: -118.4363 };
+const WALK_BEARING_DEG = 55;
 
 export interface LatLng {
   lat: number;
@@ -99,7 +100,7 @@ interface SimState {
   encounter: Encounter | null;
   proposal: MatchProposal | null;
 }
-let sim: SimState = { me: DEMO_LAWN, distance: START_DISTANCE_M, lastWalkAt: 0, encounter: null, proposal: null };
+let sim: SimState = { me: demoStart(), distance: START_DISTANCE_M, lastWalkAt: 0, encounter: null, proposal: null };
 const listeners = new Set<() => void>();
 const emit = () => listeners.forEach((l) => l());
 
@@ -164,9 +165,18 @@ function stepAlong(p: LatLng, bearingDeg: number, m: number): LatLng {
   return { lat: p.lat + (m * Math.cos(b)) / 110_540, lng: p.lng + (m * Math.sin(b)) / (111_320 * Math.cos((p.lat * Math.PI) / 180)) };
 }
 
+/** Where my simulated walk begins: START_DISTANCE_M behind the store, opposite the walking bearing. */
+function demoStart(): LatLng {
+  return stepAlong(DEMO_MEET, WALK_BEARING_DEG + 180, START_DISTANCE_M - 8);
+}
+
+function lerpLatLng(a: LatLng, b: LatLng, t: number): LatLng {
+  return { lat: a.lat + (b.lat - a.lat) * t, lng: a.lng + (b.lng - a.lng) * t };
+}
+
 /**
  * Each call walks the other parent in by (time since last call, capped) — so ~20 s of 1 s calls = arrival — and moves
- * my simulated position 5 m toward them. Same shape as C's demoWalk: { ok, distanceM, encounters }.
+ * slides my simulated position toward the store by the same fraction. Same shape as C's demoWalk: { ok, distanceM, encounters }.
  */
 export async function demoWalk({
   parentId,
@@ -181,7 +191,7 @@ export async function demoWalk({
   const encounter =
     sim.encounter ??
     (distance < 25 ? { id: "enc_1", parentAId: parentId, parentBId: towardParentId, status: "talking" as const, transcript: [] } : null);
-  const me = stepAlong(sim.me, bearingOf(distance), WALK_STEP_M);
+  const me = lerpLatLng(demoStart(), DEMO_MEET, (START_DISTANCE_M - distance) / (START_DISTANCE_M - 8));
   sim = { ...sim, me, distance, lastWalkAt: now, encounter };
   emit();
   if (encounter) runEncounterScript(parentId, towardParentId);
