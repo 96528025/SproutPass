@@ -1,5 +1,6 @@
 // Every sprite the build knows about. Frame order inside a strip is fixed by the A-team contract.
 import type { Img } from "./lib";
+import { ITEMS } from "./items";
 import * as parent_a from "./sprites/parent_a";
 import * as parent_b from "./sprites/parent_b";
 import * as parent_c from "./sprites/parent_c";
@@ -50,4 +51,4 @@ export const SHEETS: Sheet[] = [
   sheet("tile_flowerbed", 16, tile_flowerbed),
 ];
 
-export const ICONS: Icon[] = [];
+export const ICONS: Icon[] = ITEMS;
