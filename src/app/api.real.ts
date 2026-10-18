@@ -56,6 +56,7 @@ export const realApi: Api = {
   resolveNudge: (req) => fn("resolveNudge", req),
   decideProposal: (req) => fn("decideProposal", req),
   payProposal: (req) => fn("payProposal", req),
+  getParties: (req) => fn("getParties", req),
   demoClock: (req) => fn("demoClock", req ?? {}),
   demoReset: () => fn("demoReset"),
   getStats: () => fn("getStats"),

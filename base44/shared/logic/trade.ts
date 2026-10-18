@@ -3,10 +3,10 @@
 // both_accepted → payment_failed. Base44 has no transactions, so every handler writes in the order
 // that leaves a safe state if a later write fails, and every handler is safe to call twice.
 import type { Db, EntityApi } from "../db.ts";
-import { getNow, mustGet, resolveParent, writeInbox } from "../db.ts";
+import { getNow, mustGet, publicParent, resolveParent, writeInbox } from "../db.ts";
 import type {
-  Child, ClothingItem, CreateProposalReq, DecideProposalReq, ID, ISODate, MatchProposal, PayProposalReq,
-  PayProposalRes, ProposalStatus,
+  Child, ClothingItem, CreateProposalReq, DecideProposalReq, GetPartiesReq, ID, ISODate, MatchProposal, PayProposalReq,
+  PayProposalRes, ProposalStatus, PublicParty,
 } from "../types.ts";
 import { bad, forbidden, HttpError, invalid } from "../errors.ts";
 import { checkEligibility, reasonLine } from "../match.ts";
@@ -273,4 +273,27 @@ async function settle(db: Db, p: MatchProposal, delayMs: number): Promise<PayPro
     p = await mustGet(db.MatchProposal, p.id, "proposal");
   }
   return current(db, p);
+}
+
+// ---------------------------------------------------------------- getParties (the trade window's name cards)
+
+export const MAX_PARTY_IDS = 10;
+
+/**
+ * Public cards for the parents in a trade: only id, name, avatar and pet (never phone, Photon ids, convo or ASI
+ * address). Unknown ids are skipped. One Parent read whatever the count, to stay cheap under the rate limit.
+ */
+export async function getParties(db: Db, body: GetPartiesReq): Promise<PublicParty[]> {
+  const raw = body?.parentIds;
+  if (!Array.isArray(raw) || raw.some((id) => typeof id !== "string" || !id)) throw bad("parentIds must be a list of ids");
+  const ids = [...new Set(raw)];
+  if (!ids.length) throw bad("parentIds must not be empty");
+  if (ids.length > MAX_PARTY_IDS) throw bad(`at most ${MAX_PARTY_IDS} parentIds`);
+  const byId = new Map((await db.Parent.list(undefined, 500)).map((p) => [p.id, p]));
+  return ids.flatMap((id) => {
+    const p = byId.get(id);
+    if (!p) return [];
+    const { name, avatar, pet } = publicParent(p);
+    return [{ id: p.id, name, avatar, pet }];
+  });
 }

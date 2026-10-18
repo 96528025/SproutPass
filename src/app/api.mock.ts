@@ -8,7 +8,7 @@ import { createFakeDb } from "../../base44/shared/testing/fakeDb.ts";
 import type { ChangeEvent } from "../../base44/shared/testing/fakeDb.ts";
 import { applySeed, seedPlan } from "../../base44/shared/seed.ts";
 import { getCloset, listItem, recordPurchase, resolveNudge, upsertNeed, withdrawListing } from "../../base44/shared/logic/closet.ts";
-import { createProposal, decideProposal, payProposal } from "../../base44/shared/logic/trade.ts";
+import { createProposal, decideProposal, getParties, payProposal } from "../../base44/shared/logic/trade.ts";
 import { demoClock, demoReset, getStats, selfTest } from "../../base44/shared/logic/demo.ts";
 import { toSmallDataUrl } from "./photo";
 
@@ -92,6 +92,7 @@ export const mockApi: Api = {
 
   decideProposal: (req) => call(() => decideProposal(db, req)),
   payProposal: (req) => call(() => payProposal(db, req, { delayMs: 600 })),
+  getParties: (req) => call(() => getParties(db, req)),
 
   demoClock: (req) => call(() => demoClock(db, req ?? {})),
   demoReset: () => call(() => demoReset(db, {})),

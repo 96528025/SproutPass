@@ -1,15 +1,10 @@
 // OWNER: Agent 2 (B5). Pure helpers behind the trade screens (no React, no api import) so vitest can cover them.
-import type { MatchProposal } from "../app/types";
+import type { MatchProposal, PublicParty } from "../app/types";
 
 // ---------------------------------------------------------------- the other party's public profile
 
-/** The only fields the trade window shows about a parent. Never a phone or any other private field. */
-export interface Party {
-  id: string;
-  name: string;
-  avatar: { sprite: string; palette: string };
-  pet: { sprite: string; name: string };
-}
+/** The only fields the trade window shows about a parent (the contract's PublicParty). Never a phone or any other private field. */
+export type Party = PublicParty;
 
 export function slimParty(p: Party): Party {
   return {

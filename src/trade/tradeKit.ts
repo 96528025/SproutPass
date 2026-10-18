@@ -11,11 +11,15 @@ function sessionStore(): Pick<Storage, "getItem" | "setItem"> | null {
   try { return typeof sessionStorage === "undefined" ? null : sessionStorage; } catch { return null; }
 }
 
-// The Api has no "public profile by id" call, so the other party's name comes from their getCloset (whose
-// parent is publicParent: no phone). Only {id, name, avatar, pet} is kept, retried with backoff under the
-// rate limit, deduped across windows and cached per tab. NEEDS.md (B3 → Caesar) proposes a lighter call.
+// The other party's card comes from getParties: only {id, name, avatar, pet} (never phone or C's private
+// fields), one Parent read on the server. Retried with backoff under the rate limit, deduped across windows
+// and cached per tab.
 const parties = createPartyLoader({
-  fetch: async (id) => (await api.getCloset({ parentId: id })).parent,
+  fetch: async (id) => {
+    const [party] = await api.getParties({ parentIds: [id] });
+    if (!party) throw new ApiError("not_found", "parent not found");   // unknown ids are skipped, not an error
+    return party;
+  },
   isFatal: (e) => e instanceof ApiError && (e.code === "not_found" || e.code === "bad_request"),
   storage: sessionStore(),
 });

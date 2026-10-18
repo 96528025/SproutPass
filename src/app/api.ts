@@ -4,6 +4,7 @@ import type {
   ClosetView, Condition, DemoClockReq, DemoClockRes, DecideProposalReq, EntityName, ListItemReq, Listing,
   MatchProposal, Need, ParentRef, PayProposalReq, PayProposalRes, RecordPurchaseReq, RelayStats,
   ResolveNudgeReq, ResolveNudgeRes, SelfTestRes, UpsertNeedReq, WithdrawListingReq, ClothingItem,
+  GetPartiesReq, PublicParty,
 } from "./types";
 import { mockApi } from "./api.mock";
 import { realApi } from "./api.real";
@@ -27,6 +28,8 @@ export interface Api {
   // B3 — trade
   decideProposal(req: DecideProposalReq): Promise<MatchProposal>;
   payProposal(req: PayProposalReq): Promise<PayProposalRes>;
+  /** Public name/avatar/pet for trade parties (≤ 10 ids; unknown ids are skipped). Added with Caesar's OK. */
+  getParties(req: GetPartiesReq): Promise<PublicParty[]>;
   // B1 — demo + stats
   demoClock(req?: DemoClockReq): Promise<DemoClockRes>;
   demoReset(): Promise<{ ok: true }>;
