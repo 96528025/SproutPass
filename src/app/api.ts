@@ -4,7 +4,8 @@ import type {
   ClosetView, Condition, DemoClockReq, DemoClockRes, DecideProposalReq, EntityName, ListItemReq, Listing,
   MatchProposal, Need, ParentRef, PayProposalReq, PayProposalRes, RecordPurchaseReq, RelayStats,
   ResolveNudgeReq, ResolveNudgeRes, SelfTestRes, UpsertNeedReq, WithdrawListingReq, ClothingItem,
-  GetPartiesReq, PublicParty,
+  GetPartiesReq, PublicParty, UpdatePresenceReq, UpdatePresenceRes, ListNearbyReq, ListNearbyRes, DemoWalkReq,
+  DemoWalkRes,
 } from "./types";
 import { mockApi } from "./api.mock";
 import { realApi } from "./api.real";
@@ -37,6 +38,10 @@ export interface Api {
   selfTest(): Promise<SelfTestRes>;
   // C — frontend-callable helper (C writes the function; B4 wires it)
   suggestCondition(req: { imageUrl: string }): Promise<{ condition?: Condition; note?: string }>;
+  // C — location, for A's /world (added with Caesar's OK, 00:30)
+  updatePresence(req: UpdatePresenceReq): Promise<UpdatePresenceRes>;
+  listNearby(req: ListNearbyReq): Promise<ListNearbyRes>;
+  demoWalk(req: DemoWalkReq): Promise<DemoWalkRes>;
   // Base44 platform
   uploadPhoto(file: File): Promise<{ url: string }>;
   subscribe<T = unknown>(entity: EntityName, cb: (e: EntityEvent<T>) => void): Unsubscribe;
