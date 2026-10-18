@@ -1,0 +1,4 @@
+uagents>=0.25.5,<0.27
+uagents-core>=0.4
+aiohttp>=3.9
+pytest>=8
