@@ -1,0 +1,43 @@
+/* Sprite / ItemIcon (A2). Frames advance with steps(); one keyframe set shared via CSS variables. */
+.spr {
+  display: inline-block;
+  flex: none;
+  background-repeat: no-repeat;
+  background-position: var(--x0, 0px) 0;
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+  vertical-align: top;
+}
+.spr--anim {
+  animation-name: spr-run;
+  animation-timing-function: steps(var(--n));
+  animation-iteration-count: infinite;
+}
+.spr--once {
+  animation-iteration-count: 1;
+  animation-fill-mode: forwards;
+}
+@keyframes spr-run {
+  from { background-position-x: var(--x0); }
+  to   { background-position-x: var(--x1); }
+}
+.spr--flip { transform: scaleX(-1); }
+
+.item-icon {
+  display: inline-block;
+  flex: none;
+  border: 4px solid var(--ink);
+  background: var(--cream);
+  line-height: 0;
+}
+.item-icon > i {
+  display: block;
+  background-repeat: no-repeat;
+  background-size: 100% 100%;
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .spr--anim { animation: none; }
+}
