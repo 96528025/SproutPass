@@ -34,9 +34,10 @@
 // (not 5 s) and encounters 25 s (not 8 s) before the template pet answers for them.
 
 // deno-lint-ignore-file no-explicit-any
-import { getSetting, handle, HttpError, readJson, resolveCaller } from "../../shared/c/auth.ts";
+import { getSetting, handle, HttpError, readJson, resolveCaller, requireSecret } from "../../shared/c/auth.ts";
+import { extractConversationNeed } from "../../shared/c/conversationNeeds.ts";
 import { sendToParent } from "../../shared/c/imessage.ts";
-import { sweepInbox } from "../../shared/c/inboxFallback.ts";
+import { drainEvents, sweepInbox } from "../../shared/c/inboxFallback.ts";
 import { suggestCondition } from "../../shared/c/condition.ts";
 import { stampAgents } from "../../shared/c/location.ts";
 import { claimInbox, fitForAgents, noMatchFromAgents, proposeFromAgents } from "../../shared/c/encounter.ts"; // pure, vitest-covered
@@ -69,6 +70,19 @@ export default handle(async (req) => {
   if (HEARTBEAT_ACTIONS.has(action)) await heartbeat(db);
 
   switch (action) {
+    case "previewNeed":
+      if (typeof body.text !== "string" || !body.text.trim()) throw new HttpError(400, "text required");
+      return { need: await extractConversationNeed(base44, body.text) };
+    case "messageChannelStatus": {
+      const parent = await db.Parent.get(body.parentId);
+      if (!parent.photonLineUserId) return { connected: false };
+      const response = await fetch(`https://api.photon.codes/v1/projects/${encodeURIComponent(requireSecret("PHOTON_PROJECT_ID"))}/users/${encodeURIComponent(parent.photonLineUserId)}`, {
+        headers: { Authorization: `Bearer ${requireSecret("PHOTON_API_KEY")}` },
+      });
+      if (!response.ok) return { connected: true, providerLookupStatus: response.status };
+      const line = await response.json();
+      return { connected: true, lineType: line.details?.type ?? "unknown", lineHandle: line.handle };
+    }
     case "claimInbox":
       // {types:["encounter"]}: the agents negotiate; iMessages and app events are the TypeScript side's (encounter.ts).
       return await claimInbox(db, body);
@@ -130,10 +144,13 @@ export default handle(async (req) => {
     case "suggestCondition":
       return await suggestCondition(base44, body.imageUrl, body.itemName);
 
-    case "createProposal":
+    case "createProposal": {
       // B's createProposal, then Encounter → proposed + proposalId + transcript + the agents' protocol log
       // (Encounter.agentLog, negotiatedBy "fetch"): it rides on this call, no extra request (encounter.ts).
-      return await proposeFromAgents(db, body);
+      const result = await proposeFromAgents(db, body);
+      await drainEvents(base44, db, "agent-proposal");
+      return result;
+    }
 
     case "noMatch":
       // A late conversation (the local fallback already proposed, or the agents' own proposal landed) must not

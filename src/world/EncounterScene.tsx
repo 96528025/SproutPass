@@ -30,8 +30,8 @@ export interface EncounterSceneProps {
 }
 
 // geometry in CSS px, relative to the stage anchor (screen centre, 56 % down)
-const PARENT_SCALE = 4;
-const PET_SCALE = 4;
+const PARENT_SCALE = 3;
+const PET_SCALE = 3;
 const PARENT_GAP = 96; // centre to centre
 const PET_GAP = 48;
 const PEER_START_X = 168; // peer enters from the right, like a dot leaving the radar
@@ -70,7 +70,8 @@ export function EncounterScene({ encounter, me, peer, bubbles, talking, onPropos
     setCelebrate(false);
     setFlash(false);
     fired.current = { proposed: false };
-    const quick = reduced();
+    const age = encounter.startedAt ? Math.max(0, Date.now() - Date.parse(encounter.startedAt)) : 0;
+    const quick = reduced() || age >= 2200 || status !== "talking";
     later(() => sfx.play("alert"), 0);
     if (!quick) {
       later(() => setFlash(true), 0);
@@ -79,9 +80,9 @@ export function EncounterScene({ encounter, me, peer, bubbles, talking, onPropos
     if (quick) {
       later(() => setPhase(3), 0);
     } else {
-      later(() => setPhase(1), 400);
-      later(() => setPhase(2), 1400);
-      later(() => setPhase(3), 2200); // hop-out takes 0.8 s
+      later(() => setPhase(1), Math.max(0, 400 - age));
+      later(() => setPhase(2), Math.max(0, 1400 - age));
+      later(() => setPhase(3), Math.max(0, 2200 - age));
     }
     return () => {
       timers.current.forEach((t) => window.clearTimeout(t));
@@ -119,11 +120,11 @@ export function EncounterScene({ encounter, me, peer, bubbles, talking, onPropos
     navigate(to);
   };
 
-  const petAnim = phase === 2 || celebrate ? "hop" : isTalking && status !== "no_match" && !banner ? "talk" : "idle";
+  const petAnim = phase === 2 || celebrate ? "hop" : isTalking && !banner ? "talk" : "idle";
   const walking = phase === 1;
   const out = phase >= 1;
   const petsOut = phase >= 2;
-  const noMatch = status === "no_match" && phase >= 3;
+  const noMatch = status === "no_match" && phase >= 3 && !isTalking;
 
   const meX = -PARENT_GAP / 2;
   const peerX = PARENT_GAP / 2;
@@ -196,7 +197,7 @@ export function EncounterScene({ encounter, me, peer, bubbles, talking, onPropos
           </p>
           <p className="enc__caption-text">
             {banner
-              ? `Opening the trade so you and ${peer.name} can each decide.`
+              ? "Sending the final price and photo for the buyer to approve."
               : phase < 3
                 ? "Your pets hop out to compare closets."
                 : "They're checking size, fit and price for you."}
@@ -213,7 +214,7 @@ export function EncounterScene({ encounter, me, peer, bubbles, talking, onPropos
       {noMatch && (
         <DialogBox
           speaker={{ name: me.pet.name, sprite: asSprite(me.pet.sprite, "pet_a") }}
-          lines={["Nothing fits today — maybe next walk!"]}
+          lines={[encounter.noMatchReason || "Nothing fits today — maybe next walk!"]}
           choices={[{ label: "OK", value: "ok" }, { label: "See the agents' chat", value: "chat" }]}
           portrait={<Sprite name={asSprite(me.pet.sprite, "pet_a")} anim="idle" scale={3} />}
           onDone={(value) => (value === "chat" ? openChat() : onClosedRef.current())}

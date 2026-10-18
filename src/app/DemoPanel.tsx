@@ -1,4 +1,5 @@
-// OWNER: B4. ?demo=1 — collapsible strip at the top: demo clock, reset, and (mock only) a fake encounter.
+// OWNER: B4. ?demo=1 — collapsible strip at the top: demo clock, reset, and (mock only) a fake encounter for
+// this tab's parent (mockDev.triggerEncounter: the first family whose shared lists fit, either way).
 import { useEffect, useState } from "react";
 import { api, USE_MOCK } from "./api";
 import { mockDev } from "./api.mock";
@@ -17,6 +18,7 @@ const day = (iso: string) => iso.slice(0, 10);
 
 export function DemoPanel() {
   const closetNow = useApp((s) => s.closet?.now);
+  const parentKey = useApp((s) => s.parentKey);
   const refreshCloset = useApp((s) => s.refreshCloset);
   const toast = useApp((s) => s.toast);
   const [open, setOpen] = useState(() => { try { return sessionStorage.getItem(SS_OPEN) !== "0"; } catch { return true; } });
@@ -53,7 +55,7 @@ export function DemoPanel() {
   });
 
   const encounter = () => run("ENCOUNTER", async () => {
-    const p = await mockDev.triggerEncounter();
+    const p = await mockDev.triggerEncounter(parentKey ?? undefined);   // this tab's parent meets a family that fits
     return p ? `Encounter: ${p.snapshot.itemName}` : "List an item first, then try again.";
   });
 

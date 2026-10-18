@@ -230,7 +230,7 @@ function TradeDetails({ p, me, upsert, close, gone }: {
       </section>
 
       <div className="t-status" aria-live="polite">
-        <SideStatus name={seller?.name ?? "SELLER"} decision={p.sellerDecision} you={role === "seller"} />
+        <div className="t-side t-side-accepted"><span className="t-label">{seller?.name ?? "SELLER"}{role === "seller" ? " (YOU)" : ""}</span><strong className="t-side-text">SHARED LISTING</strong></div>
         <SideStatus name={buyer?.name ?? "BUYER"} decision={p.buyerDecision} you={role === "buyer"} />
       </div>
 
@@ -239,7 +239,7 @@ function TradeDetails({ p, me, upsert, close, gone }: {
       )}
 
       <div className="t-actions-area">
-        {p.status === "open" && role && myDecision === "pending" && (
+        {p.status === "open" && role === "buyer" && myDecision === "pending" && (
           <div className="t-stack">
             <label className="t-check">
               <input type="checkbox" checked={later} onChange={(e) => setLater(e.target.checked)} />
@@ -251,7 +251,7 @@ function TradeDetails({ p, me, upsert, close, gone }: {
             )}
             <div className="t-actions">
               <PixelButton variant="primary" disabled={!!busy} onClick={() => void decide("accepted")}>
-                {busy === "accepted" ? "…" : "ACCEPT"}
+                {busy === "accepted" ? "PROCESSING…" : "APPROVE"}
               </PixelButton>
               <PixelButton variant="danger" disabled={!!busy} onClick={() => void decide("declined")}>
                 {busy === "declined" ? "…" : "DECLINE"}
@@ -259,25 +259,25 @@ function TradeDetails({ p, me, upsert, close, gone }: {
             </div>
           </div>
         )}
-        {p.status === "open" && myDecision === "accepted" && (
-          <p className="t-wait t-label">You accepted ✓ Waiting for {otherName}…</p>
+        {p.status === "open" && role === "seller" && (
+          <p className="t-wait t-label">Your agent agreed to the listed price. Waiting for {buyerName} to approve.</p>
         )}
         {p.status === "open" && !role && <p className="t-wait t-label">Viewing only</p>}
 
-        {p.status === "both_accepted" && role === "buyer" && (
+        {p.status === "both_accepted" && role === "buyer" && !busy && !["authorizing", "authorized"].includes(p.visaSimulation?.status ?? "") && (
           <PayButton proposal={p} onGone={gone} onDone={upsert} />
         )}
-        {p.status === "both_accepted" && role !== "buyer" && (
+        {p.status === "both_accepted" && (role !== "buyer" || !!busy || ["authorizing", "authorized"].includes(p.visaSimulation?.status ?? "")) && (
           <div className="t-stack">
-            <p className="t-wait t-label">{role === "seller" ? "You both accepted ✓" : "Both accepted ✓"} Waiting for {buyerName} to pay…</p>
-            <Chip tone="cream" plain>Demo payment · no real charge</Chip>
+            <p className="t-wait t-label">{p.visaSimulation || busy ? "Processing simulated Visa payment…" : `Waiting for ${buyerName}'s payment approval…`}</p>
+            <Chip tone="cream" plain>Visa simulation · no real charge</Chip>
           </div>
         )}
 
         {p.status === "paid" && (
           <div className="t-final t-final-paid">
             <p className="t-big">{role === "seller" ? `Sold · ${formatCents(s.priceCents)}` : newHomeText(p)}</p>
-            <p className="t-label">Paid ✓{p.paymentRef ? ` ${p.paymentRef}` : ""} · demo payment, no real charge</p>
+            <p className="t-label">{p.visaSimulation ? "Visa simulation complete ✓" : "Paid ✓"}{p.paymentRef ? ` ${p.paymentRef}` : ""} · no real charge</p>
             <ApprovalBadge p={p} />
             <PixelButton variant="ghost" onClick={close}>DONE</PixelButton>
           </div>

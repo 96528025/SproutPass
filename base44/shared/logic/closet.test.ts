@@ -43,11 +43,14 @@ beforeEach(async () => {
 });
 
 describe("seed", () => {
-  it("has 17 items over three closets and keeps the demo anchors exact", async () => {
+  it("has 20 items over three closets and keeps the demo anchors exact", async () => {
     const items = await db.ClothingItem.list();
-    expect(items).toHaveLength(17);
+    expect(items).toHaveLength(20);
     const by = (k: string) => items.filter((i) => i.currentOwnerId === ids.parentIds[k]).length;
-    expect([by("mina"), by("jo"), by("sam")]).toEqual([7, 5, 5]);
+    expect([by("mina"), by("jo"), by("sam")]).toEqual([8, 5, 7]);
+    // The three DEMO_MATCHES items Freja and Caesar listed before the demo; the romper is still in the closet.
+    expect(items.filter((i) => i.status === "listed").map((i) => i.name).sort())
+      .toEqual(["Fleece bear jacket", "Spare star sleep sack", "Star puffer snowsuit"]);
     const romper = items.find((i) => i.name === "Yellow duck romper")!;
     expect(romper).toMatchObject({ size: "6-9M", originalPriceCents: 3000, ownerCount: 1, icon: "item_romper" });
     expect(romper.predictedOutgrowDate!.slice(0, 10)).toBe("2026-08-27");
@@ -60,20 +63,22 @@ describe("seed", () => {
 
   it("applySeed is a full reset (running twice leaves one copy)", async () => {
     await applySeed(db, seedPlan());
-    expect(await db.ClothingItem.list()).toHaveLength(17);
+    expect(await db.ClothingItem.list()).toHaveLength(20);
+    expect(await db.Listing.list()).toHaveLength(3);
+    expect(await db.Need.list()).toHaveLength(4);
     expect(await db.Parent.list()).toHaveLength(3);
     expect(await db.Setting.list()).toHaveLength(1);
   });
 });
 
 describe("getCloset", () => {
-  it("returns Mina's closet with child age and no phone anywhere", async () => {
+  it("returns Caesar's closet with child age and no phone anywhere", async () => {
     const c = await getCloset(db, { parentKey: "mina" });
     expect(c.now).toBe(DEMO_DATES.start);
     expect(c.parent.key).toBe("mina");
     expect(c.child?.nickname).toBe("Bean");
     expect(c.childAgeMonths).toBe(5);
-    expect(c.items).toHaveLength(7);
+    expect(c.items).toHaveLength(8);
     expect(c.passedOn).toEqual([]);
     const json = JSON.stringify(c);
     expect(json).not.toContain("phone");
@@ -94,8 +99,8 @@ describe("getCloset", () => {
 
   it("accepts parentId as well as parentKey; unknown parent is 404", async () => {
     const c = await getCloset(db, { parentId: ids.parentIds.jo });
-    expect(c.parent.name).toBe("Jo");
-    expect(c.needs).toHaveLength(1);
+    expect(c.parent.name).toBe("Olivia");
+    expect(c.needs).toHaveLength(2);                              // top/onesie (the romper's) + outerwear
     await expectHttp(getCloset(db, { parentKey: "nobody" }), "not_found", 404);
     await expectHttp(getCloset(db, {}), "bad_request", 400);
   });
@@ -117,8 +122,11 @@ describe("getCloset", () => {
     await listRomper();
     const c = await getCloset(db, { parentKey: "mina" });
     expect(c.nudges.map((n) => n.message)).toEqual([]);          // listing resolved the outgrow nudge
-    expect(c.listings).toHaveLength(1);
+    expect(c.listings.map((l) => l.itemId).sort())                // the romper + the seed's spare sleep sack
+      .toEqual([romperId(), ids.itemIds["Spare star sleep sack"]].sort());
     expect((await getCloset(db, { parentKey: "jo" })).listings).toHaveLength(0);
+    expect((await getCloset(db, { parentKey: "sam" })).listings.map((l) => l.itemId).sort())
+      .toEqual([ids.itemIds["Star puffer snowsuit"], ids.itemIds["Fleece bear jacket"]].sort());
     expect((await getCloset(db, { parentKey: "jo" })).nudges.map((n) => n.message)).toEqual(["c"]);
   });
 
@@ -187,11 +195,13 @@ describe("listItem", () => {
     expect(l.shared).toBe(false);
   });
 
-  it("Sam's third-owner cardigan refuses to list (not_resellable 409) and nothing is written", async () => {
+  it("Freja's third-owner cardigan refuses to list (not_resellable 409) and nothing is written", async () => {
+    const before = (await db.Listing.list()).length;              // the seed's 3 listings
     const err = await expectHttp(listItem(db, { parentKey: "sam", itemId: ids.itemIds["Oatmeal knit cardigan"], photo: "c.jpg",
       condition: "well_loved", conditionNote: "", shared: true }), "not_resellable", 409);
     expect(err.message).toBe("Final home: this item has had its 3 owners.");
-    expect(await db.Listing.list()).toHaveLength(0);
+    expect(await db.Listing.list()).toHaveLength(before);
+    expect(await db.Listing.filter({ itemId: ids.itemIds["Oatmeal knit cardigan"] })).toHaveLength(0);
     expect((await db.ClothingItem.get(ids.itemIds["Oatmeal knit cardigan"])).status).toBe("in_closet");
   });
 
@@ -277,13 +287,14 @@ describe("upsertNeed", () => {
   });
 
   it("updates by needId (sizes, shared, clears the cap) and keeps createdAt", async () => {
-    const [need] = await db.Need.filter({ parentId: ids.parentIds.jo });
+    const [need, outerwear] = await db.Need.filter({ parentId: ids.parentIds.jo });   // seed: top/onesie, outerwear
     const withCap = await upsertNeed(db, { parentKey: "jo", needId: need.id, sizes: ["6-9M"], maxPriceCents: 2000, shared: true });
     expect(withCap.maxPriceCents).toBe(2000);
     const u = await upsertNeed(db, { parentKey: "jo", needId: need.id, sizes: ["6-9M", "9-12M"], shared: false });
     expect(u).toMatchObject({ id: need.id, sizes: ["6-9M", "9-12M"], shared: false, createdAt: need.createdAt, categories: [] });
     expect(u.maxPriceCents ?? null).toBeNull();
-    expect(await db.Need.filter({ parentId: ids.parentIds.jo })).toHaveLength(1);
+    expect((await db.Need.filter({ parentId: ids.parentIds.jo })).map((n) => n.id)).toEqual([need.id, outerwear.id]);  // no new row
+    expect(await db.Need.get(outerwear.id)).toEqual(outerwear);                                                       // the other need is untouched
   });
 
   it("rejects empty or unknown sizes, unknown categories, a bad cap, and another parent's need", async () => {
@@ -395,7 +406,8 @@ describe("getCloset ordering when the demo clock ties (every run happens at Oct 
     const first = await db.Listing.create({ itemId: romperId(), sellerId: mina, condition: "gently_used", conditionNote: "", priceCents: 1800, shared: true, status: "withdrawn", createdAt: DEMO_DATES.nudge });
     const second = await db.Listing.create({ itemId: romperId(), sellerId: mina, condition: "gently_used", conditionNote: "", priceCents: 1800, shared: true, status: "sold", createdAt: DEMO_DATES.nudge });
     const c = await getCloset(db, { parentKey: "mina" });
-    expect(c.listings.map((l) => l.id)).toEqual([second.id, first.id]);
+    // Only the romper's two rows tie (the seed's sleep-sack listing has its own, later createdAt).
+    expect(c.listings.filter((l) => l.itemId === romperId()).map((l) => l.id)).toEqual([second.id, first.id]);
     expect(c.nudges.map((n) => n.id)).toEqual([n1.id, n2.id]);
   });
 });

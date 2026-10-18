@@ -8,14 +8,19 @@
 // again, plus a 10 s backstop poll while visible (never while hidden, never stacked, and not while `paused`,
 // e.g. a trade is open: Base44's rate limit is shared by every tab and function).
 // An encounter is "active" while it is talking/proposed and started within the last 10 minutes.
+// Both matching and no-match meetings are shared with both people. A completed no-match
+// result stays visible briefly, measured from the last transcript turn rather than the approach.
 // A dismissed encounter stays dismissed for this tab (sessionStorage), so leaving /world and coming back
 // doesn't replay a meeting the parent already closed.
+// The selection is pure (encounterFor / nextEncounter / isActive) so vitest covers it without a DOM.
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "../app/api";
 import { type Encounter, listEncountersFor } from "./cApi";
 
-const ACTIVE_WINDOW_MS = 10 * 60_000;
+export const ACTIVE_WINDOW_MS = 10 * 60_000;
+/** How long a "no_match" meeting (a fit the pet rules declined) keeps its shrug on screen. */
+export const NO_MATCH_SHOW_MS = 15_000;
 const POLL_MS = 10_000;
 const SS_DISMISSED = "relay:enc:dismissed";
 const visible = () => typeof document === "undefined" || document.visibilityState !== "hidden";
@@ -50,12 +55,46 @@ export interface UseEncounterOptions {
   paused?: boolean;
 }
 
-function isActive(e: Encounter, nowMs: number): boolean {
-  return e.status !== "no_match" || nowMs - Date.parse(e.startedAt) < 15_000; // show "no match" shrug for 15 s
+/**
+ * Can this meeting be on screen at `nowMs`? Started within the last 10 min, something fit (hasMatch not false), and
+ * not a "no_match" older than its 15 s shrug.
+ */
+export function isActive(e: Encounter, nowMs: number): boolean {
+  const age = nowMs - Date.parse(e.startedAt);
+  if (!(age >= -5_000 && age <= ACTIVE_WINDOW_MS)) return false; // tolerate small server/device clock skew
+  const lastTurn = Math.max(Date.parse(e.startedAt), ...(e.transcript ?? []).map(t => Date.parse(t.at) || 0));
+  return e.status !== "no_match" || nowMs - lastTurn < NO_MATCH_SHOW_MS;
 }
 
 function involves(e: Encounter, me: string): boolean {
   return e.aId === me || e.bId === me;
+}
+
+/** `e` may pop for `me`: theirs, not dismissed in this tab, and active. */
+function showable(e: Encounter | null | undefined, me: string, dismissed: ReadonlySet<string>, nowMs: number): boolean {
+  return !!e && involves(e, me) && !dismissed.has(e.id) && isActive(e, nowMs);
+}
+
+const newer = (a: Encounter, b: Encounter) => Date.parse(a.startedAt) > Date.parse(b.startedAt);
+
+/** The refresh path: the newest showable meeting of `me` in `list` (any order), or null. */
+export function encounterFor<E extends Encounter>(list: readonly E[], me: string, dismissed: ReadonlySet<string>, nowMs: number): E | null {
+  let best: E | null = null;
+  for (const e of list) if (showable(e, me, dismissed, nowMs) && (!best || newer(e, best))) best = e;
+  return best;
+}
+
+/**
+ * The realtime path: what is on screen after `incoming` arrives (a create or an update). A row that can't show any
+ * more clears itself if it was the one on screen; otherwise the newer meeting wins and an update replaces its own row.
+ */
+export function nextEncounter<E extends Encounter>(
+  cur: E | null, incoming: E, me: string, dismissed: ReadonlySet<string>, nowMs: number,
+): E | null {
+  if (!incoming || !involves(incoming, me)) return cur;
+  if (!showable(incoming, me, dismissed, nowMs)) return cur?.id === incoming.id ? null : cur;
+  if (cur?.id === incoming.id && cur.status !== "talking" && incoming.status === "talking") return cur;
+  return !cur || cur.id === incoming.id || newer(incoming, cur) ? incoming : cur;
 }
 
 export function useEncounter(me: string | null | undefined, { paused = false }: UseEncounterOptions = {}): EncounterState {
@@ -71,26 +110,28 @@ export function useEncounter(me: string | null | undefined, { paused = false }: 
     setEncounter(null); // another parent (or none): never show the previous parent's meeting
     if (!me) return;
     let alive = true;
+    let revision = 0;
 
     const consider = (e: Encounter) => {
-      if (!alive || !e || !involves(e, me) || dismissed.current.has(e.id)) return;
+      if (!alive || !e) return;
+      revision += 1;
       const now = Date.now();
-      if (now - Date.parse(e.startedAt) > ACTIVE_WINDOW_MS || !isActive(e, now)) {
-        setEncounter((cur) => (cur?.id === e.id ? null : cur));
-        return;
-      }
-      setEncounter((cur) => (!cur || cur.id === e.id || Date.parse(e.startedAt) > Date.parse(cur.startedAt) ? e : cur));
+      setEncounter((cur) => nextEncounter(cur, e, me, dismissed.current, now));
     };
 
     let inFlight = false;
     const refresh = async () => {
       if (inFlight) return;            // never stack polls when the backend is slow or rate limited
       inFlight = true;
+      const startedRevision = revision;
       try {
-        const list = await listEncountersFor(me);
-        const now = Date.now();
-        const best = list.find((e) => !dismissed.current.has(e.id) && now - Date.parse(e.startedAt) <= ACTIVE_WINDOW_MS && isActive(e, now));
-        if (alive) setEncounter(best ?? null);
+        const list: Encounter[] = await listEncountersFor(me);
+        if (alive && revision === startedRevision) setEncounter(cur => {
+          const next = encounterFor(list, me, dismissed.current, Date.now());
+          // A slow read must not roll a realtime result back to "talking".
+          if (cur && next?.id === cur.id && cur.status !== "talking" && next.status === "talking") return cur;
+          return next;
+        });
       } catch {
         /* offline: keep what we have */
       } finally {
@@ -101,8 +142,8 @@ export function useEncounter(me: string | null | undefined, { paused = false }: 
 
     void refresh();
     const unsub = api.subscribe<Encounter>("Encounter", (ev) => {
-      if (ev.type === "delete") return;
-      consider(ev.data);
+      if (ev.type === "delete") { revision += 1; setEncounter(cur => cur?.id === ev.id ? null : cur); return; }
+      consider({ ...ev.data, id: ev.id });
     });
     const timer = setInterval(() => { if (visible() && !pausedRef.current) void refresh(); }, POLL_MS);
     const onVisible = () => { if (visible() && !pausedRef.current) void refresh(); };

@@ -3,6 +3,8 @@
     python local_demo.py              # ~35 s, prints every pet line and the pets' conversation, ends PASS/FAIL
     python local_demo.py --jo-first   # same, with Jo's parent id sorting first (Jo's pet opens the encounter)
     python local_demo.py --rules      # Jo's pet rules: a $10 price limit → Pip declines (says which rule), no trade
+    python local_demo.py --more-matches  # + seed.ts's extra rows (MockBase44(more_matches=True)): after the story, Sam
+                                         # meets Mina, then Jo, then Mina again — one trade per meeting (~55 s)
 
 It runs the SAME wiring as live_bureau.py (build_bureau + InboxHub: one claimInbox for all three agents) against
 MockBase44, which answers like the real app (B's handlers, InboxEvent payloads, opaque parent ids).
@@ -20,11 +22,15 @@ Story: clock → Sep 20 → Button nudges Mina → "sell it" + photo → "yes" �
        → clock → Oct 18 → Mina meets Jo → Button & Pip talk (RelayProtocol; on live Mina's pet opens and the
          roles swap, since Jo has the need) → proposal → both accept → Jo pays (demo) → flowers
        → romper in Jo's bag ♥♥♡ → Sam can't sell a 3rd-owner cardigan.
+--more-matches, then: Sam walks to Mina → the smaller parent id's need first (Mina: the snowsuit) → Sam walks to Jo →
+       the fleece jacket → Mina walks to Sam again → the other way (Sam: the sleep sack). Each meeting is ONE proposal
+       by the fetch agents, whoever walked (the same rule as the app's planLocalMatch fallback).
 """
 
 from __future__ import annotations
 
 import argparse
+import asyncio
 import logging
 import os
 import sys
@@ -82,6 +88,8 @@ def main(argv=None) -> int:
     ap.add_argument("--jo-first", action="store_true", help="give Jo the smaller parent id (Jo's pet opens)")
     ap.add_argument("--port", type=int, default=8100)
     ap.add_argument("--rules", action="store_true", help="Jo's pet rules allow at most $10: the pets decline, no trade")
+    ap.add_argument("--more-matches", action="store_true",
+                    help="seed.ts's extra rows: three more meetings after the story (Sam↔Mina, Sam↔Jo, Mina↔Sam again)")
     a = ap.parse_args(argv)
     logging.basicConfig(level=os.environ.get("LOG", "WARNING"))
     if not os.environ.get("LOG"):
@@ -90,7 +98,8 @@ def main(argv=None) -> int:
         if hasattr(stream, "reconfigure"):
             stream.reconfigure(encoding="utf-8", line_buffering=True)  # pet lines have ♥ and emoji; Windows consoles
 
-    app = MockBase44(ids={"mina": DEFAULT_IDS["jo"], "jo": DEFAULT_IDS["mina"]} if a.jo_first else None)
+    app = MockBase44(ids={"mina": DEFAULT_IDS["jo"], "jo": DEFAULT_IDS["mina"]} if a.jo_first else None, more_matches=a.more_matches)
+    asyncio.set_event_loop(asyncio.new_event_loop())  # uAgents wants a current loop at construction (Python 3.14 has none)
     parents = {k: {"id": app.id(k), "name": app.parents[app.id(k)]["name"], "pet": app.parents[app.id(k)]["pet"]["name"]} for k in PARENTS}
     bureau, agents, brains, hub = build_bureau(
         app, parents, app_url=APP_URL, seeds={p: f"local-demo-{p}" for p in PARENTS}, port=a.port,
@@ -105,6 +114,10 @@ def main(argv=None) -> int:
     step = {"i": 0}
     seen = {"sms": 0}
     name = {app.id(k): k for k in PARENTS}
+    # --more-matches: three more walks after Sam's cardigan (step → walker, peer, label), then the checks at `final`.
+    more_walks = {23: ("sam", "mina", "first"), 27: ("sam", "jo", "jo"), 31: ("mina", "sam", "again")} if a.more_matches else {}
+    more = {}  # label → encounter id
+    final = 36 if a.more_matches else 23
 
     def say(line: str) -> None:
         print(f"\n▶ {line}")
@@ -173,9 +186,22 @@ def main(argv=None) -> int:
         elif i == 21:
             say('Sam: "sell the cardigan" (it is on its 3rd owner)')
             app.push("sam", "imessage", {"text": "sell the cardigan", "photoUrls": []})
-        elif i == 23:
+        elif i in more_walks:
+            walker, peer, label = more_walks[i]
+            opener = min((walker, peer), key=app.id)
+            again = " again — one trade per meeting, so this one goes the other way" if label == "again" else ""
+            say(f"{walker.title()} walks toward {peer.title()}{again} … < 25 m → encounter ({opener.title()}'s pet opens: "
+                "the smaller parent id's need first)")
+            more[label] = app.meet(walker, peer)
+        elif a.more_matches and i == final - 1:
+            for enc_id in more.values():
+                enc = app.encounters[enc_id]
+                print(f"\n   💬 Encounter {enc_id} {name.get(enc['aId'])} → {name.get(enc['bId'])} status={enc['status']}")
+                for t in enc["transcript"]:
+                    print(f"      {t['text']}")
+        elif i == final:
             romper = app.items["romper"]
-            prop = next(iter(app.proposals.values()), {})
+            prop = next((p for p in app.proposals.values() if p["itemId"] == "romper"), {})  # the story's (--more-matches adds more)
             enc = next(iter(app.encounters.values()), {})
             pets = {t["text"].split(":")[0] for t in enc.get("transcript", [])}
             log_ = enc.get("agentLog") or []
@@ -196,7 +222,7 @@ def main(argv=None) -> int:
             kinds = [t.get("kind") for t in enc.get("transcript", [])]
             if a.rules:
                 checks = {
-                    "no proposal, nothing charged": not app.proposals and romper["currentOwnerId"] == app.id("mina")
+                    "no proposal, nothing charged": not prop and romper["currentOwnerId"] == app.id("mina")
                         and romper["status"] == "listed",
                     "encounter ended no_match with the rule as the reason (by the fetch agents)":
                         enc.get("status") == "no_match" and enc.get("negotiatedBy") == "fetch"
@@ -223,11 +249,44 @@ def main(argv=None) -> int:
                         and types[-2:] == ["ProposeTrade", "TradeAck"] and all(e["by"] == "fetch" for e in log_),
                     **common,
                 }
+            if a.more_matches:
+                first, second = ("mina", "sam") if app.id("mina") < app.id("sam") else ("sam", "mina")
+                wants = {"mina": "Star puffer snowsuit", "sam": "Spare star sleep sack"}
+
+                def proposed(label: str, buyer: str, item: str) -> bool:
+                    ps = [p for p in app.proposals.values() if p.get("encounterId") == more.get(label)]
+                    e = app.encounters.get(more.get(label), {})
+                    return (len(ps) == 1 and ps[0]["buyerId"] == app.id(buyer) and ps[0]["snapshot"]["itemName"] == item
+                            and ps[0]["source"] == "fetch" and e.get("status") == "proposed" and e.get("negotiatedBy") == "fetch")
+
+                def logged_between(label: str, x: str, y: str) -> bool:
+                    log_ = app.encounters.get(more.get(label), {}).get("agentLog") or []
+                    return bool(log_) and all({e["from"], e["to"]} == {agents[x].address, agents[y].address} for e in log_)
+
+                jo_sam = app.encounters.get(more.get("jo"), {})
+                if a.rules:  # the $21.60 jacket is over Jo's $10 limit too: Pip declines it, the meeting ends no_match
+                    jo_sam_label = "Sam ↔ Jo: Jo's pet rules stop the Fleece bear jacket (no_match, the rule as the reason)"
+                    jo_sam_ok = (jo_sam.get("status") == "no_match" and not any(p.get("encounterId") == more.get("jo") for p in app.proposals.values())
+                                 and jo_sam.get("noMatchReason") == "It costs more than the price limit Jo set for Pip.")
+                else:
+                    jo_sam_label, jo_sam_ok = "Sam ↔ Jo: one proposal, the Fleece bear jacket for Jo", proposed("jo", "jo", "Fleece bear jacket")
+                checks.update({
+                    f"Sam ↔ Mina: one proposal, {first.title()}'s need first (smaller parent id): {wants[first]}":
+                        proposed("first", first, wants[first]),
+                    jo_sam_label: jo_sam_ok,
+                    f"Mina ↔ Sam again: the other way round, {wants[second]} for {second.title()}":
+                        proposed("again", second, wants[second]),
+                    "each new meeting's protocol log is between that pair's agents":
+                        logged_between("first", "sam", "mina") and logged_between("jo", "sam", "jo") and logged_between("again", "mina", "sam"),
+                })
             print(f"\n✅ romper owner={name.get(romper['currentOwnerId'])} owners={romper['ownerCount']} status={romper['status']} fits until {romper['predictedOutgrowDate'][:10]}")
             if prop:
                 print(f"✅ proposal {prop.get('id')} status={prop.get('status')} price=${prop.get('snapshot', {}).get('priceCents', 0) / 100:.2f} source={prop.get('source')}")
             else:
                 print(f"✅ no proposal: {enc.get('noMatchReason') or 'nothing fits'} · romper still on Mina's shared list")
+            for p in (p for p in app.proposals.values() if p["itemId"] != "romper"):  # --more-matches
+                print(f"✅ proposal {p['id']} {p['snapshot']['itemName']} {name.get(p['sellerId'])} → {name.get(p['buyerId'])} "
+                      f"status={p['status']} price=${p['snapshot']['priceCents'] / 100:.2f} source={p['source']}")
             print(f"   {hub.polls} inbox polls · {len(app.calls)} app calls ({app.calls.count('sendImessage')} pet lines) · "
                   f"{app_side.answered} imessage/event rows answered by the app side")
             for label, ok in checks.items():

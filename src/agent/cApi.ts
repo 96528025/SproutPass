@@ -21,6 +21,14 @@ export type Encounter = {
   status: "talking" | "proposed" | "no_match";
   startedAt: string;
   transcript: AgentTurn[];
+  /** The trade this meeting ended in (set with status "proposed"). */
+  proposalId?: string;
+  noMatchReason?: string;
+  /**
+   * Set when the meeting starts: something shared fits one way or the other (before the buyer's pet rules).
+   * false = nothing fits either way; both outcomes are shown to both people.
+   */
+  hasMatch?: boolean;
 };
 
 export type AgentNudge = {

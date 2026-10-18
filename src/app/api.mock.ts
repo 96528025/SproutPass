@@ -8,9 +8,10 @@ import { createFakeDb } from "../../base44/shared/testing/fakeDb.ts";
 import type { ChangeEvent } from "../../base44/shared/testing/fakeDb.ts";
 import { applySeed, seedPlan } from "../../base44/shared/seed.ts";
 import { getCloset, listItem, recordPurchase, resolveNudge, upsertNeed, withdrawListing } from "../../base44/shared/logic/closet.ts";
-import { decideProposal, getParties, payProposal } from "../../base44/shared/logic/trade.ts";
+import { approveDemoTrade, getParties, payProposal } from "../../base44/shared/logic/trade.ts";
 import { demoClock, demoReset, getStats, selfTest } from "../../base44/shared/logic/demo.ts";
 import { getTrust, mockPasskeys, removePasskey, setMandate } from "../../base44/shared/logic/trust.ts"; // B5
+import { pairHasMatch } from "../../base44/shared/c/location.ts";
 import { toSmallDataUrl } from "./photo";
 import { createMockWorld } from "./mockWorld";
 
@@ -72,18 +73,29 @@ const call = async <T>(fn: () => Promise<T>): Promise<T> => {
 export const mockDev = {
   db,
   /**
-   * TRIGGER ENCOUNTER: Jo's pet meets the seller of the first active listing, without the walk. A real mock
-   * encounter (mockWorld.instantEncounter): the pets' lines, the mock agents' protocol log, then C's fallback →
-   * B's createProposal, so /agents, the bubbles and the trade fill in as on a walk. In the browser the pets talk
-   * first (a few seconds); resolves with the proposal, or throws with why there is none (e.g. Jo's pet rules).
+   * TRIGGER ENCOUNTER: this tab's parent (`meKey`, default Jo) meets the first other family, in seed order (mina,
+   * jo, sam), whose shared lists match either way (pairHasMatch: cbridge findMatches both directions, the same
+   * check that sets Encounter.hasMatch on a walk), without the walk. When nobody matches, the seller of the first
+   * active listing that isn't mine, so the panel still shows the plain no-match message (null when there's none:
+   * "List an item first"). A real mock encounter (mockWorld.instantEncounter): the pets' lines, the mock agents'
+   * protocol log, then C's fallback → B's createProposal (the smaller parentId buys first when both ways fit), so
+   * /agents, the bubbles and the trade fill in as on a walk. In the browser the pets talk first (a few seconds);
+   * resolves with the proposal, or throws with why there is none (e.g. the buyer's pet rules).
    */
-  async triggerEncounter(): Promise<MatchProposal | null> {
+  async triggerEncounter(meKey = "jo"): Promise<MatchProposal | null> {
     await ready;
-    const [jo] = await db.Parent.filter({ key: "jo" });
-    const listing = (await db.Listing.filter({ status: "active" })).find((l) => l.sellerId !== jo?.id);
-    if (!jo || !listing) return null;
+    const parents = await db.Parent.list();
+    const me = parents.find((p) => p.key === meKey);
+    if (!me) return null;
+    const seedOrder = seedPlan().parents.map((p) => p.key);
+    const rank = (key: string) => { const i = seedOrder.indexOf(key); return i < 0 ? seedOrder.length : i; };
+    const others = parents.filter((p) => p.id !== me.id).sort((a, b) => rank(a.key) - rank(b.key));
+    let peerId: string | undefined;
+    for (const p of others) if (await pairHasMatch(db, me.id, p.id)) { peerId = p.id; break; }
+    peerId ??= (await db.Listing.filter({ status: "active" })).find((l) => l.sellerId !== me.id)?.sellerId;
+    if (!peerId) return null;
     try {
-      const met = await world.instantEncounter(jo.id, listing.sellerId, { talk: inBrowser });
+      const met = await world.instantEncounter(me.id, peerId, { talk: inBrowser });
       if (met.proposal) return met.proposal;
       throw new ApiError(met.declined ? "not_eligible" : "no_match", met.message);
     } catch (e: any) {
@@ -100,7 +112,7 @@ export const mockApi: Api = {
   upsertNeed: (req) => call(() => upsertNeed(db, req)),
   resolveNudge: (req) => call(() => resolveNudge(db, req)),
 
-  decideProposal: (req) => call(() => decideProposal(db, req)),
+  decideProposal: (req) => call(() => approveDemoTrade(db, req)),
   // B5: a passkey approval (req.passkey) is checked first, mock-style (see mockPasskeys), like payProposal's entry does for real.
   payProposal: (req) => call(async () => payProposal(db, req, { delayMs: 600, passkeyApprovedFor: await mockPasskeys.approvePayment(db, req) })),
   getParties: (req) => call(() => getParties(db, req)),

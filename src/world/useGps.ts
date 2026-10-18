@@ -9,10 +9,12 @@
 //   WorldScreen also turns it off while a trade is open). A DISCOVERABLE flip still goes out.
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "@/app/api";
+import type { DemoPosition } from "@/app/types";
 
 export type GpsStatus = "idle" | "ok" | "weak" | "denied" | "unavailable";
 
 export interface GpsState {
+  position?: DemoPosition;
   lat: number | null;
   lng: number | null;
   accuracyM: number | null;
@@ -25,6 +27,7 @@ export interface GpsState {
 }
 
 export interface UseGpsOptions {
+  retryKey?: number;
   /** Real Parent id (closet.parent.id); null while the closet loads: the sensor runs, nothing is sent yet. */
   parentId: string | null;
   enabled?: boolean;
@@ -60,6 +63,7 @@ function distanceM(aLat: number, aLng: number, bLat: number, bLng: number): numb
 const INITIAL: GpsState = { lat: null, lng: null, accuracyM: null, moving: false, facing: "right", status: "idle", paused: false };
 
 export function useGps({
+  retryKey = 0,
   parentId,
   enabled = true,
   simulated = false,
@@ -68,6 +72,7 @@ export function useGps({
   heartbeat = true,
 }: UseGpsOptions): GpsState {
   const [state, setState] = useState<GpsState>(INITIAL);
+  const [serverPosition, setServerPosition] = useState<{ parentId: string; position: DemoPosition } | null>(null);
   const [visible, setVisible] = useState(() => typeof document === "undefined" || document.visibilityState === "visible");
 
   const fix = useRef<{ lat: number; lng: number; accuracyM: number; at: number } | null>(null);
@@ -92,8 +97,11 @@ export function useGps({
     api
       .updatePresence({ parentId: id, lat: f.lat, lng: f.lng, accuracyM: Math.round(f.accuracyM), simulated: sim, discoverable: disc })
       .then(
-        () => {
+        (result) => {
           waitMs.current = PRESENCE_MS;
+          if (sim && result.position && live.current.parentId === id && live.current.simulated) {
+            setServerPosition({ parentId: id, position: result.position });
+          }
         },
         () => {
           waitMs.current = Math.min(MAX_BACKOFF_MS, waitMs.current * 2);
@@ -137,6 +145,14 @@ export function useGps({
     [send],
   );
 
+  // Never publish a leftover demo coordinate as a real GPS fix after switching modes.
+  useEffect(() => {
+    fix.current = null;
+    lastSentFix.current = null;
+    setServerPosition(null);
+    setState(INITIAL);
+  }, [simulated, retryKey]);
+
   // The sensor: only while enabled and visible. Hidden => clearWatch; visible again => fresh watch.
   useEffect(() => {
     if (!enabled || !visible) return;
@@ -153,17 +169,19 @@ export function useGps({
       return;
     }
     fix.current = fix.current ? { ...fix.current, at: Date.now() } : null; // don't count time spent hidden as "no fix"
+    let active = true;
     const id = navigator.geolocation.watchPosition(
-      (pos) => accept(pos.coords.latitude, pos.coords.longitude, pos.coords.accuracy),
+      (pos) => { if (active) accept(pos.coords.latitude, pos.coords.longitude, pos.coords.accuracy); },
       (err) => {
+        if (!active) return;
         if (err.code === err.PERMISSION_DENIED) setState((s) => ({ ...s, status: "denied" }));
         else if (!fix.current) setState((s) => ({ ...s, status: "unavailable" }));
         // otherwise keep the last status: the 15 s staleness check below turns it into the "paused" chip
       },
       { enableHighAccuracy: true, maximumAge: 0, timeout: 10_000 },
     );
-    return () => navigator.geolocation.clearWatch(id);
-  }, [enabled, visible, simulated, simFix.lat, simFix.lng, simFix.accuracyM, accept]);
+    return () => { active = false; navigator.geolocation.clearWatch(id); };
+  }, [enabled, visible, simulated, simFix.lat, simFix.lng, simFix.accuracyM, accept, retryKey]);
 
   // Presence heartbeat (10 s keepalive, earlier after a real >= 5 m move) and the "screen locked?" check, while visible.
   useEffect(() => {
@@ -210,5 +228,5 @@ export function useGps({
 
   useEffect(() => () => window.clearTimeout(movingTimer.current), []);
 
-  return state;
+  return { ...state, position: serverPosition?.parentId === parentId ? serverPosition.position : undefined };
 }

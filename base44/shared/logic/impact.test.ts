@@ -213,20 +213,21 @@ describe("getImpact (seed + a real trade)", () => {
     await demoReset(db, { MINA_PHONE: "+15555550101" });
   });
 
-  it("before the demo: the seed's earlier hand-offs, Sam leads, no in-app trades, and no phone anywhere", async () => {
+  it("before the demo: the seed's earlier hand-offs, Freja leads, no in-app trades, and no phone anywhere", async () => {
     const v = await getImpact(db);
-    // sweater Sam → Mina, sailor set → Jo, cardigan → Lee → Sam (the last one priced by the 40% rule)
+    // sweater Freja → Caesar, sailor set → Olivia, cardigan → Lee → Freja (the last one priced by the 40% rule)
     expect(v.itemsRehomed).toBe(4);
     expect(v.tradesCompleted).toBe(0);
     expect(v.dollarsSavedCents).toBe(1440 + 1280 + 1600 + 2400);
     expect(v.dollarsEarnedCents).toBe(2160 + 1920 + 2400 + 1600);
     expect(v.co2SavedKg).toBeGreaterThan(0);
-    expect(v.points.map((p) => [p.name, p.points])).toEqual([["Sam", 80], ["Jo", 40], ["Mina", 30]]);
+    // Each includes POINTS.sharedNeed per seeded shared need: Olivia has 2 (top/onesie, outerwear), Caesar and Freja 1 each.
+    expect(v.points.map((p) => [p.name, p.points])).toEqual([["Freja", 90], ["Olivia", 50], ["Caesar", 40]]);
     expect(v.me).toBeUndefined();
     expect(JSON.stringify(v)).not.toMatch(/phone|\+1555/);
   });
 
-  it("after the romper trade: +1 hand-off, Mina gets the seller and quick-pass points and tops the board", async () => {
+  it("after the romper trade: +1 hand-off, Caesar gets the seller and quick-pass points and tops the board", async () => {
     const before = await getImpact(db);
     await demoClock(db, { now: DEMO_DATES.nudge });
     const [nudge] = await db.AgentNudge.filter({ kind: "outgrow_check" });
@@ -250,8 +251,9 @@ describe("getImpact (seed + a real trade)", () => {
     expect(v.dollarsSavedCents - before.dollarsSavedCents).toBe(3000 - 1800);
     expect(v.dollarsEarnedCents - before.dollarsEarnedCents).toBe(1800);
     expect(v.co2SavedKg).toBeGreaterThan(before.co2SavedKg);
-    expect(v.points[0]).toMatchObject({ name: "Mina", points: 30 + POINTS.sold + POINTS.quickList });
-    expect(v.me).toMatchObject({ parentId: mina.id, badges: ["Quick Pass", "First Pass", "New Home"], nextBadge: "Good Neighbor" });
-    expect(v.points.find((x) => x.name === "Jo")!.points).toBe(40 + POINTS.bought);
+    expect(v.points[0]).toMatchObject({ name: "Caesar", points: 40 + POINTS.sold + POINTS.quickList });
+    // Caesar's seeded 9-12M outerwear need earns Good Neighbor, so the next one is Final Home.
+    expect(v.me).toMatchObject({ parentId: mina.id, badges: ["Good Neighbor", "Quick Pass", "First Pass", "New Home"], nextBadge: "Final Home" });
+    expect(v.points.find((x) => x.name === "Olivia")!.points).toBe(50 + POINTS.bought);
   });
 });

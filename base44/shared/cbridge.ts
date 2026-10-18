@@ -13,7 +13,7 @@ import { predictOutgrow as predictOutgrowIso } from "./sizes.ts";
 import {
   getCloset, listItem, recordPurchase, resolveNudge, upsertNeed, withdrawListing, withRetry,
 } from "./logic/closet.ts";
-import { createProposal, decideProposal, payProposal } from "./logic/trade.ts";
+import { createProposal, approveDemoTrade, payProposal } from "./logic/trade.ts";
 
 // deno-lint-ignore no-explicit-any
 type Args = Record<string, any>;
@@ -60,7 +60,7 @@ export async function callB(rawDb: unknown, name: string, rawArgs: Args = {}): P
         if (!parentId && !args.parentKey) parentId = (await db.AgentNudge.get(args.nudgeId).catch(() => null) as AgentNudge | null)?.parentId;
         return await resolveNudge(db, { ...args, parentId, action } as ResolveNudgeReq);
       }
-      case "decideProposal": return await decideProposal(db, args as DecideProposalReq);
+      case "decideProposal": return await approveDemoTrade(db, args as DecideProposalReq);
       case "payProposal": return await payProposal(db, args as PayProposalReq, { delayMs: 1000 });
       case "withdrawListing": return await withdrawListing(db, args as WithdrawListingReq);
       case "upsertNeed": return await upsertNeed(db, args as UpsertNeedReq);

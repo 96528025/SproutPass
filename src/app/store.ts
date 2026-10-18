@@ -115,7 +115,7 @@ export function parentRef(): ParentRef {
 
 // ---------------------------------------------------------------- live sync
 
-const WATCHED: EntityName[] = ["ClothingItem", "Listing", "AgentNudge", "MatchProposal", "Setting"];
+const WATCHED: EntityName[] = ["ClothingItem", "Listing", "AgentNudge", "MatchProposal", "Setting", "Need", "Parent"];
 
 function touchesMe(entity: EntityName, e: EntityEvent<Record<string, unknown>>): boolean {
   const { parentKey, closet } = useApp.getState();
@@ -128,6 +128,8 @@ function touchesMe(entity: EntityName, e: EntityEvent<Record<string, unknown>>):
       return d.currentOwnerId === me || closet.items.some((i) => i.id === e.id) || closet.passedOn.some((i) => i.id === e.id);
     case "Listing": return d.sellerId === me;
     case "AgentNudge": return d.parentId === me;
+    case "Need": return d.parentId === me;
+    case "Parent": return e.id === me;
     case "MatchProposal": return d.buyerId === me || d.sellerId === me;
     default: return true; // Setting: the demo clock moved
   }

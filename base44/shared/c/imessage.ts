@@ -46,6 +46,8 @@ export function resetOutboundLimiter(): void {
 export interface SendOpts {
   /** The one line a parent who texted STOP may still get: the answer to their HELP. */
   evenIfOptedOut?: boolean;
+  /** Only set from a verified inbound webhook, never from a browser-supplied destination. */
+  replyTo?: { spaceId: string; lineUserId: string };
 }
 
 export interface SendResult {
@@ -90,7 +92,7 @@ export async function sendToParent(
   if (!apiKey || !projectId) return { sent: false, skipped: "no PHOTON secrets" };
   // Each parent's pet answers from the line that parent texted (Photon's shared pool gives every phone its own
   // number, and a shared line can't send the first message). Learned from the parent's first inbound "hi".
-  const senderId = senderLineFor(parent);
+  const senderId = opts.replyTo?.lineUserId ?? senderLineFor(parent);
   if (!senderId) {
     return { sent: false, skipped: "no iMessage line yet — text your assigned Photon number 'hi' first" };
   }
@@ -102,9 +104,9 @@ export async function sendToParent(
     // Normally both come with the inbound message; create only what's missing, and write back only what we
     // created so a newer {space, line} from the webhook is never overwritten.
     let userId: string = parent.photonUserId;
-    let spaceId: string = parent.photonSpaceId;
+    let spaceId: string = opts.replyTo?.spaceId ?? parent.photonSpaceId;
     const created: Record<string, string> = {};
-    if (!userId) created.photonUserId = userId = await ensureUser(cfg, parent.phone);
+    if (!userId && !opts.replyTo) created.photonUserId = userId = await ensureUser(cfg, parent.phone);
     if (!spaceId) created.photonSpaceId = spaceId = await ensureSpace(cfg, senderId, userId);
     if (Object.keys(created).length) await db.Parent.update(parent.id, created).catch(() => {});
 

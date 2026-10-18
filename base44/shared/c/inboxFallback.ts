@@ -1,3 +1,4 @@
+import { visaReceiptText } from "../visaSimulation.ts";
 // (C) inboxFallback.ts — the pet's iMessage brain (template agent, rule 10) and the AgentInbox sweep.
 //
 // Who answers what:
@@ -35,11 +36,14 @@ import {
 } from "./wording.ts";
 import { getSetting, secret } from "./auth.ts";
 import { guessFromPhoto, scrubNote } from "./condition.ts";
+import { completePhotoDetails, inventoryReceipt, savePhotoInventory } from "./photoInventory.ts";
+import { describeNeed, extractConversationNeed, mentionsNeed, needsNo, needsYes, saveConversationNeed } from "./conversationNeeds.ts";
 import { agentsOnDuty, readSettings } from "./location.ts";
 import { personalityOf } from "./personality.ts";
 import { callB } from "../cbridge.ts";
 import { priceFor } from "../pricing.ts";
 import { passkeyRequired } from "../logic/trust.ts";
+import { proposalReview } from "./proposalReview.ts";
 
 export const FALLBACK_AFTER_MS = 5_000;
 /** The Fetch agents are on duty: give their 12 s poll room before taking an encounter row. */
@@ -74,7 +78,7 @@ export async function maybeSweepInbox(base44: any, db: any, nowMs: number = Date
 function tradeLink(prop: { id: string }, parent: any): string {
   return `https://${appHost()}/trade/${prop.id}?as=${encodeURIComponent(parent?.key ?? parent?.id ?? "")}`;
 }
-const appHost = () => secret("APP_HOST") || "app";
+const appHost = () => (secret("APP_HOST") || "sproutpass-5c025059.base44.app").replace(/^https?:\/\//, "").replace(/\/$/, "");
 
 /** The pay text says "with Face ID" only when this buyer's pet rules really require it (B5's mandate). */
 function faceIdFor(parent: any): boolean {
@@ -193,7 +197,7 @@ export function rateGate(
 // ---------------------------------------------------------------- one parent's conversation
 
 /** Fields that survive a new selling flow. */
-const META = ["optedOut", "rl", "lastAsk", "answeredAt"] as const;
+const META = ["optedOut", "rl", "lastAsk", "answeredAt", "pendingNeed"] as const;
 
 interface Ctx {
   base44: any;
@@ -269,7 +273,11 @@ async function handleRow(base44: any, db: any, row: any) {
     base44, db, parent,
     pet: parent?.pet?.name ?? "Pet",
     convo: { step: "idle", ...(parent.convo ?? {}) },
-    say: (text, img, opts) => sendToParent(db, row.parentId, text, img, opts),
+    say: (text, img, opts) => sendToParent(db, row.parentId, text, img, {
+      ...opts,
+      ...(row.type === "imessage" && row.payload?.isGroup && row.payload?.spaceId && row.payload?.lineUserId
+        ? { replyTo: { spaceId: row.payload.spaceId, lineUserId: row.payload.lineUserId } } : {}),
+    }),
   };
   const p = row.payload ?? {};
   if (row.type === "event") return await onEvent(ctx, p);
@@ -303,11 +311,20 @@ async function onEvent(ctx: Ctx, p: any) {
       const peerPet: string | undefined = p.peerPet ?? (await db.Parent.get(otherId(prop, parent.id)).catch(() => null))?.pet?.name;
       const s = prop.snapshot ?? {};
       // snapshot.previousOwners == the item's current ownerCount (♥♡♡ = 1), which picks the 60/40 rule.
-      await ctx.say(t.proposal(s.itemName, s.priceCents, s.originalPriceCents, s.previousOwners ?? 1, peerPet ?? "a friend's pet"));
-      await setAsk(ctx, "proposal", prop.id);
+      const review = proposalReview(s, peerPet ?? "a friend's pet", tradeLink(prop, parent), appHost(), prop.buyerId === parent.id);
+      await ctx.say(review.text, review.image);
+      if (prop.buyerId === parent.id) await setAsk(ctx, "proposal", prop.id);
       return;
     }
     case "proposal:updated": {
+      // Approval can finish the demo before its intermediate events are drained.
+      // Don't ask somebody to pay or approve a trade that already finished, and don't say "your turn" (or "you
+      // accepted" to the seller) for the shared listing's automatic accept once the buyer's approval moved it on.
+      if (p.status === "open" || p.status === "both_accepted") {
+        const current = await db.MatchProposal.get(p.proposalId).catch(() => null);
+        const still = p.status === "open" ? ["open"] : ["open", "both_accepted"];
+        if (current && !still.includes(current.status)) return;
+      }
       // B's event carries status + both decisions + otherName, so this answers each event as it happened
       // (not the proposal's latest state) without reads. Older rows without them → read the proposal.
       let prop: any = null;
@@ -338,7 +355,8 @@ async function onEvent(ctx: Ctx, p: any) {
           await ctx.say(t.accepted(otherName ?? "the other side"));
           if (ctx.convo.lastAsk?.id === p.proposalId) await setMeta(ctx, { lastAsk: undefined }); // answered (maybe in the app)
         } else {
-          await ctx.say(t.otherAccepted(otherName ?? "The other side"));
+          prop ??= await db.MatchProposal.get(p.proposalId).catch(() => null);
+          await ctx.say(`${t.otherAccepted(otherName ?? "The other side")}\nApprove or Decline: ${tradeLink({ id: p.proposalId }, parent)}`, prop?.snapshot?.photo);
           await setAsk(ctx, "proposal", p.proposalId); // "your turn!" is the newest question
         }
       }
@@ -351,13 +369,14 @@ async function onEvent(ctx: Ctx, p: any) {
       const s = p.snapshot ?? prop?.snapshot ?? {};
       const buyerId = p.buyerId ?? prop?.buyerId;
       const isBuyer = p.role ? p.role === "buyer" : buyerId === parent.id;
-      const gif = p.flowersUrl ?? `https://${appHost()}/fx/flowers.gif`;
+      const productPhoto = s.photo;
+      const receipt = visaReceiptText(p.visaSimulation ?? prop?.visaSimulation);
       if (isBuyer) {
         let until: string = p.predictedOutgrowDate ?? "";
         if (!until && p.itemId) until = (await db.ClothingItem.get(p.itemId).catch(() => null))?.predictedOutgrowDate ?? "";
-        await ctx.say(t.completed(s.itemName ?? "new item", until ? shortDate(until) : "soon", ctx.pet), gif);
+        await ctx.say(`${t.completed(s.itemName ?? "new item", until ? shortDate(until) : "soon", ctx.pet)}\n${receipt}\nView product and receipt: ${tradeLink({ id: p.proposalId }, parent)}`, productPhoto);
       } else {
-        await ctx.say(t.sold(s.itemName ?? "item", s.priceCents ?? p.priceCents ?? 0, ctx.pet), gif);
+        await ctx.say(`${t.sold(s.itemName ?? "item", s.priceCents ?? p.priceCents ?? 0, ctx.pet)}\n${receipt}\nView receipt: ${tradeLink({ id: p.proposalId }, parent)}`, productPhoto);
       }
       return;
     }
@@ -370,6 +389,15 @@ async function onText(ctx: Ctx, p: any) {
   const text = String(p.text ?? "").slice(0, 1000);
   const photos: string[] = Array.isArray(p.photoUrls) ? p.photoUrls : [];
   const intent: Intent = parseIntent(text);
+  // In a group, respond only to clothing needs/photos and this sender's need follow-up.
+  // Private closet, trade and payment commands stay in the person's direct conversation.
+  if (p.isGroup && !photos.length && !mentionsNeed(text)
+    && ctx.convo.pendingNeed?.spaceId !== p.spaceId
+    && !(ctx.convo.step === "await_inventory_details" && ctx.convo.inventorySpaceId === p.spaceId)
+    && !["stop", "start", "help"].includes(intent)) return;
+  if (p.isGroup && !mentionsNeed(text) && ["bag", "status", "pay", "accept", "decline", "sell", "keep", "later"].includes(intent)) {
+    return void await ctx.say("Please text me privately to view your closet or approve a trade. Here in the group, tell me what clothing you need.");
+  }
 
   // 1. STOP / START: always honoured, never rate limited. STOP gets one confirmation, then silence.
   if (intent === "stop") {
@@ -397,12 +425,64 @@ async function onText(ctx: Ctx, p: any) {
   }
 
   // 3. A selling question nobody answered for FLOW_TTL_MS is forgotten (quietly): a late "yes" lists nothing.
-  if ((ctx.convo.step ?? "idle") !== "idle" && Date.now() - Number(ctx.convo.flowAt ?? 0) > FLOW_TTL_MS) {
+  if (!["idle", "await_inventory_details"].includes(ctx.convo.step ?? "idle") && Date.now() - Number(ctx.convo.flowAt ?? 0) > FLOW_TTL_MS) {
     await setFlow(ctx, { step: "idle" }, { answered: false });
   }
 
-  // 4. A photo starts (or continues) the selling flow.
-  if (photos.length) return await onPhoto(ctx, photos[0], text);
+  // A requested listing photo stays in the selling flow: the pet asked for one ("send a photo of the romper", "which
+  // one? send a photo", a quote, or the outgrow nudge's "send a photo and I'll help pass it on", answered within
+  // FLOW_TTL_MS like any selling question). An unsolicited photo adds a new garment.
+  if (photos.length) {
+    const asked = newestQuestion(ctx);
+    const nudgeAsked = asked?.kind === "nudge" && asked.fresh && Date.now() - Number(ctx.convo.lastAsk?.at ?? 0) <= FLOW_TTL_MS;
+    if (!p.isGroup && (["await_photo", "await_condition"].includes(ctx.convo.step) || nudgeAsked)) {
+      return await onPhoto(ctx, photos[0], text);
+    }
+    try {
+      const item = await savePhotoInventory(ctx.base44, ctx.db, ctx.parent.id, photos, p.messageId, text);
+      const incomplete = item.size === "unknown" || !item.photoMetadata?.priceConfirmed;
+      await setFlow(ctx, { step: incomplete ? "await_inventory_details" : "idle", itemId: item.id, inventorySpaceId: p.spaceId ?? "direct" });
+      return void await ctx.say(inventoryReceipt(item));
+    } catch (e) {
+      console.error("[C] photo inventory failed", errText(e));
+      return void await ctx.say("I couldn't save this photo to your inventory. Please send a clear photo of one garment and its size label, then try again.");
+    }
+  }
+  const pendingNeed = ctx.convo.pendingNeed;
+  const sameConversation = pendingNeed && pendingNeed.spaceId === (p.spaceId ?? "direct");
+  if (sameConversation && needsNo(text)) {
+    await setMeta(ctx, { pendingNeed: undefined });
+    return void await ctx.say("Okay, I haven't changed your needs.");
+  }
+  if (sameConversation && needsYes(text) && pendingNeed.need.sizes.length) {
+    await saveConversationNeed(ctx.db, ctx.parent.id, pendingNeed.need);
+    await setMeta(ctx, { pendingNeed: undefined });
+    return void await ctx.say(`Saved for ${ctx.parent.name}: ${describeNeed(pendingNeed.need)}. Your pet can now use this need to find matching shared clothes.`);
+  }
+  if (mentionsNeed(text) || (sameConversation && !["accept", "decline", "pay", "bag", "status", "help", "sell"].includes(intent))) {
+    try {
+      const need = await extractConversationNeed(ctx.base44, text, sameConversation ? pendingNeed.need : undefined);
+      if (need) {
+        await setMeta(ctx, { pendingNeed: { need, spaceId: p.spaceId ?? "direct" } });
+        return void await ctx.say(need.sizes.length
+          ? `${ctx.parent.name}, I heard: ${describeNeed(need)}. Save this as a shared need for your family? Reply yes or no.`
+          : `${ctx.parent.name}, I heard you're looking for ${need.categories.join(" / ") || "clothing"}. What size do you need? You can include a budget, such as “9-12M under $25”.`);
+      }
+    } catch (e) {
+      console.error("[C] need recognition failed", errText(e));
+      return void await ctx.say("I couldn't identify that need yet. Try telling me the clothing type, size and optional budget again.");
+    }
+  }
+  if (ctx.convo.step === "await_inventory_details" && (!p.isGroup || ctx.convo.inventorySpaceId === p.spaceId)
+    && !["accept", "decline", "pay", "cancel", "help", "bag", "status"].includes(intent)) {
+    const item = await completePhotoDetails(ctx.db, ctx.parent.id, ctx.convo.itemId, text);
+    if (item.size !== "unknown" && item.photoMetadata?.priceConfirmed) await setFlow(ctx, { step: "idle" });
+    return void await ctx.say(inventoryReceipt(item));
+  }
+  if (p.isGroup) {
+    if (intent === "help") await ctx.say("Send one clothing photo to add it to your inventory, or tell me the clothing type, size and budget you need. I will ask before saving a shared need.");
+    return;
+  }
 
   const step: string = ctx.convo.step ?? "idle";
   // "yes" / "no" and the softer answers go to the question the pet asked last (a quote, a proposal or a nudge).

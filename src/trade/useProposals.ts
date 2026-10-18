@@ -110,7 +110,9 @@ export interface ProposalsView {
   me: string | null;
   /** This parent's proposals, newest first. */
   proposals: MatchProposal[];
-  /** Newest open / both_accepted proposal. */
+  /** Every open / both_accepted proposal, newest first (TradeWatcher pops the newest one this tab hasn't closed). */
+  live: MatchProposal[];
+  /** Newest open / both_accepted proposal (= live[0]). */
   active: MatchProposal | null;
   /** The last proposal seen turning "paid" while the app was running. */
   justPaid: MatchProposal | null;
@@ -136,6 +138,7 @@ export function useProposals(): ProposalsView {
     const proposals = me
       ? Object.values(rows).filter((p) => p.buyerId === me || p.sellerId === me).sort(newestFirst)
       : [];
-    return { me, proposals, active: proposals.find(isLive) ?? null, justPaid, byId: rows, upsert };
+    const live = proposals.filter(isLive);
+    return { me, proposals, live, active: live[0] ?? null, justPaid, byId: rows, upsert };
   }, [me, rows, justPaid, upsert]);
 }

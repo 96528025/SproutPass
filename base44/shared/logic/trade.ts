@@ -14,6 +14,7 @@ import { canResell } from "../pricing.ts";
 import { predictOutgrow } from "../sizes.ts";
 import { nudgeMessage } from "../nudges.ts";
 import { enforceMandate, passkeyRequired } from "./trust.ts";
+import { startVisaSimulation } from "../visaSimulation.ts";
 
 export const PROPOSAL_TTL_MS = 30 * 60_000;
 const LIVE: ProposalStatus[] = ["open", "both_accepted"];
@@ -212,11 +213,32 @@ export async function decideProposal(db: Db, body: DecideProposalReq): Promise<M
     return next;
   }
 
-  const other = role === "seller" ? p.buyerDecision : p.sellerDecision;
-  const status: ProposalStatus = other === "accepted" ? "both_accepted" : "open";
-  const next = await patch(db.MatchProposal, p, { [key]: "accepted", status, ...handoverPatch } as Partial<MatchProposal>);
+  // Save only this person's choice. Concurrent approvals must not overwrite
+  // the other choice or roll a declined/finished proposal back to open.
+  await db.MatchProposal.update(p.id, { [key]: "accepted", ...handoverPatch });
+  let next = await mustGet(db.MatchProposal, p.id, "proposal");
+  if (next.status !== "open") return next;
+  if (next.sellerDecision === "accepted" && next.buyerDecision === "accepted") {
+    next = await patch(db.MatchProposal, next, { status: "both_accepted" });
+  }
   await notifyUpdated(db, next, [parent]);
   return next;
+}
+
+/** A shared listing authorizes the seller's agent; only the buyer approves the final demo offer. */
+export async function approveDemoTrade(db: Db, body: DecideProposalReq): Promise<MatchProposal> {
+  const actor = await resolveParent(db, body);
+  const before = await mustGet(db.MatchProposal, body.proposalId, "proposal");
+  if (actor.id === before.buyerId && body.decision === "accepted" && before.status === "open" && before.sellerDecision === "pending") {
+    const listing = await mustGet(db.Listing, before.listingId, "listing");
+    if (!listing.shared || listing.sellerId !== before.sellerId) throw invalid("The seller is no longer sharing this listing.");
+    await decideProposal(db, { parentId: before.sellerId, proposalId: before.id, decision: "accepted" });
+  }
+  const proposal = await decideProposal(db, body);
+  if (body.decision !== "accepted" || proposal.status !== "both_accepted") return proposal;
+  const buyer = await mustGet(db.Parent, proposal.buyerId, "buyer");
+  if (passkeyRequired(buyer)) return proposal;
+  return (await payProposal(db, { parentId: buyer.id, proposalId: proposal.id }, { delayMs: 0 })).proposal;
 }
 
 // ---------------------------------------------------------------- payProposal
@@ -255,19 +277,30 @@ export async function payProposal(
   // Claim the payment before waiting, so a double tap transfers once: the last claim wins and the
   // other request just waits for the result.
   const ref = demoRef();
-  await db.MatchProposal.update(p.id, { paymentRef: ref });
+  await db.MatchProposal.update(p.id, {
+    paymentRef: ref, visaSimulation: startVisaSimulation(p.id, p.snapshot.priceCents, ref),
+  });
   await sleep(delayMs);
   p = await mustGet(db.MatchProposal, p.id, "proposal");
   if (p.paymentRef !== ref || p.status !== "both_accepted") return settle(db, p, delayMs);
 
   if (body.fail) {
-    const next = await patch(db.MatchProposal, p, { status: "payment_failed" });
+    const next = await patch(db.MatchProposal, p, {
+      status: "payment_failed",
+      visaSimulation: { ...p.visaSimulation!, status: "declined", declinedAt: new Date().toISOString() },
+    });
     await relist(db, next);
     await notifyUpdated(db, next, [parent]);
     return current(db, next);
   }
 
   const now = await getNow(db);
+  p = await patch(db.MatchProposal, p, {
+    visaSimulation: {
+      ...p.visaSimulation!, status: "authorized", authorizationCode: `SIM-${ref.slice(5)}`,
+      authorizedAt: new Date().toISOString(),
+    },
+  });
   // 1. Move the item (skipped if a crashed earlier attempt already moved it).
   let item = await mustGet(db.ClothingItem, p.itemId, "item");
   if (item.currentOwnerId !== p.buyerId) {
@@ -290,7 +323,10 @@ export async function payProposal(
   const listing = await mustGet(db.Listing, p.listingId, "listing");
   if (listing.status !== "sold") await db.Listing.update(listing.id, { status: "sold" });
   // 3. Proposal paid.
-  const paid = await patch(db.MatchProposal, p, { status: "paid", paymentRef: ref });
+  const paid = await patch(db.MatchProposal, p, {
+    status: "paid", paymentRef: ref,
+    visaSimulation: { ...p.visaSimulation!, status: "captured", capturedAt: new Date().toISOString() },
+  });
   // 4. Welcome nudge for the buyer (once).
   const buyer = await mustGet(db.Parent, p.buyerId, "buyer");
   const existing = await db.AgentNudge.filter({ parentId: p.buyerId, itemId: item.id, kind: "new_owner_welcome" });
@@ -304,6 +340,7 @@ export async function payProposal(
   const done = {
     type: "trade:completed" as const, proposalId: paid.id, itemId: item.id, priceCents: paid.snapshot.priceCents,
     buyerId: paid.buyerId, sellerId: paid.sellerId, snapshot: paid.snapshot, ...opt("predictedOutgrowDate", item.predictedOutgrowDate),
+    visaSimulation: paid.visaSimulation,
   };
   await writeInbox(db, paid.sellerId, { ...done, role: "seller" });
   await writeInbox(db, paid.buyerId, { ...done, role: "buyer" });

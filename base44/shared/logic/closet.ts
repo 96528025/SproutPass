@@ -157,6 +157,9 @@ export async function listItem(db: Db, body: ListItemReq): Promise<Listing> {
   const parent = await resolveParent(db, body);
   const item = await mustGet(db.ClothingItem, body.itemId, "item");
   if (item.currentOwnerId !== parent.id || item.status === "transferred_out") throw forbidden("you don't own this item");
+  if (item.size === "unknown" || item.photoMetadata?.priceConfirmed === false) {
+    throw bad("Reply to your pet on iMessage with the size and original price before selling this item.");
+  }
   const priceCents = priceFor(item);
   if (priceCents === null) throw new HttpError("not_resellable", "Final home: this item has had its 3 owners.", 409);
   if (!CONDITIONS.includes(body.condition)) throw bad(`unknown condition '${body.condition}'`);

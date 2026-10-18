@@ -38,13 +38,14 @@ async function uploadPhotos(base44: any, attachmentIds: string[]): Promise<strin
   for (const id of attachmentIds) {
     try {
       const { bytes, contentType } = await fetchAttachmentContent(cfg, id);
-      if (/^(audio|video|text)\//.test(contentType)) continue; // the pet only looks at photos
+      if (!contentType.startsWith("image/")) continue;
       const ext = contentType.includes("png") ? "png" : contentType.includes("heic") ? "heic" : "jpg";
       const file = new File([new Blob([bytes as unknown as ArrayBuffer])], `imsg-${id}.${ext}`, { type: contentType });
       const up = await base44.integrations.Core.UploadFile({ file });
       if (up?.file_url) urls.push(up.file_url);
     } catch (e) {
       console.error("[C] attachment fetch failed", (e as Error)?.message ?? e);
+      throw e; // Let Photon retry; never acknowledge a photo that wasn't stored.
     }
   }
   return urls;

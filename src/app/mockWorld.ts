@@ -9,7 +9,9 @@
 // lines go onto it (still "talking", so AgentBubbles type them while the pets are out); once they've had time to
 // say them (talkMs), B's createProposal runs with those lines (source "local") → "proposed" → the Trade window
 // pops on both tabs. Nothing fits → "no_match" at once. A safety net finishes any encounter still talking after
-// 15 s on the next presence/walk tick (e.g. the tab that started it was closed). `mockWorldTiming.instant = true`
+// 15 s on the next presence/walk tick (e.g. the tab that started it was closed). Every meeting row carries hasMatch
+// (location.ts pairHasMatch: does anything shared fit, either way?), so the app pops only the meetings where something
+// fits; the mock agents still talk the others through (LookingFor → NoFit). `mockWorldTiming.instant = true`
 // (tests) does all of it inside the same call. `instantEncounter` (the demo panel's TRIGGER ENCOUNTER) runs the
 // same conversation for two parents without the walk.
 //
@@ -35,6 +37,7 @@ import {
   type FindMatches,
   listNearby as cListNearby,
   type LocationDeps,
+  pairHasMatch,
   resolveEncounter,
   type RulesBlock,
   stageEncounter,
@@ -250,9 +253,9 @@ const matchOf = (best: LocalMatch, item?: { originalPriceCents?: number; ownerCo
 
 /**
  * Who bought (or would have) and what, for this encounter at any stage: its proposal; else the pets' staged
- * "propose" line; else B's matches both ways, picked as C's fallback picks them (location.ts planLocalMatch: aId
- * buys first; the best match the buyer's pet rules allow, else the best one they stop); else nothing fits and the
- * opener (smaller id, the agents' rule) speaks first.
+ * "propose" line; else B's matches both ways, picked as C's fallback picks them (location.ts planLocalMatch: the
+ * smaller parentId buys first, whoever walked — the agents' rule; the best match the buyer's pet rules allow, else the
+ * best one they stop); else nothing fits and the opener (smaller id, the same rule) speaks first.
  */
 async function talkOf(db: FakeDb, enc: Encounter): Promise<Talk> {
   const prop = await proposalOf(db, enc);
@@ -269,9 +272,10 @@ async function talkOf(db: FakeDb, enc: Encounter): Promise<Talk> {
   }
   const turns = Array.isArray(enc.transcript) ? enc.transcript : [];
   const proposer = turns.find((t) => t?.kind === "propose")?.parentId;
+  const [lo, hi] = enc.aId < enc.bId ? [enc.aId, enc.bId] : [enc.bId, enc.aId];
   const pairs: [string, string][] = proposer === enc.bId ? [[enc.bId, enc.aId]]
     : proposer === enc.aId ? [[enc.aId, enc.bId]]
-    : [[enc.aId, enc.bId], [enc.bId, enc.aId]];
+    : [[lo, hi], [hi, lo]];
   for (const [buyerId, sellerId] of pairs) {
     const ranked = ((await bFindMatches(db, { buyerId, sellerId }).catch(() => [])) ?? []).slice(0, 5);
     if (!ranked.length) continue;
@@ -283,8 +287,7 @@ async function talkOf(db: FakeDb, enc: Encounter): Promise<Talk> {
     ctx.match = matchOf(pick, item);
     return { ctx, found: pick };
   }
-  const opener = enc.aId < enc.bId ? enc.aId : enc.bId;
-  return { ctx: await talkFor(db, enc, opener, opener === enc.aId ? enc.bId : enc.aId) };
+  return { ctx: await talkFor(db, enc, lo, hi) };
 }
 
 /**
@@ -345,8 +348,9 @@ export function createMockWorld(db: FakeDb) {
   const locks = new Map<string, Promise<unknown>>();
   /** instantEncounter callers waiting for an encounter to be decided. */
   const waiting = new Map<string, (() => void)[]>();
-  /** How each encounter this tab decided ended, when the buyer's agent declined. */
+  /** How each encounter this tab decided ended, when the buyer's agent declined (and whose agent that was). */
   const declines = new Map<string, MockDecline>();
+  const decliners = new Map<string, string>();
 
   function locked<T>(id: string, fn: () => Promise<T>): Promise<T> {
     const run = (locks.get(id) ?? Promise.resolve()).then(fn, fn);
@@ -440,6 +444,7 @@ export function createMockWorld(db: FakeDb) {
       // The agents found something but no trade came of it: the buyer's agent declines, saying why.
       const d = await declineFor(db, t.found);
       declines.set(id, d);
+      decliners.set(id, ctx.buyerId);
       ctx = { ...ctx, declined: d };
     }
     await complete(id, mockAgentLog(ctx), "now");
@@ -513,9 +518,11 @@ export function createMockWorld(db: FakeDb) {
     },
     /**
      * TRIGGER ENCOUNTER: `buyerId`'s pet meets `sellerId`'s right now, without the walk. Same conversation as a walk
-     * (an Encounter, the pets' lines, the mock agents' protocol log, C's fallback → B's createProposal), so the
-     * Agent Console, the bubbles and the trade's "how our pets found this" fill in. `talk` (default: unless
-     * mockWorldTiming.instant) lets the pets say their lines first; resolves once the encounter is decided.
+     * (an Encounter with hasMatch, the pets' lines, the mock agents' protocol log, C's fallback → B's createProposal),
+     * so the Agent Console, the bubbles and the trade's "how our pets found this" fill in. Who buys follows the walk's
+     * rule (location.ts planLocalMatch): when both ways fit, the smaller parentId buys first, so `buyerId` names the
+     * side the panel expects to buy, not a promise. `talk` (default: unless mockWorldTiming.instant) lets the pets say
+     * their lines first; resolves once the encounter is decided.
      */
     async instantEncounter(buyerId: string, sellerId: string, opts: { talk?: boolean } = {}): Promise<InstantEncounter> {
       if (!buyerId || !sellerId) throw bad("buyerId, sellerId required");
@@ -525,8 +532,11 @@ export function createMockWorld(db: FakeDb) {
         db.Parent.get(sellerId).catch(() => null),
       ]);
       if (!buyer || !seller) throw notFound("parent");
+      // Same row a walk's meeting gets (location.ts detectEncounters): hasMatch false = nothing shared fits either way.
+      const hasMatch = await pairHasMatch(db, buyerId, sellerId, findMatches);
       const enc = (await db.Encounter.create({
         aId: buyerId, bId: sellerId, band: "<25m", simulated: true, status: "talking", startedAt: iso(Date.now()), transcript: [],
+        ...(hasMatch !== undefined ? { hasMatch } : {}),
       })) as Encounter;
       const done = whenDecided(enc.id);
       await converse(enc.id, opts.talk ?? !mockWorldTiming.instant);
@@ -534,13 +544,14 @@ export function createMockWorld(db: FakeDb) {
       const fin = await getEncounter(db, enc.id);
       const proposal = fin ? await proposalOf(db, fin) : null;
       const declined = proposal ? null : declines.get(enc.id) ?? null;
+      const decliner = decliners.get(enc.id) === seller.id ? seller : buyer; // the side whose pet rules said no
       const first = (name: string) => name.split(/\s+/)[0] || name;
       const message = fin?.status === "talking" // RESET stopped the conversation (cancelAll)
         ? "The conversation stopped before the pets finished."
         : proposal
         ?`${first(buyer.name)}'s and ${first(seller.name)}'s pets agreed on the ${proposal.snapshot.itemName}. Both parents decide.`
         : declined?.rule
-          ? `Stopped by ${first(buyer.name)}'s pet rules: ${declined.phrase}. ${NOTHING_CHARGED}`
+          ? `Stopped by ${first(decliner.name)}'s pet rules: ${declined.phrase}. ${NOTHING_CHARGED}`
           : declined
             ? `No trade: ${declined.phrase}. ${NOTHING_CHARGED}`
             : "The pets met, but nothing on either shared list fits.";

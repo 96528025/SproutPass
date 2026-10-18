@@ -73,7 +73,7 @@ describe("C's encounter → B's createProposal → decide → pay", () => {
 
     const [best] = await findMatches(db, { buyerId: ids.jo, sellerId: ids.mina });
     expect(best).toMatchObject({ itemId: romper.id, itemName: "Yellow duck romper", size: "6-9M", priceCents: 1800, wearWeeksLeft: 4 });
-    expect(best.reason).toMatch(/Jo/);
+    expect(best.reason).toMatch(/Olivia/);
 
     const prop = await callB(db, "createProposal", {
       listingId: best.listingId, sellerId: ids.mina, buyerId: ids.jo, encounterId: enc.id, reason: best.reason,
@@ -91,12 +91,14 @@ describe("C's encounter → B's createProposal → decide → pay", () => {
   }, 10_000);
 
   it("findMatches finds nothing for a pair with no shared fit", async () => {
+    // Caesar and Olivia before the romper is listed: Olivia lists nothing, and Caesar's spare sleep sack (12-18M) is no size Olivia needs
     expect(await findMatches(db, { buyerId: ids.mina, sellerId: ids.jo })).toEqual([]);
+    expect(await findMatches(db, { buyerId: ids.jo, sellerId: ids.mina })).toEqual([]);
   });
 });
 
 describe("predictOutgrow (C's Date signature)", () => {
-  it("matches B's size table: Jo's child outgrows the 6-9M romper ≈ Nov 17", async () => {
+  it("matches B's size table: Olivia's child outgrows the 6-9M romper ≈ Nov 17", async () => {
     const [joChild] = await db.Child.filter({ parentId: ids.jo });
     expect(predictOutgrow(romper, joChild, new Date(DEMO_DATES.meet)).toISOString().slice(0, 10)).toBe("2026-11-17");
   });

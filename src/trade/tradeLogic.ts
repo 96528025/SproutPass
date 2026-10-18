@@ -106,11 +106,54 @@ export interface WatcherState {
   openId: string | null;
   /** Trades this tab is done with: they never pop by themselves again (the pill can still reopen a live one). */
   dismissed: ReadonlySet<string>;
+  /** The trade whose window this tab closed last: the pill opens the live one after it, so every offer stays reachable. */
+  lastId?: string | null;
 }
 
-/** The trade the watcher pops now: the newest live one, unless a window is up, /trade/:id shows it, or it was dismissed. */
-export function tradeToPop(s: WatcherState, activeId: string | null, onTradeRoute: boolean): string | null {
-  return !activeId || s.openId || onTradeRoute || s.dismissed.has(activeId) ? null : activeId;
+/**
+ * How long a pop waits for the pets' meeting (A's EncounterScene) to leave before it pops over it anyway. Wall clock,
+ * counted from when this tab started holding: never proposal.createdAt, which is the demo clock (it can be months off).
+ */
+export const HOLD_MAX_MS = 20_000;
+
+/** Live trade ids, newest first; one id (or none) still works, for callers that only know the newest. */
+type LiveIds = readonly string[] | string | null | undefined;
+const asList = (live: LiveIds): readonly string[] => (live == null ? [] : typeof live === "string" ? [live] : live);
+
+/** The newest live trade this tab hasn't dismissed (a second offer pops once the first window is closed). */
+export function nextLive(s: WatcherState, live: LiveIds): string | null {
+  return asList(live).find((id) => !s.dismissed.has(id)) ?? null;
+}
+
+/**
+ * The trade the watcher pops now: the newest live one this tab hasn't dismissed, unless a window is up, /trade/:id
+ * shows it, or the pop is `held` (the pets' meeting is still on screen and its TRADE PROPOSAL! banner plays first:
+ * see popHeld).
+ */
+export function tradeToPop(s: WatcherState, live: LiveIds, onTradeRoute: boolean, held = false): string | null {
+  return s.openId || onTradeRoute || held ? null : nextLive(s, live);
+}
+
+/**
+ * Is a pop still held? `hold`: the EncounterScene is up (the Shell watches for it); `heldSinceMs`: when this tab
+ * started holding (null = it starts now). The safety valve: after HOLD_MAX_MS of holding it pops anyway, so a scene
+ * that never leaves can't hide a trade for good.
+ */
+export function popHeld(hold: boolean, heldSinceMs: number | null, nowMs: number, maxMs = HOLD_MAX_MS): boolean {
+  return hold && (heldSinceMs === null || nowMs - heldSinceMs < maxMs);
+}
+
+/** The trade the reopen pill opens: the live one after the last window closed here (wrapping round), else the newest. */
+export function reopenTarget(s: WatcherState, live: LiveIds): string | null {
+  const ids = asList(live);
+  if (!ids.length) return null;
+  const at = s.lastId ? ids.indexOf(s.lastId) : -1;
+  return at < 0 ? ids[0] : ids[(at + 1) % ids.length];
+}
+
+/** The reopen pill: "♥ TRADE OFFER · OPEN", with a count once more than one trade is live. */
+export function reopenLabel(liveCount: number): string {
+  return liveCount > 1 ? `♥ ${liveCount} TRADE OFFERS · OPEN` : "♥ TRADE OFFER · OPEN";
 }
 
 /**
@@ -118,7 +161,7 @@ export function tradeToPop(s: WatcherState, activeId: string | null, onTradeRout
  * its window closes. A window that already moved on to a newer trade stays up.
  */
 export function doneWithTrade(s: WatcherState, id: string): WatcherState {
-  return { openId: s.openId === id ? null : s.openId, dismissed: new Set(s.dismissed).add(id) };
+  return { openId: s.openId === id ? null : s.openId, dismissed: new Set(s.dismissed).add(id), lastId: id };
 }
 
 // ---------------------------------------------------------------- the promise banner
@@ -139,7 +182,7 @@ export interface TradeBanner {
 export function tradeBanner(status: ProposalStatus, role: TradeRole, buyerName: string): TradeBanner {
   switch (status) {
     case "open":
-      return { text: role ? "Nothing is charged until you both accept." : "Nothing is charged until both parents accept.", tone: "promise" };
+      return { text: "Only the buyer approves · demo payment, no real charge", tone: "promise" };
     case "both_accepted":
       if (role === "buyer") return { text: "You both said yes. Nothing is charged until you tap Pay.", tone: "promise" };
       if (role === "seller") return { text: `You both said yes. Waiting for ${buyerName} to pay.`, tone: "promise" };

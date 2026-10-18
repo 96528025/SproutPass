@@ -28,12 +28,12 @@ export function TrustReceipt({ p, role, sellerName, buyerName, onEditRules }: {
     <section className="tr-receipt" aria-label="Receipt">
       <div className="tr-receipt-head">
         <span className="tr-tag">Receipt</span>
-        {paid && <span className="tr-tag tr-tag-paid">Paid ✓</span>}
+        {paid && <span className="tr-tag tr-tag-paid">{p.visaSimulation ? "Simulated ✓" : "Paid ✓"}</span>}
       </div>
       <dl className="tr-lines">
         {role === "seller" ? (
           <>
-            <Line label={paid ? "You were paid" : "You get"} value={formatCents(r.priceCents)} strong />
+            <Line label={p.visaSimulation ? paid ? "Simulated seller credit" : "Simulated sale amount" : paid ? "You were paid" : "You get"} value={formatCents(r.priceCents)} strong />
             <Line label={`${buyerName} ${paid ? "saved" : "saves"} vs new`} value={formatCents(r.savedCents)} />
             <Line label="Paid to" value="You" />
           </>
@@ -54,8 +54,31 @@ export function TrustReceipt({ p, role, sellerName, buyerName, onEditRules }: {
           ? ". This is its final home: after 3 owners it can't be sold again."
           : ", 3rd owners pay 40%, and after 3 owners it stays in its final home."}
       </p>
-      <p className="tr-fine">Demo payment · no real charge · no card is stored.</p>
+      <VisaPayment p={p} />
+      <p className="tr-fine">SproutPass simulation · no Visa API · no real charge or funds transfer · no card required.</p>
     </section>
+  );
+}
+
+function VisaPayment({ p }: { p: MatchProposal }) {
+  const v = p.visaSimulation;
+  // Historical receipts retain their original payment description.
+  if (!v && p.status !== "open" && p.status !== "both_accepted") return null;
+  const authorized = !!v?.authorizedAt;
+  const captured = v?.status === "captured";
+  return (
+    <div className="tr-visa" aria-label="Visa payment simulation" aria-live="polite">
+      <div className="tr-receipt-head"><strong>VISA</strong><span className="tr-tag">SIMULATION</span></div>
+      <p>{formatCents(v?.amountCents ?? p.snapshot.priceCents)} USD · {v ? ({ authorizing: "Authorizing…", authorized: "Finishing trade…", captured: "Complete", declined: "Authorization declined" }[v.status]) : "Starts after buyer approval"}</p>
+      <ol className="tr-visa-steps">
+        <li>{v ? "✓" : "○"} Demo payment token</li>
+        <li>{authorized ? "✓" : v?.status === "declined" ? "✕" : "○"} Simulated authorization</li>
+        <li>{captured ? "✓" : "○"} Simulated capture & seller credit</li>
+      </ol>
+      {v?.authorizationCode && <p className="tr-fine">Authorization: {v.authorizationCode}</p>}
+      {v?.capturedAt && <p className="tr-fine">Receipt saved · {new Date(v.capturedAt).toLocaleString()}</p>}
+      {v?.status === "declined" && <p className="tr-fine">Nothing charged. The item remains with the seller.</p>}
+    </div>
   );
 }
 
@@ -91,7 +114,7 @@ function RulesLine({ price, paid, onEditRules }: { price: number; paid: boolean;
 function ApprovedLine({ p }: { p: MatchProposal }) {
   const how = useApproval(p);
   if (!how) return null;
-  const text = how === "device" ? `${biometric()} on this device` : how === "demo" ? "Demo passkey (stand-in for Face ID)" : "A tap on Pay";
+  const text = how === "device" ? `${biometric()} on this device` : how === "demo" ? "Demo passkey (stand-in for Face ID)" : "Buyer approval";
   return <Line label="Approved with" value={text} />;
 }
 

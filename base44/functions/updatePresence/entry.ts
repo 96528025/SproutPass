@@ -1,6 +1,8 @@
 // (C) updatePresence — GPS in. Called by A's WorldScreen (useGps: first fix, then a 10 s keepalive).
 // Body: { parentId, lat, lng, accuracyM, simulated?, discoverable? }
-// Returns: { ok, encounters: [{id, peerId}], fallback: [encounterIds] }
+// Returns: { ok, encounters: [{id, peerId, hasMatch?}], fallback: [encounterIds], cooldown?: [{peerId, retryInS}] }
+// (types.ts UpdatePresenceRes: hasMatch false = nothing shared fits either way, A never pops that meeting;
+// cooldown = a re-armed pair within 25 m that its last meeting still holds)
 //
 // Presence is one row per parent, overwritten on each update (rule 3). Only
 // this function and listNearby/demoWalk ever read it, and nothing here ever
@@ -14,12 +16,13 @@
 import { handle, readJson, resolveCaller } from "../../shared/c/auth.ts";
 import { updatePresence } from "../../shared/c/location.ts";
 import { findMatches } from "../../shared/cbridge.ts"; // B handlers, C-shaped (shared/cbridge.ts)
-import { maybeSweepInbox } from "../../shared/c/inboxFallback.ts";
+import { maybeSweepInbox, sendEventTexts } from "../../shared/c/inboxFallback.ts";
 
 export default handle(async (req) => {
   const { base44, db } = await resolveCaller(req);
   const body = await readJson<any>(req);
   const res = await updatePresence(db, body, { findMatches });
+  if (res.fallback.length) await sendEventTexts(db);
   // Template agent answers what the Python agents left pending (5 s, or 30 s while they're on duty): every
   // parent's rows, at most once per 12 s, so a parent who isn't on /world still hears their pet.
   await maybeSweepInbox(base44, db).catch((e) => console.error("[C] sweep", e));

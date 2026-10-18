@@ -3,7 +3,7 @@
 // agents, and parity_test.ts checks the two match word for word, field by field.
 //
 // A personality changes HOW a pet talks, never WHAT it says: items, sizes, prices, the 60/40 rule and the safety
-// words ("nothing is charged until you both accept", "demo payment · no real charge") stay exactly the same.
+// words ("only the buyer needs to approve", "demo payment · no real charge") stay exactly the same.
 // Nothing here names a parent or a child, so the agents' messages stay free of names (the console's privacy check).
 //
 // `talk` and `texts` are templates that wording.ts (and wording.py) fill in. Placeholders:

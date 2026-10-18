@@ -22,6 +22,8 @@ export interface AgentBubblesProps {
   petNames?: Record<string, string>;
   onBlip?: () => void;
   onDone?: () => void;
+  /** Join a live meeting at its current transcript, rather than replaying a long queue. */
+  catchUp?: boolean;
 }
 
 function splitWho(turn: AgentTurn, petNames?: Record<string, string>): { who: string; text: string } {
@@ -31,15 +33,20 @@ function splitWho(turn: AgentTurn, petNames?: Record<string, string>): { who: st
   return { who: petNames?.[turn.parentId] ?? (turn.from === "buyer_agent" ? "Buyer pet" : "Seller pet"), text: turn.text };
 }
 
-export function AgentBubbles({ transcript, me, petNames, onBlip, onDone }: AgentBubblesProps) {
+export function AgentBubbles({ transcript, me, petNames, onBlip, onDone, catchUp = false }: AgentBubblesProps) {
   const reduced = useMemo(() => typeof matchMedia === "function" && matchMedia("(prefers-reduced-motion: reduce)").matches, []);
-  const [shown, setShown] = useState(0); // number of fully typed bubbles
+  const [shown, setShown] = useState(() => catchUp ? Math.max(0, transcript.length - 1) : 0);
   const [partial, setPartial] = useState(""); // text of the bubble being typed
   const timer = useRef<number | null>(null);
   const doneRef = useRef(false);
 
   // Type out bubble `shown` whenever a new turn arrives.
   useEffect(() => {
+    if (catchUp && transcript.length > shown + 1) {
+      setShown(transcript.length - 1);
+      setPartial("");
+      return;
+    }
     if (shown >= transcript.length) {
       if (transcript.length && !doneRef.current) {
         doneRef.current = true;

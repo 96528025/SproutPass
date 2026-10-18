@@ -58,7 +58,7 @@ export const t = {
     return `${p?.hello ?? "Hi!"} I'm ${p?.pet ?? pet}, your closet pet. Send me a photo or text "sell" to pass something on, or "help" for the rest.`;
   },
   help: () =>
-    `Text "sell" (or just send a photo), "bag", "status", "accept", "decline", "pay" or "stop". I never decide or pay for you: a trade needs both of you to accept, and payments happen in the app.`,
+    `Send a photo to add clothing to your inventory, or say “I need a jacket in 9-12M under $25” to save a need. Text "sell", "bag", "status", "accept", "decline", "pay" or "stop"; trades complete after the buyer approves (demo only, no real charge).`,
   nudge: (item: string, size: string) =>
     `The ${item} (${size}) is probably getting snug — still fit? Text "keep", or send a photo and I'll help pass it on.`,
   nudgeWhich: () => `Just to be sure: text "keep" if it still fits, or "sell" to pass it on.`,
@@ -85,7 +85,7 @@ export const t = {
   keep: (pet?: string) => texted(pet, "keep", `Keeping it! I'll check again in a couple of weeks.`),
   later: (pet?: string) => texted(pet, "later", `No rush — I'll ask again later.`),
   proposal: (item: string, priceCents: number, originalPriceCents: number, ownerCount: number, peerPet: string) =>
-    `${peerPet} and I found a match: the ${item} for ${dollars(priceCents)} (${priceRule(originalPriceCents, ownerCount)}). Nothing is charged until you both accept — reply "accept" or "decline".`,
+    `${peerPet} and I found a match: the ${item} for ${dollars(priceCents)} (${priceRule(originalPriceCents, ownerCount)}). Final price agreed. Reply "approve" or "decline". Only the buyer approves; demo only, no real charge.`,
   accepted: (other: string) => `You accepted! Waiting on ${other} now.`,
   bothAccepted: (payLink: string) => `Both of you said yes! Tap to pay (demo payment · no real charge): ${payLink}`,
   /**
@@ -97,7 +97,7 @@ export const t = {
   payInApp: (payLink: string, faceId = false) =>
     `I never pay by text. Approve it in the app${faceId ? " with Face ID" : ""} (demo payment · no real charge): ${payLink}`,
   /** A text about the trade that isn't a clear answer: ask, never guess. */
-  acceptOrDecline: () => `Just to be sure: reply "accept" or "decline". Nothing is charged until you both accept.`,
+  acceptOrDecline: () => `Just to be sure: reply "accept" or "decline". Only the buyer needs to approve.`,
   declined: () => `Declined — $0 charged, and the listing is back up.`,
   expired: () => `That trade timed out — $0 charged, and the listing is back up.`,
   paymentFailed: () => `The demo payment didn't go through — $0 charged, and the listing is back up.`,
@@ -166,7 +166,7 @@ export const tl = {
   fitCheck: (weeks: number | null | undefined, pet?: Speaker) =>
     talk(pet, "fitCheck", weeks == null ? `Size looks right for my little one.` : `My little one fits it for about ${weeks} more weeks.`),
   propose: (priceCents: number, pet?: Speaker) =>
-    talk(pet, "propose", `Trade proposal! ${dollars(priceCents)} — nothing is charged until you both accept.`),
+    talk(pet, "propose", `Trade proposal! ${dollars(priceCents)} — only the buyer needs to approve.`),
   ack: (pet?: Speaker) => talk(pet, "ack", `Sounds good — over to the humans!`),
   notNeeded: (pet?: Speaker) => talk(pet, "notNeeded", `Thanks, but that won't fit my little one.`),
   decline: (why: string, pet?: Speaker) => talk(pet, "decline", `Not this one — ${why}`, { why }),
@@ -217,13 +217,13 @@ const RULES: [Intent, RegExp][] = [
     String.raw`\b(?:decline|reject)\b`,
     String.raw`\b(?:no|nah|nope)[\s,]+(?:deal|thanks|thank you|thx)\b`,
     String.raw`\bnot (?:interested|this (?:time|one)|a (?:good )?deal|for (?:me|us))\b`,
-    String.raw`\b(?:don'?t|do not|can'?t|cannot|won'?t|will not|wouldn'?t|not going to|not gonna)\s+(?:want|accept|take|buy|do)\b`,
+    String.raw`\b(?:don'?t|do not|can'?t|cannot|won'?t|will not|wouldn'?t|not going to|not gonna)\s+(?:want|accept|approve|take|buy|do)\b`,
     String.raw`\bpass on (?:this|that|it) one\b`,
     String.raw`\b(?:i'?ll|i will|i'?d|we'?ll|we will|gonna|going to)\s+pass\b(?!\s+(?:it|them|this|that)\s+on\b)`,
     String.raw`\bpass\b(?!\s+(?:(?:it|them|this|that)\s+)?on\b)`,
   ].join("|") + ")", "i")],
   // Only an explicit, whole-text yes to the trade.
-  ["accept", /^\s*(?:(?:yes|yep|yeah|ok|okay|sure)[\s,!]+)?(?:i\s+)?(?:accept(?:ed)?(?:\s+(?:it|this|that|the (?:trade|deal|offer)))?|deal|it'?s a deal|i'?ll take it|we'?ll take it|yes to the trade)(?:[\s,]+(?:please|thanks|thank you|thx))?(?:\s*(?:[.!]|👍))*\s*$/i],
+  ["accept", /^\s*(?:(?:yes|yep|yeah|ok|okay|sure)[\s,!]+)?(?:i\s+)?(?:(?:accept(?:ed)?|approve(?:d)?)(?:\s+(?:it|this|that|the (?:trade|deal|offer)))?|deal|it'?s a deal|i'?ll take it|we'?ll take it|yes to the trade)(?:[\s,]+(?:please|thanks|thank you|thx))?(?:\s*(?:[.!]|👍))*\s*$/i],
   ["pay", /\b(pay|checkout|buy now)\b/i],
   ["sell", /\b(sell|list|pass it on|pass on|give away)\b/i],
   ["keep", /\b(keep|still fits|fits fine)\b/i],
@@ -253,12 +253,12 @@ export function parseIntent(text: string): Intent {
  * the newest question instead: after a selling quote, "no thanks" stops the listing, it doesn't decline a trade.
  */
 export function isTradeCommand(text: string): boolean {
-  return /^\s*(?:(?:yes|ok|okay)[\s,!]+)?(?:i\s+)?(?:accept|decline|reject)\b|\byes to the trade\b/i.test(plain(text));
+  return /^\s*(?:(?:yes|ok|okay)[\s,!]+)?(?:i\s+)?(?:accept(?:ed)?|approve(?:d)?|decline|reject)\b|\byes to the trade\b/i.test(plain(text));
 }
 
 /** Talks about the trade without deciding it ("is that a good deal?", "should I take it?"). */
 export function mentionsTrade(text: string): boolean {
-  return /\b(?:accept|decline|reject|deal|take it|trade|offer|pass)\b/i.test(plain(text));
+  return /\b(?:accept|approve|decline|reject|deal|take it|trade|offer|pass)\b/i.test(plain(text));
 }
 
 export function parseCondition(text: string): "like_new" | "gently_used" | "well_loved" | null {

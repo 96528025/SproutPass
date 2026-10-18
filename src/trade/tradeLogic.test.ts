@@ -2,11 +2,11 @@
 import { describe, expect, it, vi } from "vitest";
 import type { MatchProposal } from "../app/types";
 import {
-  confirmedGone, createPartyLoader, doneWithTrade, mandateFit, missingLive, ownerSentence, slimParty, tradeBanner, tradeReceipt,
-  tradeToPop, type Party, type WatcherState,
+  HOLD_MAX_MS, confirmedGone, createPartyLoader, doneWithTrade, mandateFit, missingLive, nextLive, ownerSentence, popHeld, reopenLabel,
+  reopenTarget, slimParty, tradeBanner, tradeReceipt, tradeToPop, type Party, type WatcherState,
 } from "./tradeLogic";
 
-const jo: Party = { id: "p_jo", name: "Jo", avatar: { sprite: "parent_b", palette: "mint" }, pet: { sprite: "pet_b", name: "Pip" } };
+const jo: Party = { id: "p_jo", name: "Olivia", avatar: { sprite: "parent_b", palette: "mint" }, pet: { sprite: "pet_b", name: "Pip" } };
 const noSleep = () => Promise.resolve();
 const rateLimited = () => Object.assign(new Error("Rate limit exceeded"), { code: "internal" });
 
@@ -133,6 +133,50 @@ describe("trade window watcher", () => {
     expect(after.dismissed.has("a")).toBe(true);
     expect(before.dismissed.size).toBe(0); // state is replaced, not mutated
   });
+
+  it("holds the pop while the pets' meeting is on screen, and pops once it leaves", () => {
+    expect(tradeToPop(fresh, ["a"], false, true)).toBeNull();
+    expect(tradeToPop(fresh, ["a"], false, false)).toBe("a");
+  });
+
+  it("the hold gives up after 20 s on the wall clock (a stuck scene never hides a trade for good)", () => {
+    const t0 = 1_000_000;
+    expect(popHeld(true, null, t0)).toBe(true); // the hold starts now
+    expect(popHeld(true, t0, t0 + HOLD_MAX_MS - 1)).toBe(true);
+    expect(popHeld(true, t0, t0 + HOLD_MAX_MS)).toBe(false);
+    expect(popHeld(false, t0, t0 + 1)).toBe(false); // nothing on screen: pop at once
+    expect(HOLD_MAX_MS).toBe(20_000);
+  });
+
+  it("after the first window is closed, the next live trade this tab hasn't closed pops", () => {
+    const live = ["b", "a"]; // newest first
+    expect(tradeToPop(fresh, live, false)).toBe("b");
+    const afterB = doneWithTrade({ ...fresh, openId: "b" }, "b");
+    expect(tradeToPop(afterB, live, false)).toBe("a");
+    const afterBoth = doneWithTrade({ ...afterB, openId: "a" }, "a");
+    expect(tradeToPop(afterBoth, live, false)).toBeNull();
+    expect(nextLive(afterBoth, live)).toBeNull();
+  });
+
+  it("never pops a dismissed trade, even when it is the only one live", () => {
+    const s: WatcherState = { ...fresh, dismissed: new Set(["a"]) };
+    expect(tradeToPop(s, ["a"], false)).toBeNull();
+    expect(tradeToPop(s, ["c", "a"], false)).toBe("c");
+    expect(tradeToPop(s, [], false)).toBeNull();
+  });
+
+  it("the pill counts live trades and walks through them, starting from the newest", () => {
+    expect(reopenLabel(1)).toBe("♥ TRADE OFFER · OPEN");
+    expect(reopenLabel(2)).toBe("♥ 2 TRADE OFFERS · OPEN");
+    const live = ["b", "a"];
+    const s: WatcherState = { openId: null, dismissed: new Set(live) };
+    expect(reopenTarget(s, live)).toBe("b");
+    expect(reopenTarget({ ...s, lastId: "b" }, live)).toBe("a");
+    expect(reopenTarget({ ...s, lastId: "a" }, live)).toBe("b"); // wraps round
+    expect(reopenTarget({ ...s, lastId: "paid-one" }, live)).toBe("b");
+    expect(reopenTarget(s, [])).toBeNull();
+    expect(doneWithTrade({ ...s, openId: "b" }, "b").lastId).toBe("b");
+  });
 });
 
 // ---------------------------------------------------------------- the receipt (trusted checkout)
@@ -172,26 +216,26 @@ describe("mandateFit", () => {
 // ---------------------------------------------------------------- the promise banner
 
 describe("tradeBanner", () => {
-  it("promises nothing is charged until both accept, while the trade is open", () => {
-    expect(tradeBanner("open", "buyer", "Jo")).toEqual({ text: "Nothing is charged until you both accept.", tone: "promise" });
-    expect(tradeBanner("open", null, "Jo").text).toBe("Nothing is charged until both parents accept.");
+  it("explains that only the buyer approves the demo trade", () => {
+    expect(tradeBanner("open", "buyer", "Olivia")).toEqual({ text: "Only the buyer approves · demo payment, no real charge", tone: "promise" });
+    expect(tradeBanner("open", null, "Olivia").text).toBe("Only the buyer approves · demo payment, no real charge");
   });
   it("after both said yes, tells the buyer it's their tap and the seller who pays", () => {
-    expect(tradeBanner("both_accepted", "buyer", "Jo").text).toBe("You both said yes. Nothing is charged until you tap Pay.");
-    expect(tradeBanner("both_accepted", "seller", "Jo").text).toBe("You both said yes. Waiting for Jo to pay.");
+    expect(tradeBanner("both_accepted", "buyer", "Olivia").text).toBe("You both said yes. Nothing is charged until you tap Pay.");
+    expect(tradeBanner("both_accepted", "seller", "Olivia").text).toBe("You both said yes. Waiting for Olivia to pay.");
   });
   it("never repeats the 'until you both accept' promise once it's past", () => {
     for (const s of ["both_accepted", "paid", "declined", "expired", "payment_failed"] as const) {
-      for (const r of ["buyer", "seller", null] as const) expect(tradeBanner(s, r, "Jo").text).not.toMatch(/until you both accept|until both parents accept/i);
+      for (const r of ["buyer", "seller", null] as const) expect(tradeBanner(s, r, "Olivia").text).not.toMatch(/until you both accept|until both parents accept/i);
     }
   });
   it("says what happened after the trade ends, in sentence case", () => {
-    expect(tradeBanner("paid", "seller", "Jo")).toEqual({ text: "Paid · demo payment, no real charge", tone: "paid" });
-    expect(tradeBanner("declined", "buyer", "Jo")).toEqual({ text: "No trade · nothing was charged", tone: "ended" });
-    expect(tradeBanner("expired", "seller", "Jo").tone).toBe("ended");
-    expect(tradeBanner("payment_failed", "buyer", "Jo").text).toMatch(/nothing was charged/);
+    expect(tradeBanner("paid", "seller", "Olivia")).toEqual({ text: "Paid · demo payment, no real charge", tone: "paid" });
+    expect(tradeBanner("declined", "buyer", "Olivia")).toEqual({ text: "No trade · nothing was charged", tone: "ended" });
+    expect(tradeBanner("expired", "seller", "Olivia").tone).toBe("ended");
+    expect(tradeBanner("payment_failed", "buyer", "Olivia").text).toMatch(/nothing was charged/);
     for (const s of ["open", "both_accepted", "paid", "declined", "expired", "payment_failed"] as const) {
-      const t = tradeBanner(s, "buyer", "Jo").text;
+      const t = tradeBanner(s, "buyer", "Olivia").text;
       expect(t).not.toBe(t.toUpperCase());
     }
   });
@@ -199,12 +243,12 @@ describe("tradeBanner", () => {
 
 describe("ownerSentence", () => {
   it("future before paying, past after", () => {
-    expect(ownerSentence("both_accepted", "buyer", "Jo", 2)).toBe("You become owner 2 of 3.");
-    expect(ownerSentence("open", "seller", "Jo", 3)).toBe("Jo becomes owner 3 of 3.");
-    expect(ownerSentence("paid", "buyer", "Jo", 2)).toBe("You became owner 2 of 3.");
-    expect(ownerSentence("paid", "seller", "Jo", 2)).toBe("Jo became owner 2 of 3.");
+    expect(ownerSentence("both_accepted", "buyer", "Olivia", 2)).toBe("You become owner 2 of 3.");
+    expect(ownerSentence("open", "seller", "Olivia", 3)).toBe("Olivia becomes owner 3 of 3.");
+    expect(ownerSentence("paid", "buyer", "Olivia", 2)).toBe("You became owner 2 of 3.");
+    expect(ownerSentence("paid", "seller", "Olivia", 2)).toBe("Olivia became owner 2 of 3.");
   });
   it("a trade that didn't happen", () => {
-    expect(ownerSentence("declined", "buyer", "Jo", 2)).toBe("You would have become owner 2 of 3.");
+    expect(ownerSentence("declined", "buyer", "Olivia", 2)).toBe("You would have become owner 2 of 3.");
   });
 });

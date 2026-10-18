@@ -79,8 +79,9 @@ def hello(pet: str) -> str:
 
 
 def help_text() -> str:
-    return ('Text "sell" (or just send a photo), "bag", "status", "accept", "decline", "pay" or "stop". '
-            "I never decide or pay for you: a trade needs both of you to accept, and payments happen in the app.")
+    return ("Send a photo to add clothing to your inventory, or say “I need a jacket in 9-12M under $25” to save a need. "
+            'Text "sell", "bag", "status", "accept", "decline", "pay" or "stop"; '
+            "trades complete after the buyer approves (demo only, no real charge).")
 
 
 def nudge(item: str, size: str) -> str:
@@ -158,7 +159,7 @@ def proposal(item: str, price_cents: int, original_cents: int, owner_count: int,
     return (
         f"{peer_pet} and I found a match: the {item} for {dollars(price_cents)} "
         f"({price_rule(original_cents, owner_count)}). "
-        f'Nothing is charged until you both accept — reply "accept" or "decline".'
+        'Final price agreed. Reply "approve" or "decline". Only the buyer approves; demo only, no real charge.'
     )
 
 
@@ -184,7 +185,7 @@ def pay_in_app(pay_link: str, face_id: bool = False) -> str:
 
 def accept_or_decline() -> str:
     """A text about the trade that isn't a clear answer: ask, never guess."""
-    return 'Just to be sure: reply "accept" or "decline". Nothing is charged until you both accept.'
+    return 'Just to be sure: reply "accept" or "decline". Only the buyer needs to approve.'
 
 
 def declined() -> str:
@@ -355,7 +356,7 @@ def t_fit_check(pet: str, weeks: Optional[int]) -> str:
 
 
 def t_propose(pet: str, price_cents: int) -> str:
-    return _talk(pet, "propose", f"Trade proposal! {dollars(price_cents)} — nothing is charged until you both accept.")
+    return _talk(pet, "propose", f"Trade proposal! {dollars(price_cents)} — only the buyer needs to approve.")
 
 
 def t_ack(pet: str) -> str:

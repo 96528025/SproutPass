@@ -48,7 +48,8 @@ export async function recordInbound(
   const row = await db.AgentInbox.create({
     parentId: parent.id,
     type: "imessage",
-    payload: { messageId: msg.messageId, text: msg.text.slice(0, 2000), photoUrls, receivedAt: new Date().toISOString() },
+    payload: { messageId: msg.messageId, text: msg.text.slice(0, 2000), photoUrls, receivedAt: new Date().toISOString(),
+      spaceId: msg.spaceId, isGroup: !!msg.isGroup, lineUserId: msg.lineUserId },
     status: "pending",
     createdAt: new Date().toISOString(),
   });

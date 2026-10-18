@@ -35,6 +35,10 @@
       "type": "string",
       "format": "date-time"
     },
+    "hasMatch": {
+      "type": "boolean",
+      "description": "Set when the meeting starts: a shared active listing of one parent fits a shared need of the other, either way (before the buyer's pet rules). false = nothing fits, the app does not pop the meeting"
+    },
     "negotiatedBy": {
       "type": "string",
       "enum": [

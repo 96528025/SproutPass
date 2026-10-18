@@ -2,6 +2,7 @@
 import type { ISODate, SizeLabel } from "./types.ts";
 
 export const SIZE_RANGES: Record<SizeLabel, { minMonths: number; maxMonths: number }> = {
+  "unknown": { minMonths: 0, maxMonths: 0 },
   "0-3M": { minMonths: 0, maxMonths: 3 },
   "3-6M": { minMonths: 3, maxMonths: 6 },
   "6-9M": { minMonths: 6, maxMonths: 9 },
@@ -52,6 +53,7 @@ export function wearWeeksLeft(size: SizeLabel, birthDate: ISODate, now: ISODate)
 
 /** True if a child of this age currently fits the size range (inclusive min, exclusive max). */
 export function fitsNow(size: SizeLabel, birthDate: ISODate, now: ISODate): boolean {
+  if (size === "unknown") return false;
   const age = ageInMonths(birthDate, now);
   const r = SIZE_RANGES[size];
   return age >= r.minMonths - 1 && age < r.maxMonths;   // allow sizing up one month early

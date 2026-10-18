@@ -8,11 +8,12 @@ describe("mock getImpact", () => {
     await mockApi.demoReset();
     const all = await mockApi.getImpact();
     expect(all.itemsRehomed).toBe(4);
-    expect(all.points.map((p) => p.name)).toEqual(["Sam", "Jo", "Mina"]);
+    expect(all.points.map((p) => p.name)).toEqual(["Freja", "Olivia", "Caesar"]);
     expect(all.assumptions.length).toBeGreaterThan(3);
     expect(all.me).toBeUndefined();
 
     const mina = (await mockApi.getImpact({ parentKey: "mina" })) as ImpactDetail;
-    expect(mina.me).toMatchObject({ points: 30, badges: ["New Home"], nextBadge: "Good Neighbor", savedCents: 1440 });
+    // the sweater from Freja (New Home) + her seeded 9-12M outerwear need (Good Neighbor, POINTS.sharedNeed)
+    expect(mina.me).toMatchObject({ points: 40, badges: ["Good Neighbor", "New Home"], nextBadge: "Quick Pass", savedCents: 1440 });
   });
 });
