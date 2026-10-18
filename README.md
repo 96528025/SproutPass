@@ -24,5 +24,7 @@ This folder is the repo root. What's here so far:
 5. **Publish and open it up.**
    - Run `base44 deploy --build -y` once to publish. Always build through the CLI (`base44 build` / `--build`); a bare `npm run build` leaves `VITE_BASE44_APP_ID` unset and every API call fails.
    - Run `npx base44 visibility public`.
-   - Open `https://<slug>.base44.app` on both iPhones and add it to the Home Screen.
+   - Open **https://sproutpass-5c025059.base44.app** on both iPhones (`?as=mina&demo=1` / `?as=jo&demo=1`) and add it to the Home Screen. (`sproutpass.base44.app` is *not* the address.)
+   - To update just the website later: `base44 build`, then `base44 site deploy -y`.
+   - Local dev: `npm run mock` (fake data, :5174) or `npm run real` (live data, :5176). In PowerShell, avoid `npm run x -- --flag`: it drops the `--`.
 6. **Start Agents 1–3.** Follow the top of `docs/B-AGENT-PROMPTS.md`: three sessions in this same folder (no worktrees), each given the shared preamble + its own section.

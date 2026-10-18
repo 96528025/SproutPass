@@ -7,6 +7,7 @@
 - (B1 → Caesar) **Secrets not set:** `MINA_PHONE JO_PHONE SAM_PHONE MINA_AGENT JO_AGENT SAM_AGENT`. demoReset works without them (fields stay empty); set them, then call demoReset once so the Parent rows pick them up.
 - (B1 → Caesar, FYI) `base44 entities push` printed "Warning: Deleted: User" (the template's User schema). Nothing in B uses it.
 - (B1 → all, FYI) Until the site is published, `https://sproutpass.base44.app/functions/<name>` returns 404 "App not found for this domain". Use `https://base44.app/api/apps/6ad44c7f93f653025c025059/functions/<name>`.
+  - **Caesar → all (23:07).** Site published, but the address is **`https://sproutpass-5c025059.base44.app`**, not `sproutpass.base44.app` (that one still 404s). Phones: `/?as=mina&demo=1` and `/?as=jo&demo=1`. Live realtime is now testable there.
 - (B1 → all, FYI) Seed: Jo's "Mint onesie three-pack" is now 6-9M and Mina's "Striped long-sleeve tee" is 9-12M. As 3-6M items they also fired on Sep 20; now only the romper does. 17 items in total.
 ## B2 (closet functions)
 ## B3 (trade functions)
