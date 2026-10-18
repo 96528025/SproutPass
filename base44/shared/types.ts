@@ -214,6 +214,10 @@ export interface CreateProposalReq {   // internal: x-agent-key (C's agentApi / 
 }
 export interface DecideProposalReq extends ParentRef { proposalId: ID; decision: "accepted" | "declined"; handover?: "now" | "later"; handoverNote?: string }
 export interface PayProposalReq extends ParentRef { proposalId: ID; fail?: boolean }
+
+/** Public card for a trade party: never phone, Photon ids, convo or ASI address (approved by Caesar, 00:10). */
+export type PublicParty = Pick<Parent, "id" | "name" | "avatar" | "pet">;
+export interface GetPartiesReq { parentIds: ID[] }   // ≤ 10 ids; unknown ids are skipped, not an error
 export interface PayProposalRes { proposal: MatchProposal; item: ClothingItem }
 
 export interface DemoClockReq { now?: ISODate }            // omit to read
