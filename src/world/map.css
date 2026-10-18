@@ -7,7 +7,7 @@
   background: var(--paper);
 }
 /* The Leaflet box reaches under the chips row and the bottom bar by the same amount on both sides, so the map's
-   centre is exactly the stage centre where my avatar stands. */
+   centre is exactly the stage centre where my avatar stands (with ?demo=1 I stand MapLayer's liftPx above it). */
 .map__leaflet {
   position: absolute;
   left: 0;

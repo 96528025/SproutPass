@@ -201,3 +201,13 @@ a person with Photon access and real phones (steps 4 and 5).
    on a real photo, `/impact` loads, and Face ID set-up works on `/bag/pet`.
 7. **Done. Follow-ups:** the decide, pay, list and demo-clock entry files call `sendEventTexts(db)` after the
    handler, so event texts go out at once; RESET keeps a parent's STOP (`seed.ts` carries `convo.optedOut` over).
+
+## Current SproutPass staged trial update
+
+The earlier entries above are historical test runs, including the retired two-party approval flow. The current flow uses seller listing authorization and buyer-only approval.
+
+- Full current suite: **567 tests passed** after adding the staged trial and feedback validation.
+- Staged setup preserves existing inventory, reuses its sample, does not fabricate an incoming photo message, and leaves approval pending.
+- The sample offer uses the real shared trade handlers; buyer approval transfers ownership and saves a Visa simulation receipt.
+- Trial progress does not mistake an in-app mirror or text-only submission for a submitted image receipt. Physical delivery still needs verification on the phones.
+- Parent feedback is not prefilled or invented. The form separates parents/caregivers from teammate testing and makes anonymous quotation opt-in.

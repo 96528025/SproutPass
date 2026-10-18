@@ -15,7 +15,7 @@ export const ENGINE_LABEL: Record<Engine, string> = {
 };
 
 export const ENGINE_NOTE: Record<Engine, string> = {
-  fetch: "A Fetch.ai uAgent with its own address, speaking the HandMeDownRelay protocol.",
+  fetch: "A Fetch.ai uAgent with its own address, participating in the SproutPass matching workflow.",
   fallback: "The agents were offline, so the app's built-in matcher spoke for this pet, using the same rules.",
   mock: "Offline demo: a stand-in agent plays the protocol on this device. The live app uses Fetch.ai uAgents.",
 };
@@ -190,11 +190,10 @@ export interface StatusView { label: string; tone: "gold" | "mint" | "sky" | "re
 export function proposalStatus(p: Pick<MatchProposal, "status" | "sellerDecision" | "buyerDecision">): StatusView {
   switch (p.status) {
     case "open": {
-      const n = (p.sellerDecision === "accepted" ? 1 : 0) + (p.buyerDecision === "accepted" ? 1 : 0);
-      return { label: n ? `Open · ${n} of 2 accepted` : "Open · waiting for both parents", tone: "gold", done: false };
+      return { label: p.buyerDecision === "accepted" ? "Buyer approved · preparing payment" : "Open · waiting for buyer approval", tone: "gold", done: false };
     }
-    case "both_accepted": return { label: "Accepted by both · ready to pay", tone: "sky", done: false };
-    case "paid": return { label: "Paid · demo payment", tone: "mint", done: true };
+    case "both_accepted": return { label: "Buyer approved · simulated payment", tone: "sky", done: false };
+    case "paid": return { label: "Complete · simulated payment", tone: "mint", done: true };
     case "declined": return { label: "Declined · nothing charged", tone: "paper", done: true };
     case "expired": return { label: "Expired · nothing charged", tone: "paper", done: true };
     case "payment_failed": return { label: "Payment failed · nothing charged", tone: "red", done: true };

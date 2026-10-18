@@ -67,39 +67,52 @@ export async function sendToParent(
   const parent = await db.Parent.get(parentId).catch(() => null);
   if (!parent) return { sent: false, skipped: "unknown parent" };
   const text = redactPhones(rawText);
+  let petLineId: string | undefined;
+  const finish = async (result: SendResult, imageSent = false): Promise<SendResult> => {
+    try { if (petLineId) await db.PetLine?.update?.(petLineId, {
+      deliveryStatus: result.sent ? "submitted" : "not_sent",
+      deliveryReason: result.skipped ?? "",
+      photonMessageId: result.messageId ?? "",
+      imageSubmitted: imageSent,
+    }); } catch { /* Send result remains valid even if the audit write fails. */ }
+    return result;
+  };
 
   // Always mirror the line into the in-app pet (AgentPet reads PetLine rows),
   // even when iMessage is off, so the dialog box and the thread agree.
   try {
-    await db.PetLine?.create({
+    const line = await db.PetLine?.create({
       parentId,
       text,
       imageUrl: imageUrl ?? null,
       createdAt: new Date().toISOString(),
+      deliveryStatus: "pending",
     });
+    petLineId = line?.id;
   } catch { /* entity optional, see NEEDS.md */ }
 
-  if (!setting.imessage) return { sent: false, skipped: "Setting.imessage=false" };
-  if (!parent.phone) return { sent: false, skipped: "parent has no phone" };
-  if (parent.convo?.optedOut && !opts.evenIfOptedOut) return { sent: false, skipped: "parent texted STOP" };
+  if (!setting.imessage) return finish({ sent: false, skipped: "Setting.imessage=false" });
+  if (!parent.phone) return finish({ sent: false, skipped: "parent has no phone" });
+  if (parent.convo?.optedOut && !opts.evenIfOptedOut) return finish({ sent: false, skipped: "parent texted STOP" });
 
   const allow = secret("SEED_PHONES");
   if (allow) {
     const ok = allow.split(/[,\s]+/).filter(Boolean).map(normalizePhone).includes(normalizePhone(parent.phone));
-    if (!ok) return { sent: false, skipped: "phone not in SEED_PHONES" };
+    if (!ok) return finish({ sent: false, skipped: "phone not in SEED_PHONES" });
   }
   const apiKey = secret("PHOTON_API_KEY"), projectId = secret("PHOTON_PROJECT_ID");
-  if (!apiKey || !projectId) return { sent: false, skipped: "no PHOTON secrets" };
+  if (!apiKey || !projectId) return finish({ sent: false, skipped: "no PHOTON secrets" });
   // Each parent's pet answers from the line that parent texted (Photon's shared pool gives every phone its own
   // number, and a shared line can't send the first message). Learned from the parent's first inbound "hi".
   const senderId = opts.replyTo?.lineUserId ?? senderLineFor(parent);
   if (!senderId) {
-    return { sent: false, skipped: "no iMessage line yet — text your assigned Photon number 'hi' first" };
+    return finish({ sent: false, skipped: "no iMessage line yet — text your assigned Photon number 'hi' first" });
   }
-  if (!outboundAllowed(parent.id)) return { sent: false, skipped: "rate limited" };
+  if (!outboundAllowed(parent.id)) return finish({ sent: false, skipped: "rate limited" });
   const cfg: PhotonCfg = { apiKey, projectId };
 
   let res: any;
+  let imageSubmitted = false;
   try {
     // Normally both come with the inbound message; create only what's missing, and write back only what we
     // created so a newer {space, line} from the webhook is never overwritten.
@@ -111,27 +124,31 @@ export async function sendToParent(
     if (Object.keys(created).length) await db.Parent.update(parent.id, created).catch(() => {});
 
     res = await sendText(cfg, { spaceId, senderId, text });
-    if (imageUrl) await sendImage(cfg, spaceId, senderId, imageUrl);
+    if (imageUrl) imageSubmitted = await sendImage(cfg, spaceId, senderId, imageUrl);
   } catch (e) {
     // Photon said no (expired assignment, rate limit, …): report it instead of failing the caller's whole step.
     if (e instanceof PhotonError) {
       console.error("[C] iMessage not sent", e.message);
-      return { sent: false, skipped: `photon ${e.status}` };
+      return finish({ sent: false, skipped: `photon ${e.status}` });
     }
+    await finish({ sent: false, skipped: "send failed" });
     throw e;
   }
-  return { sent: true, messageId: res?.id };
+  return finish({ sent: true, messageId: res?.id }, imageSubmitted);
 }
 
 /** The flowers GIF etc.: best effort after the text, same line and space. */
-async function sendImage(cfg: PhotonCfg, spaceId: string, senderId: string, imageUrl: string): Promise<void> {
+async function sendImage(cfg: PhotonCfg, spaceId: string, senderId: string, imageUrl: string): Promise<boolean> {
   try {
     const r = await fetch(imageUrl);
+    if (!r.ok) throw new Error(`Image unavailable (${r.status})`);
     const bytes = new Uint8Array(await r.arrayBuffer());
     const contentType = r.headers.get("content-type") ?? "image/gif";
     const attachmentId = await uploadAttachment(cfg, { bytes, contentType, filename: imageUrl.split("/").pop() ?? "image.gif" });
     await sendAttachment(cfg, { spaceId, senderId, attachmentId });
+    return true;
   } catch (e) {
-    console.error("[C] image send failed (text was delivered)", e);
+    console.error("[C] image send failed (text was submitted)", e);
+    return false;
   }
 }

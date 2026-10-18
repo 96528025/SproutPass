@@ -1,9 +1,15 @@
 // (C) demoWalk — "WALK TOWARD JO" for indoor judging (rule 5).
-// Body: { parentId, targetParentId, stepM? (default 5), reset?: boolean }
+// Body: { parentId, targetParentId, stepM? (default 5), reset?: boolean, arrive?: boolean }
 // Moves the caller's SIMULATED presence 5 m toward the target and runs the
 // same encounter check as updatePresence. A calls it every 1 s until an
 // encounter fires. `reset: true` puts the caller back at the start
 // (120 m due north of the target, rule "Demo walk start: Jo 120 m from Mina").
+// `arrive: true` is A's tap on a family (tap-to-meet, ?demo=1): ONE call puts
+// the caller 10 m due north of the target (ARRIVE_M) and runs the same check
+// as a walk step, so the meeting starts on that call. Coming from > 40 m away
+// (or from no simulated presence) re-arms a pair an older meeting disarmed,
+// like the reset; already standing with them, it is WALK AGAIN (10 s rule).
+// The cooldown still holds (the answer says so); A's hold ticks follow.
 //
 // The target's position is whatever fresh presence it has (real or simulated).
 // If the target has no presence, or a real-GPS one gone stale, we park it on

@@ -100,8 +100,33 @@
   align-items: center;
   pointer-events: none;
 }
-.ws__me { z-index: 200; margin-left: -48px; margin-top: -58px; width: 96px; } /* ×3 sprite, feet a little below centre */
+/* ×3 sprite, feet a little below centre. z 1000 = NearbySprites' DEPTH_Z: the others sort around me by their y, and
+   even the top of the 300 m ring (y about -310) stays above the map (z 0) */
+.ws__me { z-index: 1000; margin-left: -48px; margin-top: -58px; width: 96px; }
 .ns { margin-left: -32px; margin-top: -32px; width: 64px; }
+/* ?demo=1 tap-to-meet: the sprite itself is the button, in the same box as .ns (64px wide, sprite + name tag: over the
+   44px --tap minimum both ways) and with no chrome of its own, so it looks exactly like the sprite; it alone takes
+   taps on the stage. Focus and (real) hover get a square 4px ring: sky like the HUD buttons' focus, paper on hover. */
+.ns--tap {
+  pointer-events: auto;
+  min-width: var(--tap);
+  min-height: var(--tap);
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+.ns--tap:focus { outline: none; }
+.ns--tap:focus-visible { outline: 4px solid var(--sky); outline-offset: 0; }
+@media (hover: hover) {
+  .ns--tap:hover:not(:focus-visible) { outline: 4px solid var(--paper); outline-offset: 0; }
+}
 .ws__me .name,
 .ns__name {
   position: relative;

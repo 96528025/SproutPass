@@ -63,6 +63,8 @@ The tests that prove this feature:
 | `base44/shared/matchUseCases.test.ts` | Every `DEMO_MATCHES` pair matches at its `priceFor` price within default pet rules; still exactly one nudge; a demo walk for each pair proposes that item; all four trades paid in one run; Caesar ↔ Olivia nothing before the romper |
 | `src/agent/useEncounter.test.ts` | Which meeting is on screen (window, dismissed, no-match shrug, newest wins) |
 | `src/world/useDemoWalk.test.ts` | What a walk response means: arrive, hold, cooldown toast text |
+| `base44/shared/tapToMeet.test.ts` | Tap to meet (`demoWalk` `arrive: true`): the Oct 18 bag layout one tap per meeting in all 6 directions, re-arm when tapping from afar, WALK AGAIN's 10 s rule when already together, a parked target, exactly one call per meeting |
+| `src/world/tapToMeet.test.ts` | Which families are drawn and tappable on `/world?demo=1`, the one `arrive` request a tap sends, how its answer is read, and that the raised demo radar keeps every family above the walk buttons on a 375×812 phone |
 | `src/trade/tradeLogic.test.ts` | The trade window waits for the scene, pops the next live trade after the first closes, pill count |
 | `agents/tests/test_more_matches.py` | The Python agents negotiate each seeded match, both ways for Caesar ↔ Freja |
 
@@ -79,6 +81,33 @@ Rules of thumb:
 - The **walking tab must stay in front** (a hidden tab pauses its walk). Two browser windows side by side are best.
 - Start every run with **RESET**, then **OCT 18** in the demo panel.
 - `?walk=mina|jo|sam` picks who you walk to. The **WALK TO** buttons under the walk button do the same.
+
+### Tap to meet (demo trick)
+
+On `/world?…&demo=1`, **tap another family's character** to meet them: no walk to wait for. The tap picks that family
+in WALK TO and sends one `demoWalk` with `arrive: true`, which puts you 10 m from them. Then the usual things happen: the
+pets' scene, and a match pops the TRADE PROPOSAL! window on both phones. A family whose tab isn't open is still drawn
+at its demo spot. The characters can't be tapped while a meeting is on screen, a walk is running, or a trade is open or
+celebrating. Tapping the family you already stand with counts as walking away and back: it meets once their last meeting
+is at least 10 s old, or the toast says how long the 2-minute wait still holds.
+
+The bags at OCT 18, right after RESET: every pair either matches or doesn't.
+
+| Pair | At Oct 18 | What the pets propose |
+|---|---|---|
+| Olivia ↔ Freja | **Match** | Fleece bear jacket, Freja → Olivia, $21.60 |
+| Caesar ↔ Freja | **Match** (both ways) | Star puffer snowsuit, Freja → Caesar, $33.60, first (smaller id buys); then Spare star sleep sack, Caesar → Freja, $19.20 |
+| Caesar ↔ Olivia | **No match**, until Caesar lists the Yellow duck romper | Then the romper, Caesar → Olivia, $18.00 |
+
+So Caesar and Olivia each have one match and one no-match, and Freja has two matches.
+
+Suggested demo order (RESET, then OCT 18; Olivia's tab `/world?as=jo&demo=1`, Caesar's tab `/bag?as=mina&demo=1`):
+
+1. Olivia taps **Caesar**. "Nothing fits today": no match, no trade window.
+2. Caesar lists the romper: romper nudge, SELL, "Use the pixel art", NEXT, NEXT, **LIST FOR $18.00**.
+3. Olivia taps **Caesar** again (at least 10 s after step 1). The pets propose the romper, and the trade window opens
+   on both tabs. APPROVE (or DECLINE), then close the window or celebration and go back to the map.
+4. Olivia taps **Freja**. The pets propose the Fleece bear jacket ($21.60).
 
 ### Test A: Olivia meets Freja (Fleece bear jacket)
 

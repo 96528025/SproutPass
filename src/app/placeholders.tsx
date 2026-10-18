@@ -7,7 +7,7 @@ export function TitlePlaceholder() {
   const nav = useNavigate();
   const closet = useApp((s) => s.closet);
   return (
-    <PixelPanel title="HAND-ME-DOWN RELAY">
+    <PixelPanel title="SPROUTPASS">
       <div className="b-stack">
         <p className="b-p">Your pet watches the closet. When two parents pass within 25 m, the pets find a trade.</p>
         {closet && <p className="b-p">Playing as <strong>{closet.parent.name}</strong> with {closet.parent.pet.name}.</p>}
@@ -40,7 +40,7 @@ export function TradeWindowPlaceholder(p: { proposalId: string; onClose: () => v
     <Modal title="TRADE" onClose={p.onClose}>
       <div className="b-stack">
         <p className="b-p">{proposal ? `${proposal.snapshot.itemName} · ${proposal.status.replace("_", " ")}` : `Proposal ${p.proposalId}`}</p>
-        <Chip tone="pink">NOTHING IS CHARGED UNTIL YOU BOTH ACCEPT</Chip>
+        <Chip tone="pink">ONLY THE BUYER APPROVES · SIMULATED PAYMENT</Chip>
         <Chip tone="cream" plain>Demo payment · no real charge</Chip>
         <p className="b-p b-muted b-small">The trade window is on its way (Agent 2).</p>
         <PixelButton variant="ghost" onClick={p.onClose}>CLOSE</PixelButton>
@@ -51,7 +51,7 @@ export function TradeWindowPlaceholder(p: { proposalId: string; onClose: () => v
 
 export function RelayLogPlaceholder() {
   return (
-    <PixelPanel title="RELAY LOG">
+    <PixelPanel title="TRADE HISTORY">
       <p className="b-p">Seconds to list, encounters → trades, and every item's owner chain show up here (Agent 2).</p>
     </PixelPanel>
   );

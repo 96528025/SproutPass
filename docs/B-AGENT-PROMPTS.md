@@ -33,7 +33,7 @@ You are one of **three parallel coding agents** working on Person B's slice of a
 - **Never `npm install` new packages** unless you're Agent 3. Ask in `NEEDS.md`.
 - Build against the frozen contract, use mocks and fakes for anything you don't own, and never wait for another agent.
 
-**Product:** *Hand-Me-Down Relay*, a pixel-art, Pokémon-Go-style game for parents to pass along kids' clothing.
+**Product:** *SproutPass*, a pixel-art, Pokémon-Go-style game for parents to pass along kids' clothing.
 - Each parent has a closet agent (a Fetch.ai agent in iMessage + a pixel pet in the app) that predicts when a child will outgrow an item and nudges "still fit? pass it on?".
 - When two parents walk within 25 m, their agents talk and create a trade proposal shown on both phones at once.
 - Both accept, the buyer pays (demo payment, no real money), golden flowers burst, and the item moves to the buyer's closet.

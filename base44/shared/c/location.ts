@@ -86,6 +86,11 @@ export const STAND_AGAIN_MS = 30_000;
  * last meeting is this old: never for a meeting the other phone's tick started while this walk was still stepping in.
  */
 export const WALK_AGAIN_AFTER_MS = 10_000;
+/**
+ * Tap-to-meet (demoWalk `arrive`, A's tap on a family on /world?demo=1): the walker's simulated presence lands this far
+ * due north of the target in ONE call, well inside the 25 m encounter radius (no 20 m steps, one function call).
+ */
+export const ARRIVE_M = 10;
 
 // ---------------------------------------------------------------- B's findMatches contract (NEEDS.md)
 
@@ -403,6 +408,14 @@ export interface DetectOpts {
   onlyPeer?: string;
   /** The walker stepped toward its target on this tick (a walk step, not A's 1 m hold tick after arriving). */
   walking?: boolean;
+  /**
+   * A tap-to-meet from afar (demoWalk `arrive`): the walker covered the way to onlyPeer in this one call, from more than
+   * 40 m (or from no simulated presence at all). The distance it came from (m) is what the re-arm records. A pair still
+   * disarmed by an older meeting is re-armed first, exactly as the walk's reset tick would have done 120 m out, so the
+   * meeting can start; the cooldown rule still decides (meet / `cooldown`). Absent: no tap, or the walker already stood
+   * within 40 m of them (the WALK AGAIN rule decides, as for a walk step).
+   */
+  arrivedFromM?: number;
 }
 
 /**
@@ -419,6 +432,8 @@ export interface DetectOpts {
  *   - a walk step toward them again (demoWalk, WALK AGAIN from where the last walk stopped) counts as walking out and
  *     back once that meeting is 10 s old: the cooldown rule above decides (meet / `cooldown`), as the old 120 m reset
  *     walk did. The walk's hold ticks never do, so a walk never re-judges the meeting it just made;
+ *   - a tap-to-meet (demoWalk `arrive`) that came from more than 40 m away re-arms the pair first, like the reset tick
+ *     (arrivedFromM); one from within 40 m is a walk step toward them again (the rule above);
  *   - a real-GPS pair standing together whose meeting freed it (nothing fit, or its trade was paid) meets again as
  *     soon as something fits — e.g. one parent lists the item while they talk — looked at on recheck ticks once that
  *     meeting is 30 s old, at most once per 30 s per pair (standLookDue). Anything else waits until they walk > 40 m
@@ -470,15 +485,21 @@ export async function detectEncounters(
         await pairs.rearm(me.parentId, other.parentId, d);
         continue;
       }
-      // Still inside (or just left) the old encounter. A walk step toward them again counts as out and back; a
-      // real-GPS pair gets a look on a recheck tick (see the doc above). Anything else: wait for them to walk apart.
-      if (!judge || !withinEncounter(me, other)) continue;
-      const age = nowMs - state.lastAt;
-      if (opts.mover) {
-        if (!opts.walking || age < WALK_AGAIN_AFTER_MS) continue;
+      if (judge && opts.arrivedFromM !== undefined && opts.onlyPeer === other.parentId) {
+        // A tap from afar: they were > 40 m apart a moment ago, so re-arm as the reset tick would have, then judge.
+        await pairs.rearm(me.parentId, other.parentId, opts.arrivedFromM);
+        state = { ...state, armed: true };
       } else {
-        if (age < STAND_AGAIN_MS || !opts.recheck || !standLookDue(pairKey(me.parentId, other.parentId), nowMs)) continue;
-        standing = true;
+        // Still inside (or just left) the old encounter. A walk step toward them again counts as out and back; a
+        // real-GPS pair gets a look on a recheck tick (see the doc above). Anything else: wait for them to walk apart.
+        if (!judge || !withinEncounter(me, other)) continue;
+        const age = nowMs - state.lastAt;
+        if (opts.mover) {
+          if (!opts.walking || age < WALK_AGAIN_AFTER_MS) continue;
+        } else {
+          if (age < STAND_AGAIN_MS || !opts.recheck || !standLookDue(pairKey(me.parentId, other.parentId), nowMs)) continue;
+          standing = true;
+        }
       }
     }
     if (!judge || !withinEncounter(me, other)) continue;
@@ -1294,6 +1315,8 @@ export interface DemoWalkBody {
   towardParentId?: string;
   stepM?: number;
   reset?: boolean;
+  /** Tap-to-meet: ARRIVE_M due north of the target in this one call (wins over reset and stepM). */
+  arrive?: boolean;
 }
 
 /**
@@ -1310,6 +1333,12 @@ export interface DemoWalkBody {
  * the family the walker already stands with (WALK AGAIN, no reset) counts as walking out and back once their last
  * meeting is 10 s old (detectEncounters), so it meets again, or says how long the cooldown still holds. A `stepM: 1`
  * tick is A's hold tick: it never does that.
+ * `arrive: true` is A's tap on a family (tap-to-meet): ONE call puts the walker ARRIVE_M (10 m) due north of the target
+ * and runs the same check as a walk step (mover, onlyPeer, walking), so the meeting starts on this very call. A tap is a
+ * deliberate walk to them: when the walker's previous simulated spot was more than 40 m away (or it had none), a pair
+ * still disarmed by an older meeting is re-armed first, as the reset tick would have (arrivedFromM); when it already
+ * stood with them, it is WALK AGAIN (meets once their last meeting is 10 s old). The cooldown rule is unchanged and the
+ * answer carries `cooldown` when held. Then A's hold ticks follow, as after a walk.
  */
 export async function demoWalk(db: any, body: DemoWalkBody, deps: LocationDeps = {}) {
   const nowMs = deps.nowMs ?? Date.now();
@@ -1338,9 +1367,13 @@ export async function demoWalk(db: any, body: DemoWalkBody, deps: LocationDeps =
 
   // Caller presence.
   const me = all.get(parentId) ?? null;
+  const arrive = Boolean(body.arrive);
   const start = () => destination(target, 0, DEMO_START_M); // 120 m due north: the radar's 100–300 m ring
   const origin = me?.simulated ? me : demoHome(parentsById.get(parentId));
-  const pos: LatLng = body.reset ? start() : stepToward(origin, target, stepM);
+  const pos: LatLng = arrive ? destination(target, 0, ARRIVE_M) : body.reset ? start() : stepToward(origin, target, stepM);
+  // A tap from afar (> 40 m from its previous simulated spot, or none: a real fix isn't where the walk starts either).
+  const cameFromM = me?.simulated ? haversineM(me, target) : null;
+  const fromAfar = arrive && (cameFromM === null || cameFromM > REARM_M);
   const row = { parentId, lat: pos.lat, lng: pos.lng, accuracyM: DEMO_ACCURACY_M, simulated: true, updatedAt: nowIso };
   await writePresence(db, me, row);
   all.set(parentId, row);
@@ -1350,9 +1383,10 @@ export async function demoWalk(db: any, body: DemoWalkBody, deps: LocationDeps =
     presences: [...all.values()],
     mover: true,
     onlyPeer: targetParentId, // a walk meets the family it heads for, never one it passes or stands next to
-    walking: Boolean(body.reset) || stepM > 1, // A's hold tick after arriving is a 1 m step
-    recheck: recheck || Boolean(body.reset), // the reset tick re-arms the pair at once
+    walking: Boolean(body.reset) || arrive || stepM > 1, // A's hold tick after arriving is a 1 m step
+    recheck: recheck || Boolean(body.reset) || arrive, // the reset tick (and a tap) re-arms the pair at once
     findMatches: deps.findMatches,
+    ...(fromAfar ? { arrivedFromM: Math.round(cameFromM ?? haversineM(origin, target)) } : {}), // re-armed first
   });
   const fallback = await fallbackTick(db, det, deps, recheck, nowMs, parentsById);
   return {

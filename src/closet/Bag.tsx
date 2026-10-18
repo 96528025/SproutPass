@@ -132,6 +132,7 @@ export function Bag() {
           <div className="snap-bag-actions">
             <PixelButton onClick={() => nav("/bag/add")}>+ ADD AN ITEM</PixelButton>
             <PixelButton variant="ghost" onClick={() => nav("/bag/pet")}>PET'S RULES</PixelButton>
+            <PixelButton variant="ghost" onClick={() => nav("/feedback")}>GIVE FEEDBACK</PixelButton>
           </div>
           <div className="b-row-between">
             <span className="b-label b-muted">TAP A SLOT</span>

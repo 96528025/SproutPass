@@ -33,7 +33,7 @@ const POLL_MS = 30_000;
 const visible = () => typeof document === "undefined" || document.visibilityState !== "hidden";
 
 function templateFor(pet: string, nudge: AgentNudge | null, proposals: number): string {
-  if (proposals > 0) return "Our pets found a match! Open the trade to decide — nothing is charged until you both accept.";
+  if (proposals > 0) return "Our pets found a match! Open the trade to decide — only the buyer approves the final offer; payment is simulated.";
   if (nudge?.kind === "new_owner_welcome") return nudge.message || "Say hi to your new item! I'll check in when it gets snug.";
   if (nudge?.kind === "outgrow_check") return nudge.message || "Something's probably getting snug — still fit? Want to pass it on?";
   if (nudge?.kind === "listing_reminder") return nudge.message || "That listing's been up a while — keep it shared?";

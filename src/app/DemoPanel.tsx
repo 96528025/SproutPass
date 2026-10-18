@@ -21,7 +21,7 @@ export function DemoPanel() {
   const parentKey = useApp((s) => s.parentKey);
   const refreshCloset = useApp((s) => s.refreshCloset);
   const toast = useApp((s) => s.toast);
-  const [open, setOpen] = useState(() => { try { return sessionStorage.getItem(SS_OPEN) !== "0"; } catch { return true; } });
+  const [open, setOpen] = useState(() => { try { return sessionStorage.getItem(SS_OPEN) === "1"; } catch { return false; } });
   const [now, setNow] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
 
@@ -63,7 +63,7 @@ export function DemoPanel() {
     <section className="b-demo" aria-label="Demo controls">
       <div className="b-demo-head">
         <button type="button" className="b-demo-toggle" aria-expanded={open} onClick={() => setOpen(!open)}>
-          {open ? "▼" : "▶"} DEMO{USE_MOCK ? " · MOCK" : ""}
+          {open ? "▼" : "▶"} ADVANCED DEMO CONTROLS{USE_MOCK ? " · MOCK" : ""}
         </button>
         <span className="b-label">{now ? shortDate(now) : "…"}</span>
       </div>

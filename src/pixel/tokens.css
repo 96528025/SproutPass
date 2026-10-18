@@ -1,4 +1,4 @@
-/* Hand-Me-Down Relay — pixel design tokens (A1; readability system B1). Palette/art colours only through A;
+/* SproutPass — pixel design tokens (A1; readability system B1). Palette/art colours only through A;
    the text colours below (--ink-soft, --red-deep, …) exist so text passes WCAG AA on that palette. */
 :root {
   --ink: #2b2140;

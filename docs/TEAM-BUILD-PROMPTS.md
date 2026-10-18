@@ -1,4 +1,4 @@
-# Hand-Me-Down Relay — Hackathon Build Prompts (v4: 3-person split, pixel frontend)
+# SproutPass — Hackathon Build Prompts (v4: 3-person split, pixel frontend)
 
 How to use: every teammate opens their own Fable session in the same git repo and pastes
 **Part 0 (General)** + **Part D (Design system)** + **their own role part (A, B or C)**.
@@ -166,7 +166,7 @@ Setting      { key: "demo"; now; matchVia: "fetch"|"local"; imessage: boolean; l
 
 ### Demo script (3 minutes)
 
-1. **0:00 Title.** "HAND-ME-DOWN RELAY · PRESS START". The tap unlocks sound and asks for location. Mina's World: her avatar on a pixel lawn, radar rings, and Jo's sprite far off (100–300 m band).
+1. **0:00 Title.** "SPROUTPASS · PRESS START". The tap unlocks sound and asks for location. Mina's World: her avatar on a pixel lawn, radar rings, and Jo's sprite far off (100–300 m band).
 2. **0:15 Closet.** The bag shows the duck romper icon, ♥♡♡ owners, and a "fits until ~Aug 27" bar.
 3. **0:25 The nudge.**
    - The clock jumps to Sep 20. Mina's pet Button pops up in a dialog box, and at the same moment her iPhone buzzes with the iMessage: "The yellow duck romper (6-9M) is probably getting snug — still fit? Want to pass it on?"

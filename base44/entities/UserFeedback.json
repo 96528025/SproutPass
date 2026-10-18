@@ -1,0 +1,48 @@
+{
+  "name": "UserFeedback",
+  "type": "object",
+  "properties": {
+    "requestId": {
+      "type": "string"
+    },
+    "role": {
+      "type": "string"
+    },
+    "outcome": {
+      "type": "string"
+    },
+    "useful": {
+      "type": "string"
+    },
+    "currentProcess": {
+      "type": "string"
+    },
+    "confusing": {
+      "type": "string"
+    },
+    "improvement": {
+      "type": "string"
+    },
+    "quoteConsent": {
+      "type": "boolean"
+    },
+    "createdAt": {
+      "type": "string",
+      "format": "date-time"
+    }
+  },
+  "required": [
+    "requestId",
+    "role",
+    "outcome",
+    "useful",
+    "currentProcess",
+    "improvement"
+  ],
+  "rls": {
+    "create": false,
+    "read": false,
+    "update": false,
+    "delete": false
+  }
+}

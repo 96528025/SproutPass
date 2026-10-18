@@ -129,6 +129,9 @@
           "type": "boolean"
         }
       }
+    },
+    "trialSample": {
+      "type": "boolean"
     }
   },
   "required": [

@@ -79,8 +79,8 @@ export function TitleScreen() {
       <i className="ts__cloud" aria-hidden style={{ top: 404, left: 296, boxShadow: CLOUD_SHADOW }} />
 
       <h1 className="ts__mark font-wordmark">
-        <span className="ts__l1">HAND-ME-DOWN</span>
-        <span className="ts__l2">RELAY</span>
+        <span className="ts__l1">GROW. SHARE. REPEAT.</span>
+        <span className="ts__l2 ts__brand">SproutPass</span>
         <span className="ts__rule" aria-hidden />
       </h1>
       <div className="ts__intro">
@@ -109,6 +109,8 @@ export function TitleScreen() {
           <nav className="ts__links" aria-label="Big-screen views">
             <Link className="ts__link" to="/agents">Watch the agents</Link>
             <Link className="ts__link" to="/impact">Our impact</Link>
+            <Link className="ts__link" to="/demo?demo=1">Demo guide</Link>
+            <Link className="ts__link" to="/feedback">Give feedback</Link>
           </nav>
         )}
 

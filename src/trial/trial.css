@@ -1,0 +1,17 @@
+.sp-trial { max-width: 680px; margin: 0 auto; padding: 24px 16px 110px; color: var(--ink, #24322c); font-family: var(--font-ui, sans-serif); line-height: 1.5; }
+.sp-trial h1 { font-size: 27px; line-height: 1.2; }
+.sp-trial h2 { font-size: 20px; }
+.sp-trial > * + * { margin-top: 20px; }
+.sp-trial a { color: #234d35; text-decoration: underline; font-weight: 700; }
+.sp-form, .sp-form label, .sp-select { display: grid; gap: 10px; }
+.sp-form { gap: 22px; }
+.sp-form input, .sp-form select, .sp-form textarea, .sp-select select { font: inherit; color: #24322c; background: #fffdf3; border: 2px solid #394638; padding: 10px; border-radius: 4px; width: 100%; box-sizing: border-box; }
+.sp-form .sp-check { display: flex; align-items: flex-start; }
+.sp-check input { width: 22px; height: 22px; flex-shrink: 0; }
+.sp-muted { font-size: 14px; color: #465244; }
+.sp-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 14px; }
+.sp-garment { display: block; max-width: 100%; height: 190px; object-fit: contain; margin: auto; border-radius: 8px; }
+.sp-steps { list-style: none; padding: 0; display: grid; gap: 12px; }
+.sp-steps li { background: #fffdf3; border: 2px solid #9b9c8c; padding: 16px; border-radius: 8px; }
+.sp-steps li.sp-done { border-color: #376747; background: #edf7e8; }
+.sp-steps p { margin: 8px 0 0; }

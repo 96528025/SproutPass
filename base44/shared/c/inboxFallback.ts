@@ -43,7 +43,7 @@ import { personalityOf } from "./personality.ts";
 import { callB } from "../cbridge.ts";
 import { priceFor } from "../pricing.ts";
 import { passkeyRequired } from "../logic/trust.ts";
-import { proposalReview } from "./proposalReview.ts";
+import { proposalImage, proposalReview } from "./proposalReview.ts";
 
 export const FALLBACK_AFTER_MS = 5_000;
 /** The Fetch agents are on duty: give their 12 s poll room before taking an encounter row. */
@@ -369,8 +369,9 @@ async function onEvent(ctx: Ctx, p: any) {
       const s = p.snapshot ?? prop?.snapshot ?? {};
       const buyerId = p.buyerId ?? prop?.buyerId;
       const isBuyer = p.role ? p.role === "buyer" : buyerId === parent.id;
-      const productPhoto = s.photo;
-      const receipt = visaReceiptText(p.visaSimulation ?? prop?.visaSimulation);
+      const productPhoto = proposalImage(s, appHost());
+      const receipt = visaReceiptText(p.visaSimulation ?? prop?.visaSimulation)
+        + (s.photo ? "" : "\nProduct illustration; photo not provided.");
       if (isBuyer) {
         let until: string = p.predictedOutgrowDate ?? "";
         if (!until && p.itemId) until = (await db.ClothingItem.get(p.itemId).catch(() => null))?.predictedOutgrowDate ?? "";

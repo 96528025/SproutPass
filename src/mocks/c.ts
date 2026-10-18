@@ -61,7 +61,7 @@ const SCRIPT = [
   { from: "buyer_agent", parentId: "jo", kind: "looking_for", text: "Pip: Looking for 6-9M tops or onesies!" },
   { from: "seller_agent", parentId: "mina", kind: "have", text: "Button: I have a Yellow duck romper in 6-9M." },
   { from: "buyer_agent", parentId: "jo", kind: "fit_check", text: "Pip: Your little one fits it for about 4 more weeks." },
-  { from: "buyer_agent", parentId: "jo", kind: "propose", text: "Pip: Trade proposal! $18.00 — nothing is charged until you both accept." },
+  { from: "buyer_agent", parentId: "jo", kind: "propose", text: "Pip: Trade proposal! $18.00 — only the buyer approves; payment is simulated." },
   { from: "seller_agent", parentId: "mina", kind: "ack", text: "Button: Sounds good — over to the humans!" },
 ];
 
