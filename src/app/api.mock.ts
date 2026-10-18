@@ -93,6 +93,10 @@ export const mockApi: Api = {
   decideProposal: (req) => call(() => decideProposal(db, req)),
   payProposal: (req) => call(() => payProposal(db, req, { delayMs: 600 })),
   getParties: (req) => call(() => getParties(db, req)),
+  // Placeholders until the C-mock workstream simulates presence / encounters on the fakeDb.
+  updatePresence: () => call(async () => ({ ok: true as const, encounters: [], fallback: [] })),
+  listNearby: () => call(async () => ({ me: null, nearby: [] })),
+  demoWalk: () => call(async () => ({ ok: true as const, distanceM: 120, encounters: [], fallback: [] })),
 
   demoClock: (req) => call(() => demoClock(db, req ?? {})),
   demoReset: () => call(() => demoReset(db, {})),

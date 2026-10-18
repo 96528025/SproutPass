@@ -215,6 +215,24 @@ export interface CreateProposalReq {   // internal: x-agent-key (C's agentApi / 
 export interface DecideProposalReq extends ParentRef { proposalId: ID; decision: "accepted" | "declined"; handover?: "now" | "later"; handoverNote?: string }
 export interface PayProposalReq extends ParentRef { proposalId: ID; fail?: boolean }
 
+// ---------------------------------------------------------------- C's location functions (app-callable)
+// Added to the Api with Caesar's OK (00:30) so A's /world can drop its stubs. C owns the handlers.
+export type Band = "<25m" | "25-100m" | "100-300m";
+export interface UpdatePresenceReq {
+  parentId: ID; lat: number; lng: number; accuracyM: number; simulated?: boolean;
+  discoverable?: boolean;            // A's DISCOVERABLE toggle; C writes it to Parent.discoverable
+}
+export interface UpdatePresenceRes { ok: true; encounters: { id: ID; peerId: ID }[]; fallback: ID[] }
+export interface ListNearbyReq { parentId: ID }
+export interface NearbyParent {
+  parentId: ID; name: string; sprite: string; pet: string; band: Band;
+  bearingDeg: number;                // rounded to 5°
+  distanceM?: number;                // demo only (both sides simulated), rounded to 5 m — A's "WALKING… 85 M"
+}
+export interface ListNearbyRes { me: { accuracyM: number; simulated: boolean; fresh: boolean } | null; nearby: NearbyParent[] }
+export interface DemoWalkReq { parentId: ID; targetParentId: ID; stepM?: number; reset?: boolean }
+export interface DemoWalkRes { ok: true; distanceM: number; encounters: { id: ID; peerId: ID }[]; fallback: ID[] }
+
 /** Public card for a trade party: never phone, Photon ids, convo or ASI address (approved by Caesar, 00:10). */
 export type PublicParty = Pick<Parent, "id" | "name" | "avatar" | "pet">;
 export interface GetPartiesReq { parentIds: ID[] }   // ≤ 10 ids; unknown ids are skipped, not an error
