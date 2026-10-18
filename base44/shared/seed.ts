@@ -121,15 +121,25 @@ type Bulky = {
   bulkCreate?: (rows: unknown[]) => Promise<unknown>;
 };
 
-/** Delete every row of every entity. Loops because real Base44 pages list() results. */
-async function wipe(db: Db) {
+// Person C's tables (not in EntityName / fakeDb): wiped when the db has them, skipped otherwise.
+const EXTRA = ["PairState", "PetLine"] as const;
+
+/** Delete every row of every entity (except `keep`). Loops because real Base44 pages list() results. */
+async function wipe(db: Db, keep: readonly string[] = []) {
   const report: string[] = [];
-  for (const e of ALL) {
-    const api = db[e] as unknown as Bulky;
+  const tables = db as unknown as Record<string, EntityApi<{ id: string }> | undefined>;
+  for (const e of [...EXTRA, ...ALL] as string[]) {
+    if (keep.includes(e)) continue;
+    const table = tables[e];
+    if (!table || typeof table.list !== "function") continue;                // e.g. fakeDb has no PairState
+    const optional = (EXTRA as readonly string[]).includes(e);
+    const api = table as unknown as Bulky;
     let bulk = typeof api.deleteMany === "function";
     let tried: Set<string> | null = null;
     for (let pass = 0; pass < 50; pass++) {
-      const rows = await db[e].list(undefined, 500);
+      let rows: { id: string }[];
+      try { rows = await table.list(undefined, 500); }
+      catch (err) { if (optional) break; throw err; }                        // C's entity not pushed yet: skip it
       if (!rows.length) break;
       if (tried && rows.some((r) => tried!.has(r.id))) bulk = false;          // deleteMany didn't take: go per row
       if (bulk) {
@@ -137,7 +147,7 @@ async function wipe(db: Db) {
         try { await api.deleteMany!({ id: { $in: [...tried] } }); continue; } catch { bulk = false; }
       }
       for (let i = 0; i < rows.length; i += 10) {
-        await Promise.all(rows.slice(i, i + 10).map((r) => db[e].delete(r.id).catch(() => undefined)));
+        await Promise.all(rows.slice(i, i + 10).map((r) => table.delete(r.id).catch(() => undefined)));
       }
     }
     if (tried) report.push(`${e}:${bulk ? "bulk" : "rows"}`);
@@ -160,15 +170,66 @@ async function createAll<T extends { id: string }>(api: EntityApi<T>, rows: Omit
   return Object.fromEntries(out.map((o) => [key(o), o])) as Record<string, T>;
 }
 
-/** Wipe every entity, then create the plan. Returns key → id maps. */
-export async function applySeed(db: Db, plan: SeedPlan) {
-  await wipe(db);
-  const parents = await createAll(db.Parent, plan.parents, (p) => p.key);
-  const parentIds: Record<string, string> = Object.fromEntries(Object.entries(parents).map(([k, p]) => [k, p.id]));
+/** Oldest first: Base44 created_date, then list position (fakeDb keeps insertion order). */
+function oldestFirst<T extends { id: string }>(rows: T[]): T[] {
+  const at = (r: T) => (r as T & { created_date?: string }).created_date ?? "";
+  return rows.map((r, i) => ({ r, i })).sort((a, b) => at(a.r).localeCompare(at(b.r)) || a.i - b.i).map((x) => x.r);
+}
 
-  const kids = await createAll(db.Child,
-    plan.children.map(({ parentKey, ...rest }) => ({ ...rest, parentId: parentIds[parentKey] })), (c) => c.parentId);
-  const childByParent: Record<string, Child> = Object.fromEntries(plan.parents.map((p) => [p.key, kids[parentIds[p.key]]]));
+/**
+ * RESET keeps each seeded parent's row (and id) and rewrites it to the seed values, so ids cached by C's agents,
+ * PairState keys and open tabs stay valid. Identity bindings survive: an agentAddress registered by an agent
+ * (unless a *_AGENT secret overrides it), a phone when no *_PHONE secret is set, Photon ids and the ASI:One claim.
+ * Demo state goes: the iMessage conversation (`convo`) restarts. Duplicates and unknown parents are removed.
+ */
+async function upsertParents(db: Db, seed: SeedPlan["parents"]): Promise<Record<string, string>> {
+  const existing = oldestFirst(await db.Parent.list(undefined, 500));
+  const ids: Record<string, string> = {};
+  const create: SeedPlan["parents"] = [];
+  const kept = new Set<string>();
+  for (const p of seed) {
+    const row = existing.find((r) => r.key === p.key);
+    if (!row) { create.push(p); continue; }
+    kept.add(row.id);
+    const defined = Object.fromEntries(Object.entries(p).filter(([, v]) => v !== undefined)) as Partial<Parent>;
+    await db.Parent.update(row.id, { ...defined, convo: { step: "idle" } });
+    ids[p.key] = row.id;
+  }
+  for (const r of existing) if (!kept.has(r.id)) await db.Parent.delete(r.id).catch(() => undefined);
+  if (create.length) {
+    const made = await createAll(db.Parent, create, (p) => p.key);
+    for (const [k, p] of Object.entries(made)) ids[k] = p.id;
+  }
+  return ids;
+}
+
+/** Same for children: each seeded parent keeps its first child row (and id), rewritten to the seed. */
+async function upsertChildren(db: Db, seed: SeedPlan["children"], parentIds: Record<string, string>): Promise<Record<string, Child>> {
+  const existing = oldestFirst(await db.Child.list(undefined, 500));
+  const out: Record<string, Child> = {};
+  const create: Omit<Child, "id">[] = [];
+  const kept = new Set<string>();
+  for (const { parentKey, ...rest } of seed) {
+    const parentId = parentIds[parentKey];
+    const row = existing.find((c) => c.parentId === parentId && !kept.has(c.id));
+    if (!row) { create.push({ ...rest, parentId }); continue; }
+    kept.add(row.id);
+    await db.Child.update(row.id, rest);
+    out[parentKey] = { ...row, ...rest, parentId };
+  }
+  for (const c of existing) if (!kept.has(c.id)) await db.Child.delete(c.id).catch(() => undefined);
+  if (create.length) {
+    const made = await createAll(db.Child, create, (c) => c.parentId);
+    for (const { parentKey } of seed) if (!out[parentKey]) out[parentKey] = made[parentIds[parentKey]];
+  }
+  return out;
+}
+
+/** Wipe every entity (parents and children are kept and rewritten in place), then create the plan. Returns key → id maps. */
+export async function applySeed(db: Db, plan: SeedPlan) {
+  await wipe(db, ["Parent", "Child"]);
+  const parentIds = await upsertParents(db, plan.parents);
+  const childByParent = await upsertChildren(db, plan.children, parentIds);
 
   const rows: Omit<ClothingItem, "id">[] = plan.items.map((it) => {
     const ownerId = parentIds[it.ownerKey];

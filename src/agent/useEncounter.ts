@@ -1,15 +1,17 @@
 // C: useEncounter — the active encounter for a parent, live.
 // A's EncounterScene and B's TradeWindow both read this; C's AgentBubbles renders the transcript.
 //
-// Source of truth is the realtime `Encounter` subscription; a 2 s poll backs it up
-// because iPhone Safari drops websockets when the screen dims. An encounter is
-// "active" while it is talking/proposed and started within the last 10 minutes.
+// Source of truth is the realtime `Encounter` subscription. iPhone Safari drops websockets when the
+// screen dims, so we re-read the moment the page becomes visible again, plus a 6 s backstop poll while
+// visible (never while hidden: Base44's rate limit is shared by every tab and function).
+// An encounter is "active" while it is talking/proposed and started within the last 10 minutes.
 
 import { useEffect, useRef, useState } from "react";
 import { type Encounter, listEncountersFor, subscribe } from "./cApi";
 
 const ACTIVE_WINDOW_MS = 10 * 60_000;
-const POLL_MS = 2_000;
+const POLL_MS = 6_000;
+const visible = () => typeof document === "undefined" || document.visibilityState !== "hidden";
 
 export interface EncounterState {
   encounter: Encounter | null;
@@ -47,7 +49,10 @@ export function useEncounter(me: string | null | undefined): EncounterState {
       setEncounter((cur) => (!cur || cur.id === e.id || Date.parse(e.startedAt) > Date.parse(cur.startedAt) ? e : cur));
     };
 
+    let inFlight = false;
     const refresh = async () => {
+      if (inFlight) return;            // never stack polls when the backend is slow or rate limited
+      inFlight = true;
       try {
         const list = await listEncountersFor(me);
         const now = Date.now();
@@ -55,6 +60,8 @@ export function useEncounter(me: string | null | undefined): EncounterState {
         if (alive) setEncounter(best ?? null);
       } catch {
         /* offline: keep what we have */
+      } finally {
+        inFlight = false;
       }
     };
 
@@ -63,11 +70,16 @@ export function useEncounter(me: string | null | undefined): EncounterState {
       if (ev.type === "delete") return;
       consider(ev.data);
     });
-    const timer = setInterval(refresh, POLL_MS);
+    const timer = setInterval(() => { if (visible()) void refresh(); }, POLL_MS);
+    const onVisible = () => { if (visible()) void refresh(); };
+    document.addEventListener("visibilitychange", onVisible);
+    window.addEventListener("pageshow", onVisible);
     return () => {
       alive = false;
       unsub();
       clearInterval(timer);
+      document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener("pageshow", onVisible);
     };
   }, [me]);
 

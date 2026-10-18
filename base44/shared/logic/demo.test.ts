@@ -138,3 +138,78 @@ describe("selfTest", () => {
     expect(failed, JSON.stringify(failed, null, 2)).toEqual([]);
   });
 });
+
+describe("demoReset and Person C's tables", () => {
+  /** Minimal in-memory table: fakeDb only knows the 11 contract entities. */
+  const table = (rows: { id: string }[]) => {
+    const m = new Map(rows.map((r) => [r.id, r]));
+    return {
+      list: async () => [...m.values()],
+      delete: async (id: string) => { m.delete(id); return { ok: true }; },
+      size: () => m.size,
+    };
+  };
+
+  it("wipes PairState and PetLine when the db has them", async () => {
+    const pair = table([{ id: "ps_1" }, { id: "ps_2" }]);
+    const lines = table([{ id: "pl_1" }]);
+    Object.assign(db, { PairState: pair, PetLine: lines });
+    await demoReset(db, {});
+    expect(pair.size()).toBe(0);
+    expect(lines.size()).toBe(0);
+    expect(await db.ClothingItem.list()).toHaveLength(17);
+  });
+
+  it("skips a C table that can't be listed (entity not pushed) and still seeds", async () => {
+    Object.assign(db, { PairState: { list: async () => { throw new Error("Entity PairState not found"); }, delete: async () => ({}) } });
+    await expect(demoReset(db, {})).resolves.toEqual({ ok: true });
+    expect(await db.Parent.list()).toHaveLength(3);
+  });
+});
+
+describe("demoReset keeps parent and child ids stable (C's agents cache them)", () => {
+  it("same Parent / Child ids after a reset; items, nudges and inbox are fresh", async () => {
+    const before = Object.fromEntries((await db.Parent.list()).map((p) => [p.key, p.id]));
+    const kids = (await db.Child.list()).map((c) => c.id).sort();
+    const [romperBefore] = await db.ClothingItem.filter({ name: "Yellow duck romper" });
+    await demoClock(db, { now: DEMO_DATES.nudge });
+    await demoReset(db, {});
+    expect(Object.fromEntries((await db.Parent.list()).map((p) => [p.key, p.id]))).toEqual(before);
+    expect((await db.Child.list()).map((c) => c.id).sort()).toEqual(kids);
+    const [romper] = await db.ClothingItem.filter({ name: "Yellow duck romper" });
+    expect(romper.currentOwnerId).toBe(before.mina);
+    expect(romper.id).not.toBe(romperBefore.id);
+    expect(await db.AgentNudge.list()).toHaveLength(0);
+    expect(await db.AgentInbox.list()).toHaveLength(0);
+    expect((await getCloset(db, { parentKey: "mina" })).child?.nickname).toBe("Bean");
+  });
+
+  it("rewrites seed fields, keeps identity bindings, restarts the iMessage convo", async () => {
+    const [mina] = await db.Parent.filter({ key: "mina" });
+    await db.Parent.update(mina.id, { name: "Renamed", pet: { sprite: "pet_x", name: "Zed" }, agentAddress: "agent1qregistered",
+      photonUserId: "ph_u", photonSpaceId: "ph_s", asiAddress: "asi1q", convo: { step: "await_condition", itemId: "gone" } });
+    await demoReset(db, { MINA_PHONE: "+15555550101" });
+    const after = await db.Parent.get(mina.id);
+    expect(after).toMatchObject({ name: "Mina", pet: { sprite: "pet_a", name: "Button" }, phone: "+15555550101",
+      agentAddress: "agent1qregistered", photonUserId: "ph_u", photonSpaceId: "ph_s", asiAddress: "asi1q", convo: { step: "idle" } });
+    await demoReset(db, { MINA_AGENT: "agent1qfromsecret" });
+    expect((await db.Parent.get(mina.id)).agentAddress).toBe("agent1qfromsecret");
+  });
+
+  it("removes duplicate and unknown parents/children, and re-creates missing ones", async () => {
+    const [jo] = await db.Parent.filter({ key: "jo" });
+    await db.Parent.create({ key: "jo", name: "Jo copy", avatar: { sprite: "parent_b", palette: "mint" }, pet: { sprite: "pet_b", name: "Pip" }, discoverable: true });
+    await db.Parent.create({ key: "stranger", name: "X", avatar: { sprite: "parent_a", palette: "peach" }, pet: { sprite: "pet_a", name: "Y" }, discoverable: true });
+    await db.Child.create({ parentId: jo.id, nickname: "Twin", birthDate: "2026-03-01T00:00:00.000Z" });
+    const [sam] = await db.Parent.filter({ key: "sam" });
+    await db.Parent.delete(sam.id);
+    await demoReset(db, {});
+    const parents = await db.Parent.list();
+    expect(parents.map((p) => p.key).sort()).toEqual(["jo", "mina", "sam"]);
+    expect(parents.find((p) => p.key === "jo")!.id).toBe(jo.id);
+    expect(await db.Child.filter({ parentId: jo.id })).toHaveLength(1);
+    expect(await db.Child.list()).toHaveLength(3);
+    const newSam = parents.find((p) => p.key === "sam")!;
+    expect((await db.ClothingItem.filter({ currentOwnerId: newSam.id })).length).toBe(5);
+  });
+});
