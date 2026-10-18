@@ -1,14 +1,14 @@
 // (C) deno test --no-lock base44/shared/c/c_test.ts
 // no jsr dependency so the test runs offline
 function assert(c: unknown, msg = "assert"): asserts c { if (!c) throw new Error(msg); }
-function assertEquals(a: unknown, b: unknown) { const x = JSON.stringify(a), y = JSON.stringify(b); if (x !== y) throw new Error(`expected ${y} got ${x}`); }
+function assertEquals(a: unknown, b: unknown, msg = "") { const x = JSON.stringify(a), y = JSON.stringify(b); if (x !== y) throw new Error(`${msg ? msg + ": " : ""}expected ${y} got ${x}`); }
 import {
   band, bearingDeg, DEMO_LAWN, demoHome, destination, haversineM, pairKey, roundBearing, roundDemoDistance, stepToward,
   withinEncounter,
 } from "./geo.ts";
 import { localTranscript } from "./location.ts";
 import { normalizePhone, parseInbound } from "./photon.ts";
-import { parseIntent, priceRule, t, tl } from "./wording.ts";
+import { isTradeCommand, mentionsTrade, parseIntent, priceRule, t, tl } from "./wording.ts";
 
 const A = { lat: 34.0709, lng: -118.4446 };
 
@@ -72,6 +72,45 @@ Deno.test("intents + price rule", () => {
   assertEquals(parseIntent("I accept"), "accept");
   assertEquals(parseIntent("no thanks"), "decline");
   assertEquals(parseIntent("hi"), "hi");
+  // "pass" declines a trade, but "pass it on" (the nudge's own words) sells
+  assertEquals(parseIntent("pass it on"), "sell");
+  assertEquals(parseIntent("pass on it"), "sell");
+  assertEquals(parseIntent("I'll pass"), "decline");
+  // opt-out / opt-in / cancel / status
+  assertEquals(parseIntent("STOP"), "stop");
+  assertEquals(parseIntent("please stop texting me"), "stop");
+  assertEquals(parseIntent("unsubscribe"), "stop");
+  assertEquals(parseIntent("Start"), "start");
+  assertEquals(parseIntent("cancel"), "cancel");
+  assertEquals(parseIntent("never mind"), "cancel");
+  assertEquals(parseIntent("status"), "status");
+  assertEquals(parseIntent("any updates?"), "status");
+  assertEquals(parseIntent("what's the weather"), "unknown");
+  assertEquals(parseIntent("stop by the park later"), "later");   // not an opt-out: only the clear phrases are
+  for (const s of ["STOP please", "please stop", "Stop, thanks", "stop it!", "unsubscribe me", "don’t text me"]) {
+    assertEquals(parseIntent(s), "stop", s);
+  }
+  // A trade is never accepted from a word inside a sentence; refusals and negations come first.
+  for (const s of ["accept", "Accept!", "I accept", "yes, accept", "accept the trade", "Deal!", "it’s a deal", "I'll take it", "I’ll take it 👍", "yes to the trade"]) {
+    assertEquals(parseIntent(s), "accept", s);
+  }
+  for (const s of ["no deal", "No deal, thanks", "Not a deal I want", "not a good deal", "I don't accept", "do not accept",
+    "can’t accept that", "don't take it", "no thank you", "not interested", "I'll pass on this one", "I’ll pass on it", "nah thanks"]) {
+    assertEquals(parseIntent(s), "decline", s);
+  }
+  for (const s of ["is that a good deal?", "what's the deal", "I'll take a look", "should I take it?", "should I decline?", "Deal?"]) {
+    assert(!["accept", "decline"].includes(parseIntent(s)), s);
+  }
+  assertEquals(parseIntent("I'll take a look later"), "later");
+  assertEquals(parseIntent("I'll pass it on"), "sell");
+  assertEquals(parseIntent("yes please"), "yes");
+  assertEquals(parseIntent("yes!!"), "yes");
+  assertEquals(isTradeCommand("I decline"), true);
+  assertEquals(isTradeCommand("accept"), true);
+  assertEquals(isTradeCommand("no thanks"), false);
+  assertEquals(isTradeCommand("Deal!"), false);
+  assertEquals(mentionsTrade("is that a good deal?"), true);
+  assertEquals(mentionsTrade("I'll take a look"), false);
   assertEquals(priceRule(3000, 1), "2nd owner pays 60% of $30.00");
   assertEquals(priceRule(3000, 2), "3rd owner pays 40% of $30.00");
 });
@@ -114,4 +153,28 @@ Deno.test("wording mirrors agents/wording.py", () => {
   assertEquals(t.listFailed("romper"), "I couldn't list the romper just now — try again from the bag.");
   assertEquals(t.busy(), "The app is busy right now — give me a minute and try again.");
   assertEquals(t.expired(), "That trade timed out — $0 charged, and the listing is back up.");
+});
+
+Deno.test("iMessage lines: short, plain, and every pay surface says demo payment · no real charge", () => {
+  const link = "https://sproutpass.test/trade/p1?as=jo";
+  for (const line of [t.approveInApp(link), t.payInApp(link), t.bothAccepted(link)]) {
+    assert(line.includes("demo payment · no real charge"), line);
+    assert(line.endsWith(link), line);
+  }
+  assert(t.payInApp(link).startsWith("I never pay by text."));
+  assertEquals(t.quote("romper", "gently_used", 1800, 3000, 1, "Tiny stain on the cuff."),
+    `That's the romper, gently used (Tiny stain on the cuff). Fair price $18.00 (2nd owner pays 60% of $30.00) — reply "yes" to list it, or tell me a different condition.`);
+  assert(t.quote("romper", "well_loved", 1, 1, 1, "x".repeat(200)).includes("x".repeat(79) + "…)"), "long notes are clipped");
+  assertEquals(t.status([]), "All quiet: nothing listed and no open trades. Send a photo to pass something on.");
+  const all = [
+    t.hello("Pip"), t.help(), t.nudge("romper", "6-9M"), t.nudgeWhich(), t.askPhoto("romper"), t.askWhich(), t.photoWhich(),
+    t.quote("romper", "like_new", 1800, 3000, 1), t.pickCondition(), t.listedNow("romper", 1800, 3000, 1), t.cancelled(),
+    t.nothingToCancel(), t.approveInApp(link), t.payInApp(link), t.stopped(), t.started("Pip"), t.pausedHelp(), t.slowDown(),
+    t.status(["romper listed at $18.00"]),
+  ];
+  for (const line of all) {
+    assert(!/[*#`]/.test(line), `no markdown: ${line}`);
+    assert(line.split(/[.!?] /).length <= 3, `≤ 2 sentences-ish: ${line}`);
+    assert(line.length <= 240, `short: ${line}`);
+  }
 });

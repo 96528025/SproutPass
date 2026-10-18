@@ -5,6 +5,9 @@
 // SEED_PHONES secret is set the phone must be in it. Setting.imessage=false
 // turns the whole channel into a no-op that still logs the line, so the demo
 // runs without Photon credentials.
+// Trust: a parent who texted STOP (Parent.convo.optedOut) gets no iMessage until START (the in-app pet still
+// speaks); anything that looks like a phone number is masked before it leaves (wording.ts redactPhones); and a
+// per-parent cap (OUTBOUND_PER_MINUTE) stops a runaway loop from flooding anyone's phone.
 
 // deno-lint-ignore-file no-explicit-any
 import { getSetting, secret } from "./auth.ts";
@@ -19,6 +22,31 @@ import {
   uploadAttachment,
 } from "./photon.ts";
 import { senderLineFor } from "./lines.ts";
+import { redactPhones } from "./wording.ts";
+
+/** At most this many iMessages per parent per minute (per warm isolate); more are skipped, not queued. */
+export const OUTBOUND_PER_MINUTE = 20;
+const OUTBOUND_WINDOW_MS = 60_000;
+const sentAt = new Map<string, number[]>();
+
+/** The outbound cap: true (and counted) when this parent may get one more text now. */
+export function outboundAllowed(parentId: string, nowMs: number = Date.now()): boolean {
+  const recent = (sentAt.get(parentId) ?? []).filter((t) => nowMs - t < OUTBOUND_WINDOW_MS && t <= nowMs);
+  const ok = recent.length < OUTBOUND_PER_MINUTE;
+  if (ok) recent.push(nowMs);
+  sentAt.set(parentId, recent);
+  return ok;
+}
+
+/** Tests: forget the outbound counts. */
+export function resetOutboundLimiter(): void {
+  sentAt.clear();
+}
+
+export interface SendOpts {
+  /** The one line a parent who texted STOP may still get: the answer to their HELP. */
+  evenIfOptedOut?: boolean;
+}
 
 export interface SendResult {
   sent: boolean;
@@ -29,24 +57,29 @@ export interface SendResult {
 export async function sendToParent(
   db: any,
   parentId: string,
-  text: string,
+  rawText: string,
   imageUrl?: string,
+  opts: SendOpts = {},
 ): Promise<SendResult> {
   const setting = await getSetting(db);
   const parent = await db.Parent.get(parentId).catch(() => null);
   if (!parent) return { sent: false, skipped: "unknown parent" };
+  const text = redactPhones(rawText);
 
   // Always mirror the line into the in-app pet (AgentPet reads PetLine rows),
   // even when iMessage is off, so the dialog box and the thread agree.
-  await db.PetLine.create({
-    parentId,
-    text,
-    imageUrl: imageUrl ?? null,
-    createdAt: new Date().toISOString(),
-  }).catch(() => {/* entity optional, see NEEDS.md */});
+  try {
+    await db.PetLine?.create({
+      parentId,
+      text,
+      imageUrl: imageUrl ?? null,
+      createdAt: new Date().toISOString(),
+    });
+  } catch { /* entity optional, see NEEDS.md */ }
 
   if (!setting.imessage) return { sent: false, skipped: "Setting.imessage=false" };
   if (!parent.phone) return { sent: false, skipped: "parent has no phone" };
+  if (parent.convo?.optedOut && !opts.evenIfOptedOut) return { sent: false, skipped: "parent texted STOP" };
 
   const allow = secret("SEED_PHONES");
   if (allow) {
@@ -61,6 +94,7 @@ export async function sendToParent(
   if (!senderId) {
     return { sent: false, skipped: "no iMessage line yet — text your assigned Photon number 'hi' first" };
   }
+  if (!outboundAllowed(parent.id)) return { sent: false, skipped: "rate limited" };
   const cfg: PhotonCfg = { apiKey, projectId };
 
   let res: any;

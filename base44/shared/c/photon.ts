@@ -4,6 +4,7 @@
 // messages / webhook-destination bodies, apiVersion "2026-07-01", the idempotency-key header (required on
 // messages, attachments, spaces and webhook destinations), and the message.received shape (data.object.sentBy /
 // receivedBy / space / content). Every path is a constant here so a rename is a one-line fix.
+// Inbound deliveries can be signed: see verifyWebhookSignature at the bottom (PHOTON_WEBHOOK_SECRET, "whsec_…").
 
 export const PHOTON_BASE = "https://api.photon.codes/v1";
 export const PHOTON_API_VERSION = "2026-07-01";
@@ -217,4 +218,65 @@ export function normalizePhone(h: string): string {
   const digits = (h ?? "").replace(/[^\d]/g, "");
   if (!digits) return (h ?? "").trim().toLowerCase(); // e-mail style handle
   return digits.length === 10 ? `1${digits}` : digits;
+}
+
+/* ---------- webhook signatures ---------- */
+// Photon returns a destination's signing secret ("whsec_…") once, on create and on rotation (with an overlap
+// window for the previous one). The OpenAPI spec doesn't spell out the headers; "whsec_" is the Standard Webhooks
+// format, so we verify that scheme: HMAC-SHA256(base64-decoded secret, `${webhook-id}.${webhook-timestamp}.${body}`),
+// sent as "v1,<base64>" (space-separated during a rotation) in webhook-signature, with the svix-* aliases.
+// PHOTON_WEBHOOK_SECRET may hold several secrets (comma or space separated) to cover a rotation overlap.
+
+export const SIGNATURE_TOLERANCE_S = 5 * 60;
+
+function secretBytes(secret: string): Uint8Array {
+  const raw = secret.trim().replace(/^whsec_/, "");
+  try {
+    const bin = atob(raw);
+    return Uint8Array.from(bin, (c) => c.charCodeAt(0));
+  } catch {
+    return new TextEncoder().encode(raw);
+  }
+}
+
+async function hmacBase64(key: Uint8Array, data: string): Promise<string> {
+  const k = await crypto.subtle.importKey("raw", key as BufferSource, { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+  const sig = new Uint8Array(await crypto.subtle.sign("HMAC", k, new TextEncoder().encode(data)));
+  let bin = "";
+  for (const b of sig) bin += String.fromCharCode(b);
+  return btoa(bin);
+}
+
+function sameString(a: string, b: string): boolean {
+  if (a.length !== b.length) return false;
+  let x = 0;
+  for (let i = 0; i < a.length; i++) x |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  return x === 0;
+}
+
+/** "v1,<base64>" for one delivery (tests, and a local replay tool). */
+export async function signWebhook(secret: string, id: string, timestampS: number | string, body: string): Promise<string> {
+  return `v1,${await hmacBase64(secretBytes(secret), `${id}.${timestampS}.${body}`)}`;
+}
+
+export type SignatureCheck = { ok: true } | { ok: false; reason: "missing signature headers" | "stale timestamp" | "signature mismatch" };
+
+/** Verify one webhook delivery against PHOTON_WEBHOOK_SECRET (one or more secrets). */
+export async function verifyWebhookSignature(
+  secrets: string,
+  headers: Headers,
+  rawBody: string,
+  nowMs: number = Date.now(),
+): Promise<SignatureCheck> {
+  const h = (name: string) => headers.get(`webhook-${name}`) ?? headers.get(`svix-${name}`) ?? "";
+  const id = h("id"), ts = h("timestamp"), sigs = h("signature");
+  if (!id || !ts || !sigs) return { ok: false, reason: "missing signature headers" };
+  const tsS = Number(ts);
+  if (!Number.isFinite(tsS) || Math.abs(nowMs / 1000 - tsS) > SIGNATURE_TOLERANCE_S) return { ok: false, reason: "stale timestamp" };
+  const given = sigs.split(/\s+/).map((s) => s.split(",")).filter(([v, b]) => v === "v1" && b).map(([, b]) => b);
+  for (const secret of secrets.split(/[\s,]+/).filter(Boolean)) {
+    const expected = (await signWebhook(secret, id, ts, rawBody)).slice(3);
+    if (given.some((g) => sameString(g, expected))) return { ok: true };
+  }
+  return { ok: false, reason: "signature mismatch" };
 }
