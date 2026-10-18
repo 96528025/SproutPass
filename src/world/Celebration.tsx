@@ -125,7 +125,7 @@ export function Celebration({ proposal, me, peer, onDone }: CelebrationProps) {
   // item arc: integer 4-px positions along a parabola
   const t = arc / ARC_STEPS;
   const ix = Math.round((fromX + (toX - fromX) * t) / 4) * 4;
-  const iy = Math.round((top + 40 - ARC_PEAK * 4 * t * (1 - t)) / 4) * 4;
+  const iy = Math.round((top - 44 - ARC_PEAK * 4 * t * (1 - t)) / 4) * 4;
   const owners = Math.min(3, Math.max(1, proposal.snapshot.previousOwners + 1)) as 1 | 2 | 3;
 
   return (
@@ -135,6 +135,7 @@ export function Celebration({ proposal, me, peer, onDone }: CelebrationProps) {
           <Avatar who={me} x={meX} top={top} />
           <Avatar who={peer} x={peerX} top={top} />
           <div
+            hidden={arc === 0}
             className={`cel__item ${arc === ARC_STEPS ? "is-landed" : ""}`}
             style={{ left: ix - ITEM / 2, top: iy - ITEM / 2 } as CSSProperties}
           >
