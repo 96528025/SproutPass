@@ -94,3 +94,11 @@ What changed in your code so it runs against B's real backend (all in the commit
 - **Not done yet:** `AgentBubbles` isn't mounted (A's EncounterScene; or Agent 2's TradeWindow "HOW OUR PETS FOUND THIS"). Python agents untouched and not run here.
 - **For your `agents/.env`:** `BASE44_URL=https://sproutpass-5c025059.base44.app`, `APP_URL` the same. `AGENT_KEY` comes from Caesar privately.
 - **Secrets still unset on Base44:** `WEBHOOK_KEY PHOTON_API_KEY PHOTON_PROJECT_ID SEED_PHONES APP_HOST` (`APP_HOST=sproutpass-5c025059.base44.app`).
+
+## Live encounter test (Caesar, 23:45) — what worked, what to fix
+Ran on https://sproutpass-5c025059.base44.app with two tabs (?as=mina / ?as=jo): SEP 20 → SELL → list romper ($18.00) → OCT 18 → `demoWalk` Jo 120 → 70 → 20 m → encounter → 12 s later C's local fallback → B's createProposal (via cbridge) → **Trade window popped on both tabs live** (seller/buyer, $18.00, pet's reason, 5-turn transcript, WAITING… ×2). Then demoReset.
+- **(→ Agent 2)** Other party's name shows "…": `usePublicParent` fetches the other parent's whole `getCloset` just for the name; under the rate limit it fails once and never retries. Also sends the other family's full closet to this browser. Suggest reading the name from `Parent` (public read) or the proposal snapshot.
+- **(→ Agent 2)** After RESET (proposal deleted) an open Trade window stays up with stale data. Close it on a `delete` event / not-found.
+- **(→ Agent 1)** `wipe()` doesn't clear C's new `PairState` / `PetLine`. Harmless now (RESET re-creates parents with new ids, so old rows are orphans) but they pile up; add them to `ALL` (fakeDb has no tables for them: skip missing).
+- **(→ C)** RESET gives parents **new ids**. The Python agents cache ids from `lookupParent` at startup → restart them (or re-lookup) after every RESET.
+- **(→ C / all)** Rate limit hit twice during the test (both tabs showed "Couldn't open the bag · Rate limit exceeded" until retried). `AgentPet` polls 4 reads every 5 s per tab on top of realtime; consider 15–30 s or realtime only.
