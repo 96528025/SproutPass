@@ -1,6 +1,6 @@
 // A4: /world. Lawn + radar + my avatar + other parents sliding between rings, real GPS feeding updatePresence,
 // the ?demo=1 walk, and the mount points for A5's EncounterScene / Celebration.
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { PARENTS, useEncounter, useSimPosition } from "@/mocks/a4"; // C: swap for the real api when it lands
 import { AgentBubbles } from "@/mocks/a5"; // C: swap for the real <AgentBubbles>
 import { Celebration } from "@/world/Celebration";
@@ -38,7 +38,8 @@ function useFirstEntryHint(): [boolean, () => void] {
       /* ignore */
     }
   }, []);
-  return [show, () => setShow(false)];
+  const hide = useCallback(() => setShow(false), []); // stable, or Toast's timer restarts on every render
+  return [show, hide];
 }
 
 export function WorldScreen() {
