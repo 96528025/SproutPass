@@ -1,12 +1,15 @@
 // OWNER: B4. The BAG (/bag): child card, 4-column inventory grid with status badges, the item card for
 // the selected slot, the PASSED ON shelf and the NEEDS button. Live: the store refreshes on entity changes.
-import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+// B7: "+ Add an item" (→ /bag/add, AI snap-to-list) and "Pet rules" (→ /bag/pet); an item just added there
+// comes back selected with a NEW badge (router state { newItemId }).
+import { useEffect, useRef, useState } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
 import { Chip, ItemIcon, PixelButton, PixelPanel, Sprite, isItemIconName } from "../app/ui";
 import { useApp } from "../app/store";
 import { shortDate } from "../app/format";
 import type { ClosetView, ClothingItem } from "../app/types";
 import { ItemCard } from "./ItemCard";
+import "./snap.css";
 
 type Badge = { label: string; cls: string } | null;
 
@@ -20,9 +23,9 @@ function badgeFor(item: ClothingItem): Badge {
 /** Text instead of the sprite when an item's icon isn't one of A's (ItemIcon would draw a stand-in). */
 const shortName = (item: ClothingItem) => item.name.split(" ").slice(-1)[0];
 
-function Slot(p: { item?: ClothingItem; selected?: boolean; passed?: boolean; alert?: boolean; onSelect?: () => void }) {
+function Slot(p: { item?: ClothingItem; selected?: boolean; passed?: boolean; alert?: boolean; isNew?: boolean; onSelect?: () => void }) {
   if (!p.item) return <div className="b-slot empty" aria-hidden />;
-  const badge = p.passed ? null : badgeFor(p.item);
+  const badge = p.passed ? null : badgeFor(p.item) ?? (p.isNew ? { label: "NEW", cls: "new" } : null);
   const label = `${p.item.name}, ${p.item.size}${badge ? `, ${badge.label.toLowerCase()}` : ""}${p.passed ? ", passed on" : ""}`;
   return (
     <button type="button" aria-label={label} aria-pressed={p.selected}
@@ -69,9 +72,25 @@ export function Bag() {
   const refreshCloset = useApp((s) => s.refreshCloset);
   const toast = useApp((s) => s.toast);
   const nav = useNavigate();
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const loc = useLocation();
+  // Back from /bag/add with the item just added: select it (its card opens) and badge it NEW.
+  const [newId] = useState<string | null>(() => (loc.state as { newItemId?: string } | null)?.newItemId ?? null);
+  const [selectedId, setSelectedId] = useState<string | null>(newId);
+  const cardRef = useRef<HTMLDivElement>(null);
+  const hasCloset = !!closet;
 
   useEffect(() => { if (status === "error" && error) toast(error, "red"); }, [status, error, toast]);
+  // The item card opens below the grid, off-screen on a phone: bring it into view when a slot is picked.
+  useEffect(() => {
+    const el = cardRef.current;
+    if (!selectedId || !el || typeof el.scrollIntoView !== "function") return;
+    const still = typeof window.matchMedia === "function" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    el.scrollIntoView({ block: "nearest", behavior: still ? "auto" : "smooth" });
+  }, [selectedId, hasCloset]);
+  // Drop the router state so a reload doesn't re-select it (the NEW badge stays for this visit).
+  useEffect(() => {
+    if (newId) nav(`${loc.pathname}${loc.search}`, { replace: true, state: null });
+  }, [newId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!closet) {
     if (status === "error") {
@@ -100,12 +119,17 @@ export function Bag() {
 
       <PixelPanel title={`BAG · ${items.length}`} tone="cream">
         <div className="b-stack">
-          {items.length === 0 && <p className="b-p">Nothing in the bag yet. Hand-me-downs you get land here.</p>}
+          {items.length === 0 && <p className="b-p">Nothing in the bag yet. Snap a photo to add something, or get a hand-me-down.</p>}
           <div className="b-grid" role="group" aria-label="Items in the bag">
             {padded(items).map((item, i) => (
               <Slot key={item?.id ?? `empty-${i}`} item={item} selected={!!item && item.id === selectedId}
-                alert={!!item && nudged.has(item.id)} onSelect={item ? () => toggle(item.id) : undefined} />
+                alert={!!item && nudged.has(item.id)} isNew={!!item && item.id === newId}
+                onSelect={item ? () => toggle(item.id) : undefined} />
             ))}
+          </div>
+          <div className="snap-bag-actions">
+            <PixelButton onClick={() => nav("/bag/add")}>+ Add an item</PixelButton>
+            <PixelButton variant="ghost" onClick={() => nav("/bag/pet")}>Pet rules</PixelButton>
           </div>
           <div className="b-row-between">
             <span className="b-label b-muted">TAP A SLOT</span>
@@ -116,7 +140,11 @@ export function Bag() {
         </div>
       </PixelPanel>
 
-      {selected && <ItemCard key={selected.id} item={selected} closet={closet} onClose={() => setSelectedId(null)} />}
+      {selected && (
+        <div ref={cardRef} className="snap-card-anchor">
+          <ItemCard key={selected.id} item={selected} closet={closet} onClose={() => setSelectedId(null)} />
+        </div>
+      )}
 
       <PixelPanel title="PASSED ON">
         {closet.passedOn.length === 0

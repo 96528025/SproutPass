@@ -1,0 +1,110 @@
+/* OWNER: B7. Snap-to-list (/bag/add) + the bag's "+ Add an item" / "Pet rules" row and NEW badge.
+   Pixel rules: 4 px grid, hard ink shadows, no blur, no rounded corners. Sentences in the readable UI font
+   (var(--font-ui), 16 px+); the pixel label font only for short labels. */
+
+/* ---------------------------------------------------------------- text */
+.snap-text,
+.snap-help,
+.snap-bubble,
+.snap-conf {
+  font-family: var(--font-ui);
+  font-size: 16px;
+  line-height: 1.4;
+  text-transform: none;
+  margin: 0;
+}
+.snap-help { opacity: 0.85; }
+.snap-issue { font-weight: 700; opacity: 1; }
+.snap-link { align-self: center; font-size: 12px; }
+
+/* ---------------------------------------------------------------- 1 · snap it */
+.snap-polaroid .b-polaroid-img { image-rendering: pixelated; }
+.snap-looking { display: grid; grid-template-columns: auto 1fr; gap: 12px; align-items: center; }
+
+.snap-icons {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(76px, 1fr));
+  gap: 8px;
+}
+.snap-icons--pick { grid-template-columns: repeat(auto-fill, minmax(60px, 1fr)); }
+.snap-icon-btn {
+  display: grid;
+  justify-items: center;
+  gap: 4px;
+  padding: 4px;
+  background: var(--paper);
+  border: 4px solid var(--ink);
+  box-shadow: 2px 2px 0 var(--ink);
+  cursor: pointer;
+  font-family: var(--font-ui);
+  font-size: 16px;
+  line-height: 1.2;
+  text-align: center;
+}
+.snap-icon-btn .item-icon { border: 0; background: transparent; }
+.snap-icon-btn[aria-pressed="true"] { background: var(--gold); }
+.snap-icon-btn:focus-visible { outline: 4px solid var(--lav); outline-offset: 2px; }
+.snap-icon-btn:active { transform: translate(2px, 2px); box-shadow: none; }
+
+/* ---------------------------------------------------------------- 2 · check it */
+.snap-head { display: grid; grid-template-columns: auto 1fr; gap: 12px; align-items: start; }
+.snap-thumb {
+  width: 96px;
+  height: 96px;
+  display: grid;
+  place-items: center;
+  background: var(--cream);
+  border: 4px solid var(--ink);
+  box-shadow: 4px 4px 0 var(--ink);
+  overflow: hidden;
+}
+.snap-thumb img { width: 100%; height: 100%; object-fit: cover; }
+.snap-thumb .item-icon { border: 0; background: transparent; }
+.snap-verdict { display: grid; gap: 8px; min-width: 0; }
+.snap-says { display: flex; align-items: center; gap: 8px; }
+.snap-bubble {
+  position: relative;
+  padding: 8px 12px;
+  background: var(--white, #fff);
+  border: 4px solid var(--ink);
+}
+.snap-conf { font-size: 16px; }
+.snap-meter { display: inline-flex; gap: 2px; padding: 2px; background: var(--ink); }
+.snap-meter i { display: block; width: 12px; height: 16px; background: var(--paper); }
+.snap-meter i.on { background: var(--mint); }
+
+.snap-field { display: grid; gap: 8px; }
+.snap-field-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; min-height: 24px; }
+.snap-suggested { flex: none; }
+
+.snap-input { font-family: var(--font-ui); font-size: 16px; line-height: 24px; min-height: 44px; }
+.snap-money { display: grid; grid-template-columns: auto 1fr; align-items: center; gap: 8px; font-family: var(--font-ui); font-size: 20px; }
+
+.snap-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.snap-opt {
+  min-height: 44px;
+  min-width: 44px;
+  padding: 8px 12px;
+  background: var(--paper);
+  border: 4px solid var(--ink);
+  box-shadow: 2px 2px 0 var(--ink);
+  cursor: pointer;
+  font-family: var(--font-ui);
+  font-size: 16px;
+  line-height: 20px;
+  font-weight: 700;
+}
+.snap-opt[aria-pressed="true"] { background: var(--gold); }
+.snap-opt:focus-visible { outline: 4px solid var(--lav); outline-offset: 2px; }
+.snap-opt:active { transform: translate(2px, 2px); box-shadow: none; }
+
+/* ---------------------------------------------------------------- bag (Bag.tsx) */
+.snap-bag-actions { display: flex; gap: 12px; flex-wrap: wrap; }
+.snap-bag-actions > * { flex: 1 1 140px; }
+.b-badge.new { background: var(--mint); }
+/* The bag's item card scrolls into view clear of the bottom bar and the corner pet. */
+.snap-card-anchor { scroll-margin: 16px 0 calc(var(--bottom-bar, 64px) + 80px); }
+
+@media (prefers-reduced-motion: reduce) {
+  .snap-icon-btn:active, .snap-opt:active { transform: none; }
+}
