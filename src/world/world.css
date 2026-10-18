@@ -1,0 +1,169 @@
+/* A4 world screen. 4-px grid, no border-radius / blur / gradients, steps() motion. */
+.ws {
+  position: relative;
+  width: 100%;
+  height: calc(var(--screen-h, 100dvh) - var(--safe-top, 0px));
+  overflow: hidden;
+  background: var(--grass-dark);
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+/* stage = everything between the chips row and the bottom bar; --cx/--cy (integer px) are the radar centre */
+.ws__stage {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: var(--chip-row);
+  bottom: var(--bottom-bar);
+  isolation: isolate;
+}
+.lawn {
+  position: absolute;
+  left: 0;
+  top: calc(-1 * var(--chip-row));
+  width: 100%;
+  height: calc(100% + var(--chip-row) + var(--bottom-bar));
+  display: block;
+}
+
+/* ---- radar ---- */
+.radar {
+  position: absolute;
+  left: calc(var(--cx) - 176px);
+  top: calc(var(--cy) - 176px);
+  width: 352px;
+  height: 352px;
+  pointer-events: none;
+}
+.radar__rings {
+  position: absolute;
+  inset: 0;
+}
+.radar__label {
+  position: absolute;
+  left: 176px;
+  width: 48px;
+  margin-left: -24px;
+  height: 16px;
+  background: var(--ink);
+  color: var(--paper);
+  font-family: var(--font-label);
+  font-size: 10px;
+  line-height: 16px;
+  text-align: center;
+  white-space: nowrap;
+}
+/* the 25 M ring is hidden behind my avatar's head, so its label sits on the ring's east side instead of the top */
+.radar__label--side { left: 176px; margin-left: 52px; }
+/* the sweep: arm rotates in 16 steps, the sprite counter-rotates in lockstep so it stays upright */
+.radar__sweep {
+  position: absolute;
+  left: 176px;
+  top: 176px;
+  width: 0;
+  height: 0;
+}
+.radar__sweep-arm {
+  position: absolute;
+  left: -16px;
+  top: -184px; /* centre of the 32px dot sits on the 168px ring */
+  width: 32px;
+  height: 32px;
+  transform-origin: 16px 184px;
+  animation: radar-turn 4s steps(16, end) infinite;
+}
+.radar__sweep-arm > .spr {
+  animation: radar-unturn 4s steps(16, end) infinite;
+  animation-name: radar-unturn;
+}
+@keyframes radar-turn {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+@keyframes radar-unturn {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(-360deg); }
+}
+
+/* ---- people ---- */
+.ws__me,
+.ns {
+  position: absolute;
+  left: var(--cx);
+  top: var(--cy);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  pointer-events: none;
+}
+.ws__me { z-index: 200; margin-left: -64px; margin-top: -64px; width: 128px; }
+.ns { margin-left: -48px; margin-top: -48px; width: 96px; }
+.ws__me .name,
+.ns__name {
+  position: relative;
+  display: block;
+  margin-top: -8px;
+  padding: 0 4px;
+  background: var(--ink);
+  color: var(--paper);
+  font-family: var(--font-label);
+  font-size: 12px;
+  line-height: 16px;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.ws__me .name { background: var(--gold); color: var(--ink); border: 4px solid var(--ink); line-height: 12px; }
+.ws__me--hidden > .spr {
+  -webkit-mask: var(--dither-ink);
+  mask: var(--dither-ink);
+}
+.ns--fade > .spr,
+.ns--fade > .ns__name {
+  -webkit-mask: var(--dither-ink);
+  mask: var(--dither-ink);
+  animation: ns-fade 800ms step-end forwards;
+}
+@keyframes ns-fade {
+  50% { -webkit-mask-image: var(--dither-sparse); mask-image: var(--dither-sparse); }
+}
+.ws {
+  --dither-sparse: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='8' shape-rendering='crispEdges'%3E%3Crect width='4' height='4' fill='%232B2140'/%3E%3C/svg%3E");
+}
+
+/* ---- chips row: fixed 40px so chip changes never shift anything; the right 52px is the mute toggle's ---- */
+.ws__chips {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: var(--chip-row);
+  padding: 0 52px 0 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  z-index: 4; /* below --z-overlay so A5's scenes cover the HUD */
+}
+.ws__chips .chip { flex: none; }
+.ws__disc {
+  position: absolute;
+  left: 12px;
+  top: calc(var(--chip-row) + 4px);
+  z-index: 4; /* below --z-overlay so A5's scenes cover the HUD */
+}
+
+/* ---- demo walk button ---- */
+.ws__walk {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: calc(var(--bottom-bar) + 12px);
+  display: flex;
+  justify-content: center;
+  z-index: 4; /* below --z-overlay so A5's scenes cover the HUD */
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .radar__sweep-arm,
+  .radar__sweep-arm > .spr { animation: none; }
+}
