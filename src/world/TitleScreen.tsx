@@ -5,7 +5,8 @@ import { PixelPanel } from "@/pixel/components/PixelPanel";
 import { PixelButton } from "@/pixel/components/PixelButton";
 import { Chip } from "@/pixel/components/Chip";
 import { sfx } from "@/pixel/sfx";
-import { ParentPicker, Sprite } from "@/mocks/a3"; // TODO: ParentPicker from B, Sprite from A2
+import { ParentPicker } from "@/mocks/a3"; // TODO: ParentPicker from B
+import { Sprite } from "@/pixel/components/Sprite";
 import { MuteToggle } from "./MuteToggle";
 import { pixelShadow } from "./BottomBar";
 import { parseParent, withQuery, type ParentId } from "./query";

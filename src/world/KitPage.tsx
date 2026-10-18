@@ -10,7 +10,8 @@ import { DialogBox } from "@/pixel/components/DialogBox";
 import { Modal } from "@/pixel/components/Modal";
 import { Toast, type ToastTone } from "@/pixel/components/Toast";
 import { sfx, useSfx, type SfxName } from "@/pixel/sfx";
-import { Sprite, ItemIcon } from "@/mocks/a1";
+import { Sprite } from "@/pixel/components/Sprite";
+import { ItemIcon } from "@/pixel/components/ItemIcon";
 
 const PALETTE = [
   "ink", "paper", "cream", "grass", "grass-dark", "path", "sky", "peach", "pink", "gold", "lav", "red", "mint",
@@ -146,7 +147,7 @@ export function KitPage() {
         <PriceReceipt original={3000} pct={40} price={1200} ownerAfter={3} stamp="DEMO PAYMENT · NO REAL CHARGE" />
       </Section>
 
-      <Section name="ItemIcon · Sprite (A2 stubs)" props="icon · size: 1 | 2 — name · anim · scale · facing">
+      <Section name="ItemIcon · Sprite (A2)" props="icon · size: 1 | 2 — name · anim · scale · facing">
         <PixelPanel>
           <Row>
             <ItemIcon icon="item_romper" size={1} />
