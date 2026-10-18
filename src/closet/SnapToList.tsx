@@ -73,9 +73,9 @@ function verdict(g: ItemPhotoGuess | null, source: Source): string {
   const name = g.name ? lowerFirst(g.name) : "";
   if (isDemoPick(g)) return `Here's a sample to start from: ${article(name)} ${name}${g.size ? `, size ${g.size}` : ""}. Change anything that's wrong.`;
   if (name && g.size) return `I think it's ${article(name)} ${name}, size ${g.size}.`;
-  if (name) return `I think it's ${article(name)} ${name}. I couldn't read a size, so please pick one.`;
-  if (g.size) return `I can read size ${g.size}, but I can't tell what the item is. Please name it.`;
-  return "I couldn't make this one out. Please fill it in below.";
+  if (name) return `I think it's ${article(name)} ${name}. I couldn't read a size, so pick one below.`;
+  if (g.size) return `I can read size ${g.size}, but I can't tell what the item is. Give it a name below.`;
+  return "I couldn't make this one out. Fill it in below.";
 }
 
 /** Fit preview: when the child grows into / out of this size, and when the pet will ask "still fit?". */
@@ -167,7 +167,7 @@ export function SnapToList() {
 
   if (!closet) {
     return closetStatus === "error"
-      ? <PixelPanel title="ADD AN ITEM"><div className="b-center"><p className="snap-text">{closetError}</p><PixelButton onClick={() => void refreshCloset()}>Try again</PixelButton></div></PixelPanel>
+      ? <PixelPanel title="ADD AN ITEM"><div className="b-center"><p className="snap-text">{closetError}</p><PixelButton onClick={() => void refreshCloset()}>TRY AGAIN</PixelButton></div></PixelPanel>
       : <div className="b-center"><Chip tone="cream">LOADING…</Chip></div>;
   }
 

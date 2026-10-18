@@ -199,7 +199,7 @@ export async function withdrawListing(db: Db, body: WithdrawListingReq): Promise
   const openProposals = (await db.MatchProposal.filter({ listingId: listing.id }))
     .filter((p) => OPEN_PROPOSAL.includes(p.status));
   if (item.status === "pending_trade" || openProposals.length) {
-    throw invalid("a trade proposal is open for this item; decline it first");
+    throw invalid("This item is in a trade now. Open the trade to decline it first.");
   }
   // Item first: an active listing whose item is in_closet can't be proposed, so a failed second write is safe.
   if (item.status === "listed") await db.ClothingItem.update(item.id, { status: "in_closet" });

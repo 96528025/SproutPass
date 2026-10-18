@@ -45,8 +45,9 @@ export function TitleScreen() {
     if (stage !== "title") return;
     const onKey = (e: KeyboardEvent) => {
       if (e.metaKey || e.ctrlKey || e.altKey) return;
-      // Tab moves focus (to the projector links); a key pressed on a link follows the link.
-      if (e.key === "Tab" || (e.target instanceof Element && e.target.closest(".ts__links"))) return;
+      // Tab moves focus (to the projector links); a key pressed on a link or another control (the mute toggle)
+      // belongs to that control. Only the tap layer itself starts from the keyboard.
+      if (e.key === "Tab" || (e.target instanceof Element && e.target.closest("a, input, button:not(.ts__tap)"))) return;
       start();
     };
     window.addEventListener("keydown", onKey);
@@ -113,7 +114,7 @@ export function TitleScreen() {
         {stage === "consent" && (
           <PixelPanel title="BEFORE WE START" className="ts__panel">
             <p className="ts__consent">
-              We use your location only while this screen is open, to find parents within 25 m.
+              We use your location only while this screen is open, to show parents within 300 m. Pets meet at 25 m.
             </p>
             <p className="ts__consent ts__consent--quiet">
               Other parents only see roughly how far away you are, never your exact spot.

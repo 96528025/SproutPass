@@ -2,8 +2,8 @@ import { describe, expect, it } from "vitest";
 import type { AgentLogEntry, AgentTurn } from "../app/types";
 import { declineSummary, mockAgentAddress, RULE_PHRASE } from "../app/mockWorld";
 import {
-  ago, capital, CLOSING_TYPES, encounterChip, encounterEngine, exchangeMs, priceRule, proposalStatus, refusalOf, resolveSides,
-  scanPrivacy, shortAddress, typeLabel,
+  ago, capital, CLOSING_TYPES, encounterChip, encounterEngine, encParam, exchangeMs, priceRule, proposalStatus, refusalOf,
+  resolveSides, scanPrivacy, selectEncounter, shortAddress, stripEncounters, typeLabel, withEncParam, withPinned,
 } from "./consoleModel";
 
 const A = "agent1qf3xk7v0d8s2l4m9n6p5r3t1w0y8u7i6o5a4s3d2f1g0h9j8k7";
@@ -148,5 +148,53 @@ describe("time", () => {
     expect(ago(at(0), Date.parse(at(3)))).toBe("just now");
     expect(exchangeMs([entry({ at: at(1), ms: 300 }), entry({ at: at(2), ms: 400 })])).toBe(1300);
     expect(exchangeMs([])).toBeNull();
+  });
+});
+
+describe("deep link: /agents?enc=<id>", () => {
+  const enc = (id: string, s: number) => ({ id, startedAt: at(s) });
+  const list = [enc("enc_new", 50), enc("enc_mid", 30), enc("enc_old", 10)]; // newest first, like the hook
+
+  it("reads ?enc= next to the carried params, ignores junk", () => {
+    expect(encParam("?as=jo&demo=1&enc=enc_mid")).toBe("enc_mid");
+    expect(encParam("?enc=6650f0c2a1b2c3d4e5f60718")).toBe("6650f0c2a1b2c3d4e5f60718"); // a Base44 id
+    expect(encParam("?enc=%20enc_mid%20")).toBe("enc_mid");
+    expect(encParam("?as=jo")).toBeNull();
+    expect(encParam("?enc=")).toBeNull();
+    expect(encParam("?enc=<script>")).toBeNull();
+    expect(encParam(`?enc=${"x".repeat(65)}`)).toBeNull();
+  });
+
+  it("picking writes ?enc=, follow live removes it; ?as= / ?demo= / ?view= stay", () => {
+    expect(withEncParam("?as=jo&demo=1", "enc_mid")).toBe("?as=jo&demo=1&enc=enc_mid");
+    expect(withEncParam("?as=jo&enc=enc_old&view=big", "enc_mid")).toBe("?as=jo&enc=enc_mid&view=big");
+    expect(withEncParam("?as=jo&demo=1&enc=enc_mid", null)).toBe("?as=jo&demo=1");
+    expect(withEncParam("?enc=enc_mid", null)).toBe("");
+  });
+
+  it("a pin opens that encounter (even the newest: follow live is off); no pin follows the newest", () => {
+    expect(selectEncounter(list, "enc_mid")?.id).toBe("enc_mid");
+    expect(selectEncounter(list, "enc_new")?.id).toBe("enc_new");
+    expect(selectEncounter(list, null)?.id).toBe("enc_new");
+    // a new meeting arrives: the pin holds, following moves on
+    const more = [enc("enc_newer", 60), ...list];
+    expect(selectEncounter(more, "enc_mid")?.id).toBe("enc_mid");
+    expect(selectEncounter(more, null)?.id).toBe("enc_newer");
+  });
+
+  it("a pin that isn't in the list (gone, or still being read) shows the newest; nothing at all shows nothing", () => {
+    expect(selectEncounter(list, "enc_gone")?.id).toBe("enc_new");
+    expect(selectEncounter([], "enc_mid")).toBeNull();
+  });
+
+  it("an older pinned encounter joins the list in date order and keeps its tab in the strip", () => {
+    const old = enc("enc_ancient", 1);
+    const merged = withPinned(list, old);
+    expect(merged.map((e) => e.id)).toEqual(["enc_new", "enc_mid", "enc_old", "enc_ancient"]);
+    expect(withPinned(list, enc("enc_mid", 30))).toBe(list); // already there: unchanged
+    expect(withPinned(list, null)).toBe(list);
+    expect(stripEncounters(merged, "enc_ancient", 2).map((e) => e.id)).toEqual(["enc_new", "enc_ancient"]);
+    expect(stripEncounters(merged, "enc_new", 2).map((e) => e.id)).toEqual(["enc_new", "enc_mid"]);
+    expect(stripEncounters(merged, null, 2).map((e) => e.id)).toEqual(["enc_new", "enc_mid"]);
   });
 });

@@ -211,7 +211,7 @@ export function MapLayer({ me, zoomedOut, zone, avatar, noFix }: MapLayerProps) 
           {zoomedOut && <ZoneMarker me={me} avatar={avatar} />}
         </MapContainer>
       )}
-      {!empty && <span className="map__attrib">TILES © ESRI</span>}
+      {!empty && <span className="map__attrib">© ESRI · © OPENSTREETMAP</span>}
     </div>
   );
 }

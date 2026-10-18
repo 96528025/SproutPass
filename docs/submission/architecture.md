@@ -15,7 +15,7 @@ flowchart LR
     UI --> API
   end
 
-  subgraph Projector["Laptop / projector"]
+  subgraph Projector["Laptop, projector or phone"]
     CON["/agents Agent Console<br/>/impact"]
   end
 
@@ -71,6 +71,10 @@ the Agent Console (`base44/shared/c`, `agents`, `src/agent`, `src/console`).
 - **A labelled fallback.** If no agent proposes in time (8 s with no agents on duty, 25 s with agents on duty, 60 s
   at most), `base44/shared/c/location.ts` proposes the same trade itself and writes the same protocol-log shape with
   `by: "fallback"`.
+- **One personality per pet, in both languages.** `base44/shared/c/personality.ts` and `agents/personality.py` hold
+  each pet's voice (Button tidy and warm, Pip curious and bouncy, Moss calm and thrifty), and `wording.ts` /
+  `wording.py` fill its templates. A voiced line wraps the plain line word for word, so prices and safety words can't
+  change; accept, decline, pay, STOP and error texts stay plain. `parity_test.ts` checks the two sides match.
 
 ---
 
@@ -87,8 +91,8 @@ sequenceDiagram
   participant P as Photon (iMessage)
 
   Note over M,B: Sep 20: Mina's pet nudges "still fit?" → Sell → listItem ($18.00, shared)
-  loop every ~3 s while the map is open
-    J->>B: updatePresence (GPS or ?demo=1 walk)
+  loop every ~10 s while the map is open (real GPS also on each 5 m move, at most every 4 s)
+    J->>B: updatePresence (or demoWalk every 2.5 s during the ?demo=1 walk)
     M->>B: updatePresence
   end
   B->>B: both within 25 m, accuracy ≤ 30 m → Encounter{talking}<br/>+ AgentInbox{encounter} for each agent
@@ -125,8 +129,8 @@ sequenceDiagram
 The diagram is simplified in two ways. The side whose parent id sorts first opens the talk, and an agent with
 nothing to offer but needs of its own answers a `LookingFor` with its own `LookingFor` (the roles swap once).
 And when no Fetch.ai agent is on duty, the agent steps are done by the local matcher in `location.ts` with the same
-lines, and the log says `fallback`. Event texts in the last step go out on the next inbox sweep (when a text arrives or a
-map tab ticks `updatePresence`).
+lines, and the log says `fallback`. Event texts in the last step go out at the end of that request (`sendEventTexts`);
+anything missed goes out on the next inbox sweep.
 
 ### Proposal state machine (`base44/shared/logic/trade.ts`)
 

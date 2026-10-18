@@ -46,8 +46,8 @@ claim a Visa integration; the payment itself is simulated.
 - **Recoverable passkey flow** (`src/trade/PayButton.tsx`, `src/trust/passkey.ts`): if this device has no saved
   passkey, the button offers "Add this device, then pay"; cancelling Face ID says "nothing charged"; a double tap
   can't pay twice.
-- **Readable for tired parents.** Atkinson Hyperlegible Next at 17 px for every sentence, WCAG AA contrast measured
-  against the palette, 44 px touch targets (`src/pixel/tokens.css`).
+- **Readable for tired parents.** Atkinson Hyperlegible Next for every sentence (17 px body, never below 16 px), WCAG
+  AA contrast measured against the palette, 44 px touch targets (`src/pixel/tokens.css`).
 - **Shopping without opening the app.** By iMessage a parent can sell with a photo and accept with a text; paying
   always goes back to the app for approval.
 
@@ -83,8 +83,8 @@ claim a Visa integration; the payment itself is simulated.
   (`base44/shared/logic/impact.ts`, 15 tests).
 - **Trust in used goods.** Every item carries its ownership chain (hearts for owners 1 to 3) and its original price,
   so the buyer knows what they're getting. The `/log` hub shows each item's chain.
-- **Repeatable loop.** The buyer's pet starts tracking the item the moment it arrives ("It should fit until
-  ~Nov 17. I'll check in then."), so today's buyer is a future seller.
+- **Repeatable loop.** The buyer's pet starts tracking the item the moment it arrives (Pip texts "It should fit
+  until ~Nov 17. I'll hop back and check in then."), so today's buyer is a future seller.
 
 ### Trust & Responsibility (15%)
 
@@ -92,10 +92,10 @@ claim a Visa integration; the payment itself is simulated.
   `listNearby`). Presence rows are server-only. The agents' messages carry only shared listings, shared needs and the
   child's age in months. A parent's phone, Photon ids, pet rules and passkeys are admin-only fields and are removed
   by `publicParent` (`base44/shared/db.ts`) from every response.
-- **Transparency.** The Agent Console (`/agents`) shows every agent message with who sent it, and checks every
-  message and pet line on screen for names, phone numbers, coordinates and birth dates. It labels whether a Fetch.ai
-  agent, the fallback matcher or the offline mock spoke. "Demo payment · no real charge" appears on every pay
-  surface.
+- **Transparency.** The Agent Console (`/agents`), on the projector or a phone, shows every agent message with who
+  sent it, and checks every message and pet line on screen for names, phone numbers, coordinates and birth dates. It
+  labels whether a Fetch.ai agent, the fallback matcher or the offline mock spoke. "Demo payment · no real charge"
+  appears on every pay surface.
 - **Security.** All entity writes go through functions (clients have no create/update/delete rights). Agent calls
   need `x-agent-key`. Signed Photon webhooks (Standard Webhooks scheme, 5-minute window) when the secret is set.
   Per-parent rate limits on texts.
@@ -129,6 +129,8 @@ remembers and predicts, the price is fixed, and the buyer is found by walking pa
   showed the pet's rules in the trade window, the Agent Console and the impact board. Snap-to-list on a real photo,
   passkey payments and iMessage on real phones are deployed but not yet exercised live (what is left is in
   [testing.md](testing.md#going-live-checklist)).
+- Since that run we added a personality for each pet and the Agent Console on phones. They run in mock mode and the
+  tests, and are not deployed yet.
 - Anyone can try the full product with no account: `npx vite --mode mock`, two tabs.
 
 ### Thoughtful decisions
@@ -139,6 +141,11 @@ remembers and predicts, the price is fixed, and the buyer is found by walking pa
 - **Privacy by banding.** Distance bands and rounded bearings instead of locations.
 - **A fallback that never pretends.** If the agents are slow, the app's matcher proposes the same trade and labels
   itself `fallback`.
+- **A voice for each pet, with the facts held still.** Button is tidy and warm, Pip curious and bouncy, Moss calm and
+  thrifty. Each voiced line wraps the plain line word for word, so a price or "nothing is charged until you both
+  accept" never changes, and the voice itself never names a parent or a child.
+- **The agents' chat on your own phone.** "See the agents' chat" in the encounter scene, or AGENTS' CHAT in the
+  pet's menu, opens that meeting in the Agent Console (`/agents?enc=<id>`), which reads top to bottom on a phone.
 - **Readability over style.** We kept the pixel look for titles and numbers and moved every sentence to a font made
   for low-vision readers after noticing the pixel font made "5" look like "S" on prices.
 
@@ -180,12 +187,64 @@ kids' gear, books and toys. Next steps are in [devpost.md](devpost.md#whats-next
 
 ---
 
+## Fetch.ai · Agents that negotiate for people
+
+Each parent's pet is a Fetch.ai uAgent (`agents/closet_agent.py`, `uagents` 0.26): Button for Mina, Pip for Jo, Moss
+for Sam. `live_bureau.py` runs all three in one Bureau against the live app; `local_demo.py` runs the whole story
+offline with no keys. **Status:** on Oct 18 (about 02:00) the agents negotiated on live and created the proposal
+themselves (`source: fetch`). The personalities below are in the repo and the mock, not deployed yet.
+
+### Agent to agent
+
+- When two parents are within 25 m, the app puts the encounter in both agents' inboxes. They talk over
+  `HandMeDownRelay 0.3.0` (`agents/relay_protocol.py`): `LookingFor → HaveListings | NoFit → ProposeTrade →
+  TradeAck`, or `Decline` when the buyer's pet rules say no. The agent that ends the talk makes one `agentApi` call
+  (`createProposal` or `noMatch`), and the app checks every rule again.
+- Only shared listings, shared needs and the child's age in months cross the wire; a test in
+  `agents/tests/test_relay.py` checks that no birth date, parent name, phone, coordinate or parent id does.
+- Agents propose, people decide: an agent can't accept or pay, and the buyer's pet rules are checked before it
+  proposes.
+
+### Each pet has its own personality
+
+- Button is tidy and warm, Pip curious and bouncy, Moss calm and thrifty (`agents/personality.py`, the same as the
+  app's `base44/shared/c/personality.ts`). From `local_demo.py`: "Button: Hello, hello! My closet's all tidy.
+  Anything on your list for your little one?" → "Pip: Looking for 6-9M top or onesie! Got any?" → "Button: I have a
+  Yellow duck romper in 6-9M, neatly folded." → "Pip: Sniff sniff! My little one fits it for about 4 more weeks." →
+  "Pip: Ooh! Trade proposal! $18.00 — nothing is charged until you both accept." → "Button: Sounds good — over to
+  the humans! Folded and ready!"
+- A personality changes how a pet talks, never what it says. Each voiced line wraps the plain line word for word, so
+  items, prices, weeks and the safety words can't drift, and the voice itself never names a parent or a child (the
+  console's privacy check reads every line).
+- One voice everywhere: the encounter bubbles, the Agent Console, the in-app pet and iMessage, whether a Fetch.ai
+  agent or the app's fallback matcher spoke. `parity_test.ts` compares every field of every personality with Python,
+  and `personality_test.ts` and `agents/tests/test_personality.py` check each pet's lines.
+
+### Provable, and honest about who spoke
+
+- Every protocol message is logged with its sender and receiver `agent1q…` addresses, type, a name-free summary and
+  latency, and stored with the proposal (`Encounter.agentLog`, `negotiatedBy: fetch`).
+- The Agent Console (`/agents`) shows that log on the projector or a phone, with each pet's personality on its
+  agent card. After a meeting, "See the agents' chat" in the encounter scene or AGENTS' CHAT in the pet's menu opens
+  it (`/agents?enc=<id>`).
+- If no agent proposes in time (8 s with none on duty, 25 s with agents on duty), the app's own matcher proposes the
+  same trade in the same voices and the console labels it `fallback`.
+
+### ASI:One
+
+The same agent speaks the chat protocol with Interactive Cards (nudges as `detail` cards, proposals as `review`
+cards), and a chat must `claim` a parent before the agent acts for it. It is tested against `mock_base44.py`;
+connecting the Agentverse mailbox and running it in ASI:One still needs a person
+([testing.md](testing.md#not-verified-anywhere-yet)).
+
+---
+
 ## Photon · Messaging Agent (iMessage)
 
 Our pet lives in the parent's iMessage thread through Photon 2.0. **Status:** the full conversation is implemented
-and tested end to end against Photon's documented API with a stubbed Photon (59 Deno tests), and the code is
-deployed. Running it on real phones needs the Photon webhook and phone set-up in
-[testing.md](testing.md#going-live-checklist).
+and tested end to end against Photon's documented API with a stubbed Photon (71 Deno tests), and the code is
+deployed (the pets' own voices are not deployed yet). Running it on real phones needs the Photon webhook and phone
+set-up in [testing.md](testing.md#going-live-checklist).
 
 ### Agents that live in conversations
 
@@ -198,6 +257,10 @@ deployed. Running it on real phones needs the Photon webhook and phone set-up in
 - **Status, bag, help, stop/start** are all text commands. Each pet answers from its own parent's line.
 - **The thread and the app say the same thing.** Every pet line is mirrored to the in-app pet (`PetLine`), and the
   Python agent's wording is checked word for word against the TypeScript side (`parity_test.ts`).
+- **Each pet texts in its own voice.** Pip opens with "Ooh, hi hi! I'm Pip, your closet pet." and Button with
+  "Hello, hello!". The friendly lines (hello, back after START, keep, later, sold, the welcome, "nothing fits") have
+  a voice; accept, decline, pay, STOP, errors and rate limits read the same for every pet. Free-text questions go to
+  the model with the pet's own description and way of talking (`personality.ts`).
 
 ### Human in the loop
 
@@ -247,9 +310,8 @@ deployed. Running it on real phones needs the Photon webhook and phone set-up in
 - Tests: `base44/shared/c/convo_test.ts` (29 full conversations through the real webhook handler and B's real
   handlers), `webhook_test.ts` (5), `imessage_test.ts` (14), `c_test.ts` (9), `parity_test.ts` (2).
 
-**Known gap:** event texts ("Jo accepted", the flowers) go out on the next inbox sweep, which runs when a text
-arrives or while a map tab is open. A one-line `sendEventTexts` call in the decide, pay and list entry files would
-send them at once; it is written (`inboxFallback.ts`) but not wired.
+Event texts go out at the end of the accept, pay, list and demo-clock request (`sendEventTexts`, best effort); any
+row it misses (e.g. under a rate limit) goes out on the next inbox sweep.
 
 ---
 
@@ -270,7 +332,7 @@ family replaces part of a new purchase.
 | What is this item? | Vision model via Base44 `InvokeLLM`, cleaned to known sizes, categories and price range (`base44/shared/logic/snap.ts`) | Shows confidence; parent confirms every field |
 | What condition is it in? | Vision model suggestion (`suggestCondition`) | Marked "PET SUGGESTED"; parent picks |
 | Who should get it? | Two Fetch.ai agents negotiate over shared needs and listings, ranked by weeks of wear left, then condition, then newest (`base44/shared/match.ts`) | Agents follow the buyer's rules; the outcome is only a proposal |
-| Free-text questions by iMessage | Model reply in the pet's voice, no actions allowed | Template answer when no model |
+| Free-text questions by iMessage | Model reply in the pet's own voice (its personality is in the prompt), no actions allowed | Template answer when no model |
 
 ### Impact we can show
 

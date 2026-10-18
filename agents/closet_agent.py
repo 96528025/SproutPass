@@ -208,7 +208,7 @@ class ClosetBrain:
         self.parent_name = parent_name          # seed key: "mina" | "jo" | "sam" (the app's ?as=)
         self.parent_id = parent_id              # the real Base44 Parent id
         self.app_url = app_url.rstrip("/")
-        self.pet = PET_NAMES.get(parent_name, "Pet")
+        self.pet = PET_NAMES.get(parent_name, "Pet")  # its name picks its voice (personality.py) in every wording line
         self.directory: Directory = directory if directory is not None else {}
         self.append_turns = append_turns        # live bubbles via appendTurn (1 call per line)
         self.peer_wait_s = peer_wait_s          # how long a relay handler waits for its own encounter row
@@ -315,7 +315,7 @@ class ClosetBrain:
                 except Base44Error as e:
                     log.warning("resolveNudge: %s", e)
             self.convo = {"step": "idle"}
-            return [Reply(w.keep() if intent == "keep" else w.later())]
+            return [Reply(w.keep(self.pet) if intent == "keep" else w.later(self.pet))]
         if intent == "condition":
             cond = parse_condition(text)
             if self.convo.get("step") == "await_condition" and cond:
@@ -494,7 +494,7 @@ class ClosetBrain:
             if item.get("id") in self.announced:
                 return []
             self.announced.add(item.get("id"))
-            return [Reply(w.completed(item.get("name", "new item"), w.short_date(item.get("predictedOutgrowDate"))))]
+            return [Reply(w.completed(item.get("name", "new item"), w.short_date(item.get("predictedOutgrowDate")), self.pet))]
         if kind != "outgrow_check" and (nudge.get("message") or payload.get("message")):
             return [Reply(str(nudge.get("message") or payload.get("message")))]
         return [Reply(w.nudge(item.get("name", "item"), item.get("size", "")), card=("detail", cards.nudge_card(item, nudge["id"])))]
@@ -585,8 +585,8 @@ class ClosetBrain:
         if role == "buyer":
             if item_id:
                 self.announced.add(item_id)
-            return [Reply(w.completed(name, w.short_date(until or item.get("predictedOutgrowDate"))), image_url=gif)]
-        return [Reply(w.sold(name, price), image_url=gif)]
+            return [Reply(w.completed(name, w.short_date(until or item.get("predictedOutgrowDate")), self.pet), image_url=gif)]
+        return [Reply(w.sold(name, price, self.pet), image_url=gif)]
 
     # ----- relay (agent ↔ agent, Part C §7) --------------------------------
     def _peer(self, enc: str) -> Dict[str, Any]:

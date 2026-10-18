@@ -23,7 +23,7 @@ function ringCells(r: number): [number, number][] {
   return out;
 }
 
-/** Rings at their real distances: radii come from the map's metres-per-pixel, so 25 / 100 / 300 m are true to the map. */
+/** Rings at their real distances: radii come from the map's metres-per-pixel, so 25 / 100 m are true to the map. */
 export function Radar({ mpp }: { mpp: number }) {
   const ref = useRef<HTMLCanvasElement>(null);
   const rings = useMemo(

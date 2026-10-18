@@ -5,11 +5,15 @@
 // through api.subscribe, which live is the SDK's websocket and in the mock also hears the other tabs, so a walk
 // on one phone shows up here at once. A 15 s backstop re-read runs only while the page is visible (Base44's
 // rate limit is shared by every tab), and once more whenever the page comes back.
-import { useCallback, useEffect, useRef, useState } from "react";
+//
+// A deep link (/agents?enc=<id>) pins one encounter: when it is older than the recent list, it is read once on
+// its own and joins the list (consoleModel.withPinned), so the pets' scene and the pet's AGENTS' CHAT always open it.
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../app/api";
 import { errorText } from "../app/store";
 import type { Encounter, MatchProposal, PublicParty } from "../app/types";
 import { base44 } from "../agent/client";
+import { withPinned } from "./consoleModel";
 
 const ENCOUNTERS = 20;
 const PROPOSALS = 40;
@@ -31,6 +35,11 @@ export interface AgentConsoleData {
   lastSyncAt: number | null;
   /** True while the realtime subscriptions are up. */
   live: boolean;
+  /**
+   * The pinned encounter (?enc=): "none" without one, "loading" while it is read on its own, "found" once it is in
+   * `encounters`, "missing" when the relay doesn't have it (the console then shows the newest and says so).
+   */
+  pin: "none" | "loading" | "found" | "missing";
   reload: () => void;
 }
 
@@ -51,8 +60,10 @@ function byEncounter(rows: MatchProposal[], into: Record<string, MatchProposal> 
 // Public cards are the same for every mount: cache them for the page's life.
 const partyCache: Record<string, PublicParty> = {};
 
-export function useAgentConsole(): AgentConsoleData {
-  const [encounters, setEncounters] = useState<Encounter[]>([]);
+export function useAgentConsole(pinId: string | null = null): AgentConsoleData {
+  const [recent, setEncounters] = useState<Encounter[]>([]);
+  const [pinned, setPinned] = useState<Encounter | null>(null);
+  const [gone, setGone] = useState<ReadonlySet<string>>(() => new Set());
   const [proposals, setProposals] = useState<Record<string, MatchProposal>>({});
   const [parties, setParties] = useState<Record<string, PublicParty>>(() => ({ ...partyCache }));
   const [status, setStatus] = useState<AgentConsoleData["status"]>("loading");
@@ -64,6 +75,8 @@ export function useAgentConsole(): AgentConsoleData {
   const inFlight = useRef(false);
   const fetchedProposal = useRef(new Set<string>());
   const partyAsked = useRef(new Set<string>());
+  const pinAsked = useRef(new Set<string>());
+  const encounters = useMemo(() => withPinned(recent, pinned?.id === pinId ? pinned : null), [recent, pinned, pinId]);
 
   const load = useCallback(async () => {
     if (inFlight.current) return; // never stack reads when the backend is slow or rate limited
@@ -101,6 +114,7 @@ export function useAgentConsole(): AgentConsoleData {
         const before = cur.find((e) => e.id === ev.data.id);
         return [...rest, before ? { ...before, ...ev.data } : ev.data].sort(newestFirst).slice(0, ENCOUNTERS);
       });
+      if (ev.type !== "delete" && ev.data?.id) setPinned((cur) => (cur?.id === ev.data.id ? { ...cur, ...ev.data } : cur));
     };
     const onProposal = (ev: { type: string; id: string; data: MatchProposal }) => {
       setLastEventAt(Date.now());
@@ -125,6 +139,24 @@ export function useAgentConsole(): AgentConsoleData {
       window.removeEventListener("pageshow", onVisible);
     };
   }, [load]);
+
+  // A pinned encounter that isn't in the recent list (older, or the list was capped): one read of its own.
+  const pinInList = !!pinId && recent.some((e) => e.id === pinId);
+  useEffect(() => {
+    if (!pinId || status !== "ready" || pinInList || pinAsked.current.has(pinId)) return;
+    pinAsked.current.add(pinId);
+    (base44.entities.Encounter.get(pinId) as Promise<Encounter>)
+      .then((e) => {
+        if (!alive.current) return;
+        if (e?.id) setPinned(e);
+        else setGone((cur) => new Set(cur).add(pinId));
+      })
+      .catch(() => { if (alive.current) setGone((cur) => new Set(cur).add(pinId)); });
+  }, [pinId, status, pinInList]);
+  const pin: AgentConsoleData["pin"] = !pinId ? "none"
+    : encounters.some((e) => e.id === pinId) ? "found"
+    : gone.has(pinId) || status === "error" ? "missing"
+    : "loading";
 
   // A proposed encounter whose proposal isn't in the recent list (older, or the list was capped): one read each.
   useEffect(() => {
@@ -156,5 +188,5 @@ export function useAgentConsole(): AgentConsoleData {
       });
   }, [encounters]);
 
-  return { status, error, encounters, proposals, parties, lastEventAt, lastSyncAt, live, reload: () => void load() };
+  return { status, error, encounters, proposals, parties, lastEventAt, lastSyncAt, live, pin, reload: () => void load() };
 }

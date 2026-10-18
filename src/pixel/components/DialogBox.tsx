@@ -184,7 +184,7 @@ export function DialogBox({
                   onMouseEnter={() => setCursor(i)}
                   onClick={() => pick(c.value)}
                 >
-                  <span className="dlg__cursor">▶</span>
+                  <span className="dlg__cursor" aria-hidden>▶</span>
                   {c.label}
                 </button>
               ))}

@@ -37,6 +37,7 @@ export function ItemCard(p: { item: ClothingItem; closet: ClosetView; onClose?: 
       await refreshCloset();
     } catch (e) {
       toast(errorText(e), "red");
+      void refreshCloset(); // e.g. a pet proposed a moment ago: show TRADING / OPEN TRADE now
     } finally {
       setBusy(false);
     }
@@ -70,7 +71,7 @@ export function ItemCard(p: { item: ClothingItem; closet: ClosetView; onClose?: 
         )}
 
         <dl className="b-facts">
-          <dt>BOUGHT</dt>
+          <dt>BOUGHT NEW</dt>
           <dd>{shortDate(item.originalPurchaseDate)} · {formatCents(item.originalPriceCents)}</dd>
           {!passed && since !== item.originalPurchaseDate && (<><dt>YOURS SINCE</dt><dd>{shortDate(since)}</dd></>)}
           <dt>STATUS</dt>

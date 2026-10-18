@@ -37,7 +37,7 @@ export function ParentPicker({ onPick, compact = !!onPick }: ParentPickerProps =
       <div className="b-picker-row" role="group" aria-label="Who's playing?">
         {CARDS.map((c) => (
           <button key={c.key} type="button" className="b-parent-mini" onClick={() => pick(c.key)}
-            aria-label={`${c.name}${c.child ? `, ${c.child}'s closet` : ""}, pet ${c.pet}`}>
+            aria-label={`${c.name}${c.child ? `, ${c.child}'s bag` : ""}, pet ${c.pet}`}>
             <Sprite name={c.sprite} anim="idle" scale={2} />
             <span className="b-parent-mini-name">{c.name}</span>
             <span className="b-label b-muted">{c.pet}</span>
@@ -58,8 +58,9 @@ export function ParentPicker({ onPick, compact = !!onPick }: ParentPickerProps =
             <Sprite name={c.sprite} anim="idle" scale={3} />
             <span className="b-stack" style={{ gap: 4 }}>
               <span className="b-parent-name">{c.name}</span>
-              <span>{c.child ? `${c.child}'s closet` : "Closet"} · pet {c.pet}</span>
-              <span className="b-label b-muted">?as={c.key}</span>
+              <span>{c.child ? `${c.child}'s bag` : "Bag"} · pet {c.pet}</span>
+              {/* lower case: ?as= is case-sensitive, so the hint must read as you'd type it */}
+              <span className="b-label b-muted" style={{ textTransform: "none" }}>?as={c.key}</span>
             </span>
           </button>
         ))}

@@ -22,9 +22,18 @@ export function requestGeo(): Promise<GeoStatus> {
   if (typeof navigator === "undefined" || !navigator.geolocation) return Promise.resolve(set("unavailable"));
   set("asking");
   return new Promise((resolve) => {
+    // the 10 s timeout doesn't count time spent on the permission prompt, so an ignored (or, in Firefox, clicked-away)
+    // prompt would leave this pending forever: give up after 15 s and let the title fall back to the demo walk
+    const guard = window.setTimeout(() => resolve(set("unavailable")), 15_000);
     navigator.geolocation.getCurrentPosition(
-      () => resolve(set("granted")),
-      (err) => resolve(set(err.code === err.PERMISSION_DENIED ? "denied" : "unavailable")),
+      () => {
+        window.clearTimeout(guard);
+        resolve(set("granted"));
+      },
+      (err) => {
+        window.clearTimeout(guard);
+        resolve(set(err.code === err.PERMISSION_DENIED ? "denied" : "unavailable"));
+      },
       { enableHighAccuracy: true, maximumAge: 0, timeout: 10000 },
     );
   });

@@ -134,7 +134,8 @@
   --dither-sparse: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='8' shape-rendering='crispEdges'%3E%3Crect width='4' height='4' fill='%232B2140'/%3E%3C/svg%3E");
 }
 
-/* ---- chips row: fixed 40px so chip changes never shift anything; the right 52px is the mute toggle's ---- */
+/* ---- chips row: fixed 40px so chip changes never shift anything; the right 132px belong to the mute toggle and
+   the HUD buttons, so every chip is short enough to fit what is left (216px on a 360px phone) ---- */
 .ws__chips {
   position: absolute;
   left: 0;
@@ -148,7 +149,7 @@
   z-index: 4; /* below --z-overlay so A5's scenes cover the HUD */
 }
 .ws__chips .chip { flex: none; }
-/* ---- HUD buttons: 32px icons in the top-right, slots 40px apart, slot 0 = A3's MuteToggle ----
+/* ---- HUD buttons: 32px icons in the top-right, slots 44px apart, slot 0 = A3's MuteToggle ----
    Inside .ws (not fixed): with B's demo panel above /world they stay in the world's chips row instead of covering
    the panel. Without the panel, .ws starts at the screen top, so they line up with the fixed MuteToggle. */
 .hud {
@@ -165,6 +166,9 @@
   justify-content: center;
   touch-action: manipulation;
 }
+/* a 32px face with a 44px (--tap) hit area (the inset counts from inside the 4px border); 44px slots keep
+   neighbouring hit areas apart */
+.hud::after { content: ""; position: absolute; inset: -10px; }
 .hud--on { background: var(--cream); }
 .hud:active { transform: translate(2px, 2px); }
 .hud:focus-visible { outline: 4px solid var(--sky); outline-offset: 2px; }
@@ -176,7 +180,7 @@
   position: absolute;
   left: 0;
   right: 0;
-  bottom: calc(var(--bottom-bar) + 12px);
+  bottom: calc(var(--bottom-bar) + 20px); /* the button's shadow clears the map's 16px attribution line */
   display: flex;
   flex-direction: column;
   align-items: center;

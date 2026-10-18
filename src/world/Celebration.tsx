@@ -1,4 +1,4 @@
-// A5: golden-flower celebration. Full-screen overlay A4 mounts when the proposal is paid.
+// A5: golden-flower celebration. Full-screen overlay B's Shell mounts on "trade:paid".
 // 0.0 s cheer + "jingle" + flower bursts over both heads, petals fall, sparkles; 0.8 s the item icon arcs
 // seller -> buyer in a 12-step parabola (coin blip on landing); the TRADED! panel is up by 2.6 s and waits for a tap.
 import { useEffect, useRef, useState, type CSSProperties } from "react";
@@ -70,7 +70,9 @@ export function Celebration({ proposal, me, peer, onDone }: CelebrationProps) {
   const w = size?.w ?? 0;
   const h = size?.h ?? 0;
   const ready = w > 0 && h > 0;
-  const top = Math.round((h * 0.4) / 4) * 4; // avatar frame top
+  // avatar frame top: 40% down, raised on short screens so the TRADED! panel (~254 px + 24) clears the name tags
+  // and pets; never above 180, so the item's arc stays on screen
+  const top = Math.round(Math.min(h * 0.4, Math.max(180, h - 492)) / 4) * 4;
   const meX = Math.round(w / 2 - SIDE);
   const peerX = Math.round(w / 2 + SIDE);
 
@@ -140,10 +142,11 @@ export function Celebration({ proposal, me, peer, onDone }: CelebrationProps) {
   const ix = Math.round((fromX + (toX - fromX) * t) / 4) * 4;
   const iy = Math.round((top - 44 - ARC_PEAK * 4 * t * (1 - t)) / 4) * 4;
   const owners = Math.min(3, Math.max(1, proposal.snapshot.previousOwners + 1)) as 1 | 2 | 3;
-  const thing = proposal.snapshot.itemName ? `The ${proposal.snapshot.itemName.toLowerCase()}` : "Your item";
+  // the name as written (plurals and brand capitals stay right); the headline needs no is/are
+  const thing = proposal.snapshot.itemName || "your item";
 
   return (
-    <div className="cel" ref={root} role="dialog" aria-label="Trade complete">
+    <div className="cel" ref={root} role="dialog" aria-modal="true" aria-label="Trade complete">
       {ready && (
         <>
           <Avatar who={me} x={meX} top={top} />
@@ -163,7 +166,7 @@ export function Celebration({ proposal, me, peer, onDone }: CelebrationProps) {
         <div className="cel__panel">
           <PixelPanel title="TRADED!" tone="paper">
             <p className="cel__headline">
-              {sellerIsMe ? `${thing} is off to ${peer.name}'s closet.` : `${thing} is in your bag now.`}
+              {sellerIsMe ? `Now in ${peer.name}'s bag: ${thing}.` : `Now in your bag: ${thing}.`}
             </p>
             <div className="cel__row">
               <div className="cel__price">{money(proposal.snapshot.priceCents)}</div>
@@ -173,7 +176,7 @@ export function Celebration({ proposal, me, peer, onDone }: CelebrationProps) {
               </div>
             </div>
             <p className="cel__note">Demo payment · no real charge</p>
-            <PixelButton block onClick={() => onDoneRef.current()}>
+            <PixelButton block autoFocus onClick={() => onDoneRef.current()}>
               {sellerIsMe ? "BACK TO MY BAG" : "SEE IT IN MY BAG"}
             </PixelButton>
           </PixelPanel>

@@ -8,6 +8,10 @@ A 3-minute live demo, a 60-second version, optional segments for specific judges
 **Cast:** Mina (seller, child Bean, pet **Button**) and Jo (buyer, child Pea, pet **Pip**). The item is Mina's
 **yellow duck romper**, size 6-9M, bought new for $30.00. Jo pays **$18.00** (2nd owner pays 60%).
 
+**Heads-up:** this script follows the code in the repo. Some of it is not on live yet: the pets' own voices, the
+agents' chat on phones ("See the agents' chat", AGENTS' CHAT) and a few labels (**LIST FOR $18.00** was
+**CONFIRM $18.00**). Until the next deploy, live shows the older wording; mock mode has everything.
+
 ---
 
 ## Before the demo (15 minutes ahead)
@@ -49,7 +53,7 @@ Point at the fit bar on the duck romper if a judge asks ("Fits until about…").
    it on?" Tap **SELL**.
 3. Step 1 · Photo: tap **TAKE PHOTO** (or **No camera? Use the pixel art**), then **NEXT**.
 4. Step 2 · Condition: "GENTLY USED" carries a **PET SUGGESTED** chip. Tap **NEXT**.
-5. Step 3 · Price: the receipt reads "2nd owner pays 60% of $30.00 = $18.00", sharing is on. Tap **CONFIRM $18.00**.
+5. Step 3 · Price: the receipt reads "2nd owner pays 60% of $30.00 = $18.00", sharing is on. Tap **LIST FOR $18.00**.
    Toast: "Listed for $18.00!"
 
 > "The pet suggested the condition; Mina decided. The price isn't negotiated: the 2nd owner pays 60% of the
@@ -61,14 +65,18 @@ Point at the fit bar on the duck romper if a judge asks ("Fits until about…").
 2. On Phone B tap **WALK TOWARD MINA**. The chip counts down ("WALKING… 60 M"). We use the simulated walk indoors;
    outside it is real GPS.
 3. At 25 m Phone B plays the encounter: "You're near Mina!", then "Pip and Button are talking", with the pets'
-   bubbles ("Looking for 6-9M…", "I have a Yellow duck romper in 6-9M.", "My little one fits it for about 4 more
-   weeks.") and the tag **PETS SUGGEST · YOU DECIDE**.
-4. On the projector the Agent Console follows the encounter live: Pip (Jo, Buying) and Button (Mina, Selling), then
-   **Looking for → Have listings → Propose trade → Trade ack**, each with a one-line summary and its latency.
+   bubbles, each pet in its own voice ("Looking for 6-9M…", "I have a Yellow duck romper in 6-9M, neatly folded.",
+   "Sniff sniff! My little one fits it for about 4 more weeks.") and the tag **PETS SUGGEST · YOU DECIDE**. With
+   the TRADE PROPOSAL! banner comes a **See the agents' chat** button; leave it, the trade window opens by itself
+   about a second later.
+4. On the projector the Agent Console follows the encounter live: Pip (Jo, Buying, "Curious and bouncy") and
+   Button (Mina, Selling, "Tidy and warm"), then **Looking for → Have listings → Propose trade → Trade ack**, each
+   with a one-line summary and its latency.
 
-> "Each parent's pet is an AI agent. Within 25 metres they negotiate on their own: what Pea needs, what Mina has
-> shared, how long it will fit, and the fixed price. The Privacy card checks every message on screen: no names, no
-> phone numbers, no location. They never even learn each other's coordinates, only that they're within 25 metres."
+> "Each parent's pet is an AI agent with its own personality. Within 25 metres they negotiate on their own: what
+> Pea needs, what Mina has shared, how long it will fit, and the fixed price. The voice changes, the facts never do.
+> The Privacy card checks every message on screen: no names, no phone numbers, no location. They never even learn
+> each other's coordinates, only that they're within 25 metres."
 
 If the agents are running, the badge says Fetch.ai uAgent and the addresses start with `agent1q`; otherwise it says
 Fallback matcher. Say which one it is.
@@ -81,7 +89,7 @@ Fallback matcher. Say which one it is.
 3. Phone A taps **ACCEPT**. Phone B sees Mina's ✓ appear. Phone B taps **ACCEPT**. The banner changes to "You both
    said yes. Nothing is charged until you tap Pay."
 4. Phone B taps **PAY $18.00 WITH FACE ID** and approves with Face ID.
-5. Golden flowers burst on both phones. Phone B: "The yellow duck romper is in your bag now." The panel says
+5. Golden flowers burst on both phones. Phone B: "Now in your bag: Yellow duck romper." The panel says
    **Demo payment · no real charge**. Tap **SEE IT IN MY BAG**; the receipt stays open with PAID ✓, the DEMO-XXXXXX
    reference and "Approved with Face ID".
 
@@ -102,8 +110,8 @@ If Photon isn't set up, skip this beat and use the time on the receipt.
 
 ### 2:45–3:00 · Impact (projector)
 
-Open `<base>/impact` on the laptop (the title screen also links to it as "Our impact"). New homes count up by one, with the carbon, water and landfill tiles,
-money saved by buyers and earned by sellers, and the points leaderboard.
+Open `<base>/impact` on the laptop (the title screen also links to it as "Our impact"). New homes count up by one,
+with the carbon, water and landfill tiles, money saved by buyers and earned by sellers, and the points leaderboard.
 
 > "Every hand-off is counted with cited, conservative assumptions, rounded down. Agents propose, parents decide,
 > and outgrown clothes find their next home."
@@ -130,11 +138,12 @@ Start with the romper already listed (do steps 1–5 of "The nudge" before you g
 **For Visa judges: the pet's spending rules (30 s).** Run this while the romper is listed and before the main walk
 (or after a RESET and a fresh listing; RESET also restores the default rules). On Phone B open
 `<base>/bag/pet?as=jo&demo=1`, tap the **$10** preset under "Max price a trade", then **SAVE RULES**. Go back to the
-map and tap **WALK TOWARD MINA**. The pets meet, but Pip says "Not this one — it's over the price limit Jo set for
-me." The console shows **Decline** and "Stopped by Jo's pet rules". Nothing is proposed or charged. Heads-up: the
-console's privacy check flags Jo's first name in that pet line (the pet says whose rule it follows); say so if a
-judge asks, and point out that the amount is never shared. Set the limit back to $50 and save; the next walk (after
-the 2-minute demo cooldown) proposes the trade.
+map and tap **WALK TOWARD MINA**. The pets meet. On Phone B the scene ends with Pip's "Nothing fits today"; on the
+projector the console shows Pip's line "Aw, not this one — it's over the price limit Jo set for me.", a **Decline**
+and "Stopped by Jo's pet rules" (on Phone B, **See the agents' chat** in that box opens the same page). Nothing is
+proposed or charged. Heads-up: the console's privacy check flags Jo's first name in that pet line (the pet says whose
+rule it follows); say so if a judge asks, and point out that the amount is never shared. Set the limit back to $50
+and save; the next walk (after the 2-minute demo cooldown) proposes the trade.
 
 **For Base44 and AI judges: snap to list (30 s).** On Phone A open `<base>/bag/add?as=mina&demo=1`, tap **Take
 photo**, and photograph any piece of kids' clothing or its size tag. "Button is looking…", then the check card with
@@ -143,8 +152,14 @@ to bag**. (On the live site the guess comes from `analyzeItemPhoto`; in mock mod
 guess" or "Demo pick".)
 
 **For Fetch.ai-minded judges: the agents offline (35 s, laptop terminal).**
-`agents/.venv/Scripts/python.exe agents/local_demo.py` prints the pets' conversation, the Fetch.ai protocol log
+`agents/.venv/Scripts/python.exe agents/local_demo.py` prints the pets' conversation in their own voices ("Button:
+Hello, hello! My closet's all tidy…", "Pip: Looking for 6-9M top or onesie! Got any?"), the Fetch.ai protocol log
 between two `agent1q…` addresses, and 13 PASS checks.
+
+**For anyone with a phone in hand: the agents' chat (20 s).** After the trade, tap the pet in the corner of
+Phone B, then **AGENTS' CHAT**. The Agent Console opens on that meeting (`/agents?enc=<id>`) and reads top to bottom:
+each agent card with its pet's personality, then the buttons **Agents' messages**, **Pets' chat** and **Outcome**
+to jump down. **‹ Back to the game** returns to the map.
 
 ---
 
@@ -185,7 +200,7 @@ between two `agent1q…` addresses, and 13 PASS checks.
 | Problem | What to do |
 |---|---|
 | Face ID fails or this phone has no saved passkey | Pay offers **ADD THIS DEVICE, THEN PAY**. Cancelling says "nothing charged". Or RESET and skip the passkey set-up so Pay is a tap. |
-| A trade window is stuck from a rehearsal | DEMO panel → **RESET**. Open trade windows close with "This trade was cleared. Nothing was charged." |
+| A trade window is stuck from a rehearsal | DEMO panel → **RESET**. Open trade windows close with "This trade was cleared · nothing was charged". |
 | The encounter doesn't fire | Check the clock is on OCT 18 and the romper is listed with sharing on. Tap **WALK AGAIN**. Pairs re-arm after 2 minutes in demo mode. |
-| No iMessage arrives | Event texts go out on the next inbox sweep; keep Phone B on the map so it ticks. The same lines show in the in-app pet. |
+| No iMessage arrives | Texts go out right after each tap; a missed one goes out on the next inbox sweep, so keep Phone B on the map. The same lines show in the in-app pet. |
 | GPS is poor indoors | That's why we use `?demo=1`. Real GPS needs accuracy of 30 m or better on both phones. |

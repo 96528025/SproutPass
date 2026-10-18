@@ -259,7 +259,7 @@ describe("C's local fallback writes the same log shape", () => {
 
 describe("the buyer's pet rules are checked before anyone says 'Trade proposal!'", () => {
   const PRICE_REASON = "It costs more than the price limit Jo set for Pip.";
-  const PRICE_LINE = "Not this one — it's over the price limit Jo set for me.";
+  const PRICE_LINE = "Aw, not this one — it's over the price limit Jo set for me."; // in Pip's own voice
 
   it("agentApi fit marks each match with the buyer's verdict (price, kinds, budget, may-propose)", async () => {
     await listRomper();

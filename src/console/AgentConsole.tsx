@@ -4,19 +4,24 @@
 // re-checks every message on screen, and the outcome (price, the 60% / 40% rule, both parents' decisions).
 //
 // Works without a parent picked (it's a PUBLIC_PATH), so it can sit on a projector. On a wide screen it opens as
-// a full-screen layer over the handheld frame ("big screen"); PHONE VIEW puts it back inside the frame.
+// a full-screen layer over the handheld frame ("big screen"); PHONE VIEW puts it back inside the frame, where it
+// reads top to bottom on a phone (one agent card per row, then the messages, the outcome, the pets' talk).
+// /agents?enc=<id> opens one encounter pinned (the pets' meeting scene and the pet's AGENTS' CHAT link here);
+// picking a tab writes ?enc=, FOLLOW LIVE removes it. Each pet's personality (traits, blurb) is on its card.
 // Agents never decide here: the console only shows what they proposed and what each parent chose.
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
-import { Link } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { USE_MOCK } from "../app/api";
 import type { AgentLogEntry, AgentTurn, Encounter, MatchProposal, PublicParty } from "../app/types";
 import { formatCents } from "../app/types";
 import { Chip, ItemIcon, PixelButton, Sprite, type AnimName, type ChipTone } from "../app/ui";
+import { withQuery } from "../world/query";
+import { personalityOf } from "../../base44/shared/c/personality.ts";
 import {
-  ago, capital, CLOSING_TYPES, decisionLabel, encounterChip, encounterEngine, ENGINE_LABEL, ENGINE_NOTE, exchangeMs, priceRule,
-  PRIVATE_LABEL, proposalStatus, refusalOf, resolveSides, scanPrivacy, shortAddress, typeLabel, type Engine, type Refusal,
-  type Side, type Sides,
+  ago, capital, CLOSING_TYPES, decisionLabel, encounterChip, encounterEngine, encParam, ENGINE_LABEL, ENGINE_NOTE, exchangeMs,
+  priceRule, PRIVATE_LABEL, proposalStatus, refusalOf, resolveSides, scanPrivacy, selectEncounter, shortAddress, stripEncounters,
+  typeLabel, withEncParam, type Engine, type Refusal, type Side, type Sides,
 } from "./consoleModel";
 import { useAgentConsole } from "./useAgentConsole";
 import "./console.css";
@@ -111,6 +116,20 @@ async function copyText(text: string): Promise<boolean> {
   }
 }
 
+const reducedMotion = () => typeof matchMedia === "function" && matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+/** Phone view: scroll a section into view, clear of the demo strip when b.css sticks it to the top of the page. */
+function jumpTo(id: string) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  const strip = document.querySelector<HTMLElement>(".b-demo");
+  const stuck = strip && getComputedStyle(strip).position === "sticky" ? strip.getBoundingClientRect().height : 0;
+  el.style.scrollMarginTop = `${Math.round(stuck) + 8}px`;
+  el.scrollIntoView({ behavior: reducedMotion() ? "auto" : "smooth", block: "start" });
+}
+
+const SECTION = { messages: "ac-messages", outcome: "ac-outcome", talk: "ac-talk" } as const;
+
 // ---------------------------------------------------------------- pieces
 
 /** Realtime up and a read in the last 40 s (the backstop poll runs every 15 s while the page is visible). */
@@ -129,7 +148,7 @@ function LiveBadge({ live, error, lastAt, lastSyncAt, now }: {
 }
 
 function AgentCard({
-  party, side, sides, role, anim, align,
+  party, side, sides, role, anim, align, big,
 }: {
   party?: PublicParty;
   side: Side;
@@ -137,6 +156,8 @@ function AgentCard({
   role: string | null;
   anim: AnimName;
   align: "left" | "right";
+  /** Big screen: the two cards face each other across the messages; phone view stacks them, pets facing their text. */
+  big: boolean;
 }) {
   const addr = sides.addr[side];
   const engine = sides.engine[side];
@@ -147,15 +168,23 @@ function AgentCard({
     return () => clearTimeout(t);
   }, [copied]);
   const sent = sides.sent[side];
+  // How this pet talks (base44/shared/c/personality.ts): its agent speaks in that voice, the offer stays the same.
+  const persona = personalityOf(party?.pet?.name);
   return (
     <section className={`ac-agent ac-agent--${align}`} aria-label={`${petName(party)}, ${firstName(party)}'s closet agent`}>
       <div className="ac-agent__pet">
-        <Sprite name={party?.pet?.sprite ?? "pet_a"} anim={anim} scale={5} facing={align === "left" ? "right" : "left"} />
+        <Sprite name={party?.pet?.sprite ?? "pet_a"} anim={anim} scale={5} facing={!big || align === "left" ? "right" : "left"} />
       </div>
       <div className="ac-agent__who">
         <h3 className="ac-agent__name">{petName(party)}</h3>
         <p className="ac-agent__parent">{firstName(party)}'s closet agent</p>
       </div>
+      {persona && (
+        <div className="ac-agent__persona">
+          <Chip tone="lav" plain title={`${persona.pet}'s personality: how its agent talks, never what it offers`}>{persona.traits}</Chip>
+          <p className="ac-agent__blurb">{persona.blurb}</p>
+        </div>
+      )}
       <div className="ac-agent__chips">
         {engine ? (
           <Chip tone={ENGINE_TONE[engine]} title={ENGINE_NOTE[engine]}>{ENGINE_LABEL[engine]}</Chip>
@@ -201,7 +230,7 @@ function Timeline({
   const visible = log.slice(0, shown);
   const total = exchangeMs(visible);
   return (
-    <section className="ac-timeline" aria-label="Messages between the two agents">
+    <section className="ac-timeline" id={SECTION.messages} aria-label="Messages between the two agents">
       <header className="ac-timeline__head">
         <span className="ac-label">Protocol · HandMeDownRelay</span>
         <span className="ac-timeline__stats">
@@ -261,9 +290,11 @@ function Timeline({
 function PetTalk({ enc, parties, left }: { enc: Encounter; parties: Record<string, PublicParty>; left: Side }) {
   const lines = Array.isArray(enc.transcript) ? enc.transcript : [];
   const leftId = left === "a" ? enc.aId : enc.bId;
+  const voiced = [enc.aId, enc.bId].some((id) => personalityOf(parties[id]?.pet?.name));
   return (
-    <section className="ac-card ac-talk" aria-label="What the pets said">
+    <section className="ac-card ac-talk" id={SECTION.talk} aria-label="What the pets said">
       <h3 className="ac-card__title">The pets' conversation</h3>
+      {voiced && <p className="ac-card__lede">Each pet talks in its own voice. The items, prices and rules stay the same.</p>}
       {!lines.length && <p className="ac-muted">The pets haven't said anything yet.</p>}
       <ol className="ac-talk__list">
         {lines.map((t, i) => {
@@ -416,7 +447,7 @@ function Outcome({
     );
   }
   return (
-    <section className="ac-card ac-outcome" aria-label="Outcome">
+    <section className="ac-card ac-outcome" id={SECTION.outcome} aria-label="Outcome">
       <h3 className="ac-card__title">Outcome</h3>
       {body}
       <p className="ac-rule-line">Agents propose. Parents decide. Nothing is charged until both accept.</p>
@@ -442,7 +473,7 @@ function EncounterStrip({
         Follow live
       </PixelButton>
       <ol className="ac-strip__list">
-        {encounters.slice(0, 10).map((e) => {
+        {encounters.map((e) => {
           const a = parties[e.aId], b = parties[e.bId];
           const p = proposals[e.id];
           const st = encounterChip(e, p); // the trade's own status once there is one (open, accepted, paid…)
@@ -499,17 +530,20 @@ function HowItWorks() {
 // ---------------------------------------------------------------- screen
 
 export function AgentConsole() {
-  const data = useAgentConsole();
+  const loc = useLocation();
+  const nav = useNavigate();
+  // The URL holds the pin (?enc=), so a reload or a shared link opens the same encounter; no pin = follow live.
+  const pinId = encParam(loc.search);
+  const follow = !pinId;
+  const data = useAgentConsole(pinId);
   const [big, setBig] = useBigScreen();
-  const [follow, setFollow] = useState(true);
-  const [pickedId, setPickedId] = useState<string | null>(null);
   const now = useNow(1000);
 
-  const selected = useMemo(() => {
-    if (!data.encounters.length) return null;
-    if (!follow && pickedId) return data.encounters.find((e) => e.id === pickedId) ?? data.encounters[0];
-    return data.encounters[0];
-  }, [data.encounters, follow, pickedId]);
+  const selected = useMemo(() => selectEncounter(data.encounters, pinId), [data.encounters, pinId]);
+  const setPin = (id: string | null) => {
+    if (id === pinId) return;
+    nav({ pathname: loc.pathname, search: withEncParam(loc.search, id), hash: loc.hash }, { replace: true });
+  };
 
   // Opening an encounter that ended a while ago shows its log at once; a fresh one plays message by message.
   const firstSeen = useRef(new Map<string, number>());
@@ -545,14 +579,16 @@ export function AgentConsole() {
   };
 
   /** Picking the newest encounter is "follow live"; an older one pins it until FOLLOW LIVE. */
-  const pick = (id: string) => {
-    const newest = data.encounters[0]?.id;
-    setFollow(id === newest);
-    setPickedId(id === newest ? null : id);
-  };
+  const pick = (id: string) => setPin(id === data.encounters[0]?.id ? null : id);
+  // A link to one encounter that is still being read: wait for it rather than flash the newest.
+  const opening = data.pin === "loading";
 
   const content = (
     <div className={`ac${big ? " ac--big" : ""}`}>
+      <div className="ac-top">
+        <Link className="ac-back" to={withQuery("/world")}>‹ Back to the game</Link>
+        <PixelButton small variant="ghost" onClick={() => setBig(!big)}>{big ? "Phone view" : "Big screen"}</PixelButton>
+      </div>
       <header className="ac-head">
         <div className="ac-head__title">
           <h1 className="ac-wordmark">Agent console</h1>
@@ -567,11 +603,14 @@ export function AgentConsole() {
             now={now}
           />
           {USE_MOCK && <Chip tone="lav" title="Offline demo on this device: no real agents, no real money">Mock world</Chip>}
-          <PixelButton small variant="ghost" onClick={() => setBig(!big)}>{big ? "Phone view" : "Big screen"}</PixelButton>
         </div>
       </header>
 
       {data.status === "loading" && <p className="ac-loading">Loading encounters…</p>}
+      {opening && data.status === "ready" && <p className="ac-loading">Opening that encounter…</p>}
+      {data.pin === "missing" && data.status === "ready" && (
+        <p className="ac-note" role="status">That encounter isn't on the relay any more, so here's the newest one.</p>
+      )}
       {data.status === "error" && !data.encounters.length && (
         <section className="ac-card">
           <h3 className="ac-card__title">Can't reach the relay</h3>
@@ -581,27 +620,34 @@ export function AgentConsole() {
       )}
       {data.status === "ready" && !selected && <EmptyState />}
 
-      {selected && (
+      {selected && !opening && (
         <>
           <EncounterStrip
-            encounters={data.encounters}
+            encounters={stripEncounters(data.encounters, selected.id, 10)}
             selectedId={selected.id}
             follow={follow}
             parties={data.parties}
             proposals={data.proposals}
             now={now}
             onPick={pick}
-            onFollow={() => { setFollow(true); setPickedId(null); }}
+            onFollow={() => setPin(null)}
           />
           <p className="ac-enc-line">
             <span>Met {ago(selected.startedAt, now)}</span>
             <span>{selected.simulated ? "Demo walk (simulated GPS)" : "Real GPS · within 25 m"}</span>
             {engine && <span>Negotiated by: {ENGINE_LABEL[engine]}</span>}
           </p>
+          {!big && (
+            <nav className="ac-jump" aria-label="Jump to">
+              <button type="button" onClick={() => jumpTo(SECTION.messages)}>Agents' messages</button>
+              <button type="button" onClick={() => jumpTo(SECTION.talk)}>Pets' chat</button>
+              <button type="button" onClick={() => jumpTo(SECTION.outcome)}>Outcome</button>
+            </nav>
+          )}
           <div className="ac-stage">
-            <AgentCard party={partyOf(left)} side={left} sides={sides} role={roleOf(left)} anim={animOf(left)} align="left" />
+            <AgentCard party={partyOf(left)} side={left} sides={sides} role={roleOf(left)} anim={animOf(left)} align="left" big={big} />
             <Timeline enc={selected} log={log} sides={sides} shown={shown} left={left} parties={data.parties} />
-            <AgentCard party={partyOf(right)} side={right} sides={sides} role={roleOf(right)} anim={animOf(right)} align="right" />
+            <AgentCard party={partyOf(right)} side={right} sides={sides} role={roleOf(right)} anim={animOf(right)} align="right" big={big} />
           </div>
           <div className="ac-lower">
             <Outcome

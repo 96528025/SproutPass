@@ -150,11 +150,11 @@ def test_nudge_to_listing(app, brains):
 
 def test_keep_and_later_resolve_nudge(app, brains):
     app.set_clock("2026-09-20T17:00:00.000Z")
-    assert run(brains["mina"].owner_message("keep"))[0].text == w.keep()
+    assert run(brains["mina"].owner_message("keep"))[0].text == w.keep("Button")  # in Button's own voice
     assert all(n["resolved"] for n in app.nudges.values())
     assert app.set_clock("2026-09-21T17:00:00.000Z") == 0  # B never re-nudges an item after keep/later/sell
     app.nudges["n2"] = {"id": "n2", "parentId": app.id("mina"), "itemId": "romper", "kind": "outgrow_check", "message": "", "createdAt": "", "resolved": False}
-    assert run(brains["mina"].owner_message("later please"))[0].text == w.later()  # "later" → B's "snooze"
+    assert run(brains["mina"].owner_message("later please"))[0].text == w.later("Button")  # "later" → B's "snooze"
     assert app.nudges["n2"]["resolved"]
 
 
@@ -254,6 +254,14 @@ def test_relay_mina_opens_and_the_roles_swap(app, brains):
     t = app.encounters[enc]["transcript"]  # what createProposal wrote: both pets, in order
     assert [x["kind"] for x in t] == ["looking_for", "looking_for", "have", "fit_check", "propose", "ack"]
     assert [x["text"].split(":")[0] for x in t] == ["Button", "Pip", "Button", "Pip", "Pip", "Button"]
+    assert [x["text"] for x in t] == [  # each pet in its own voice (personality.py); facts and safety words unchanged
+        "Button: Hello, hello! My closet's all tidy. Anything on your list for your little one?",
+        "Pip: Looking for 6-9M top or onesie! Got any?",
+        "Button: I have a Yellow duck romper in 6-9M, neatly folded.",
+        "Pip: Sniff sniff! My little one fits it for about 4 more weeks.",
+        "Pip: Ooh! Trade proposal! $18.00 — nothing is charged until you both accept.",
+        "Button: Sounds good — over to the humans! Folded and ready!",
+    ]
     assert {x["parentId"] for x in t if x["text"].startswith("Button")} == {app.id("mina")}
     assert {x["parentId"] for x in t if x["text"].startswith("Pip")} == {app.id("jo")}
     assert prop["transcript"] == t
@@ -324,7 +332,7 @@ def test_refused_proposal_ends_the_encounter(app, brains):
     lid = next(iter(app.listings))
     out = run(brains["jo"].on_ack(TradeAck(encounter_id=enc, listing_id=lid, ok=True)))
     assert isinstance(out, Decline) and out.rule == "" and out.reason == "not_eligible"
-    assert out.line == "Pip: Not this one — that listing doesn't fit any more."
+    assert out.line == "Pip: Aw, not this one — that listing doesn't fit any more."
     assert run(brains["mina"].on_relay(out)) is None  # the seller's agent ends it (Mina has no need to ask about)
     e = app.encounters[enc]
     assert e["status"] == "no_match" and not app.proposals and "noMatchReason" not in e
@@ -381,8 +389,8 @@ def test_accept_pay_and_welcome(app, brains):
     assert set(jo_ev[0]) == {"type", "proposalId", "role", "itemId", "priceCents"}  # B today: no snapshot
     jo_line = run(jo.event(jo_ev[0]))[0]
     mina_line = run(mina.event(mina_ev[0]))[0]
-    assert jo_line.text == "Say hi to the Yellow duck romper! It should fit until ~Nov 17. I'll check in then."
-    assert mina_line.text == "The Yellow duck romper found its next home for $18.00. Flowers all round!"
+    assert jo_line.text == "Say hi to the Yellow duck romper! It should fit until ~Nov 17. I'll hop back and check in then."  # Pip's voice
+    assert mina_line.text == "The Yellow duck romper found its next home for $18.00, folded with care. Flowers all round!"  # Button's voice
     assert jo_line.image_url == "http://app/fx/flowers.gif" and mina_line.image_url == "http://app/fx/flowers.gif"
     calls = len(app.calls)
     assert run(jo.event(jo_ev[1])) == []  # the welcome nudge repeats trade:completed → said once, no state read
@@ -403,8 +411,8 @@ def test_trade_completed_from_a_fresh_agent(rich):
     mina_done = next(e for e in events(app, "mina") if e["type"] == "trade:completed")
     assert ("snapshot" in jo_done) is rich
     calls = len(app.calls)
-    assert run(fresh["jo"].event(jo_done))[0].text == "Say hi to the Yellow duck romper! It should fit until ~Nov 17. I'll check in then."
-    assert run(fresh["mina"].event(mina_done))[0].text == "The Yellow duck romper found its next home for $18.00. Flowers all round!"
+    assert run(fresh["jo"].event(jo_done))[0].text == "Say hi to the Yellow duck romper! It should fit until ~Nov 17. I'll hop back and check in then."
+    assert run(fresh["mina"].event(mina_done))[0].text == "The Yellow duck romper found its next home for $18.00, folded with care. Flowers all round!"
     assert (len(app.calls) == calls) is rich  # the rich payload needs no getState at all
 
 
@@ -412,7 +420,7 @@ def test_trade_completed_with_almost_nothing():
     app = MockBase44()
     mina = make_brains(app)["mina"]
     out = run(mina.event({"type": "trade:completed", "proposalId": "gone", "role": "seller", "priceCents": 1800}))
-    assert out[0].text == "The new item found its next home for $18.00. Flowers all round!"
+    assert out[0].text == "The new item found its next home for $18.00, folded with care. Flowers all round!"
 
 
 def test_decline_charges_nothing(app, brains):
@@ -568,7 +576,7 @@ def test_pet_rules_stop_the_trade_and_say_why(ids):
     assert e["noMatchReason"] == "It costs more than the price limit Jo set for Pip."
     assert [type(m).__name__ for m in wire_log][-1] == "Decline" and "ProposeTrade" not in [type(m).__name__ for m in wire_log]
     texts_ = [t["text"] for t in e["transcript"]]
-    assert texts_[-1] == "Pip: Not this one — it's over the price limit Jo set for me."
+    assert texts_[-1] == "Pip: Aw, not this one — it's over the price limit Jo set for me."
     assert not [t for t in e["transcript"] if t["kind"] in ("propose", "ack", "fit_check")]
     assert not any("Trade proposal" in t or "over to the humans" in t or "Nothing in my closet" in t for t in texts_)
     assert e["agentLog"][-1]["type"] == "Decline"
@@ -609,6 +617,6 @@ def test_rules_that_change_after_the_ack_take_back_the_proposal_bubbles(app, bra
     assert e["status"] == "no_match" and not app.proposals
     assert e["noMatchReason"] == "It would go over Jo's monthly budget for Pip."
     assert [t["kind"] for t in e["transcript"]][-1] == "decline" and not [t for t in e["transcript"] if t["kind"] in ("propose", "ack")]
-    assert e["transcript"][-1]["text"] == "Pip: Not this one — it would go over Jo's monthly budget for me."
+    assert e["transcript"][-1]["text"] == "Pip: Aw, not this one — it would go over Jo's monthly budget for me."
     assert [x["type"] for x in e["agentLog"]][-3:] == ["ProposeTrade", "TradeAck", "Decline"]
     assert jo._peer(enc)["declined"]["rule"] == "over_budget"

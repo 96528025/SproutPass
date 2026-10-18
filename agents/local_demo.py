@@ -202,7 +202,7 @@ def main(argv=None) -> int:
                         enc.get("status") == "no_match" and enc.get("negotiatedBy") == "fetch"
                         and enc.get("noMatchReason") == "It costs more than the price limit Jo set for Pip.",
                     "Pip said the rule, nobody said 'Trade proposal!'":
-                        enc.get("transcript", [{}])[-1].get("text") == "Pip: Not this one — it's over the price limit Jo set for me."
+                        enc.get("transcript", [{}])[-1].get("text") == "Pip: Aw, not this one — it's over the price limit Jo set for me."
                         and "propose" not in kinds and "ack" not in kinds,
                     "protocol log ends with Decline (no names, no limit)": types[-1:] == ["Decline"] and "ProposeTrade" not in types
                         and all(e["by"] == "fetch" for e in log_) and "Jo" not in str(log_) and "$10" not in str(log_),

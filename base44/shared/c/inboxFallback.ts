@@ -36,6 +36,7 @@ import {
 import { getSetting, secret } from "./auth.ts";
 import { guessFromPhoto, scrubNote } from "./condition.ts";
 import { agentsOnDuty, readSettings } from "./location.ts";
+import { personalityOf } from "./personality.ts";
 import { callB } from "../cbridge.ts";
 import { priceFor } from "../pricing.ts";
 import { passkeyRequired } from "../logic/trust.ts";
@@ -354,9 +355,9 @@ async function onEvent(ctx: Ctx, p: any) {
       if (isBuyer) {
         let until: string = p.predictedOutgrowDate ?? "";
         if (!until && p.itemId) until = (await db.ClothingItem.get(p.itemId).catch(() => null))?.predictedOutgrowDate ?? "";
-        await ctx.say(t.completed(s.itemName ?? "new item", until ? shortDate(until) : "soon"), gif);
+        await ctx.say(t.completed(s.itemName ?? "new item", until ? shortDate(until) : "soon", ctx.pet), gif);
       } else {
-        await ctx.say(t.sold(s.itemName ?? "item", s.priceCents ?? p.priceCents ?? 0), gif);
+        await ctx.say(t.sold(s.itemName ?? "item", s.priceCents ?? p.priceCents ?? 0, ctx.pet), gif);
       }
       return;
     }
@@ -428,7 +429,7 @@ async function onText(ctx: Ctx, p: any) {
       // proposal text leaves the proposal question open.
       await setFlow(ctx, { step: "idle", ...(ctx.convo.lastAsk?.kind === "nudge" ? { lastAsk: undefined } : {}) },
         { answered: newest?.kind === "nudge" || newest?.kind === "flow" });
-      return void await ctx.say(intent === "keep" ? t.keep() : t.later());
+      return void await ctx.say(intent === "keep" ? t.keep(ctx.pet) : t.later(ctx.pet));
     }
     case "condition": {
       const cond = parseCondition(text);
@@ -723,10 +724,12 @@ async function statusParts(ctx: Ctx): Promise<string[]> {
 
 /** Anything else: a short reply in the pet's voice (LLM when available), never an action, never a phone number. */
 async function chat(ctx: Ctx, text: string): Promise<string> {
+  const me = personalityOf(ctx.pet);
   try {
     const setting = await getSetting(ctx.db);
     const reply = await ctx.base44.integrations.Core.InvokeLLM({
       prompt: `You are ${ctx.pet}, a tiny pixel closet pet helping a parent pass on outgrown kids' clothes over iMessage. ` +
+        (me ? `Who you are: ${me.blurb} How you talk: ${me.style}. ` : "") +
         `Reply in at most 2 short, warm sentences, plain text, no markdown, at most one emoji. ` +
         `You cannot buy, sell, list, accept, decline or pay anything yourself, and never claim you did: ` +
         `point them to texting "sell" or a photo, "bag", "status", "accept", "decline", or "help". ` +

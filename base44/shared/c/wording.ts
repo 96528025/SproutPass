@@ -4,6 +4,12 @@
 //
 // House style for iMessage lines: warm, short (≤ 2 sentences), plain text (iMessage shows markdown raw),
 // commands in quotes, and every pay surface says "demo payment · no real charge". Pure: no Deno / npm imports.
+//
+// Each pet with a personality (personality.ts: Button, Pip, Moss) says the friendly lines and the meeting lines in
+// its own voice; the facts and the safety words stay word for word. Lines about accepting, declining, paying,
+// STOP, errors and rate limits have no voice. A pet without a personality says the neutral lines below.
+
+import { type Personality, personalityOf, type TalkLines, type TextLines } from "./personality.ts";
 
 export const dollars = (cents: number) => `$${(cents / 100).toFixed(2)}`;
 
@@ -23,9 +29,34 @@ export function noteBit(note?: string): string {
   return ` (${n.length > 80 ? `${n.slice(0, 79).trimEnd()}…` : n})`;
 }
 
+/** A personality template filled in ({line}, {pet}, {hello}, {signOff}, the line's own facts); unknown ones stay. */
+function fill(template: string, p: Personality, line: string, facts: Record<string, string> = {}): string {
+  const vars: Record<string, string> = { ...facts, line, pet: p.pet, hello: p.hello, signOff: p.signOff };
+  return template.replace(/\{([A-Za-z]+)\}/g, (m, k: string) => (Object.hasOwn(vars, k) ? vars[k] : m));
+}
+
+/** `line` in this pet's own voice (personality.ts), or `line` itself for a pet without a personality. */
+function voiced<G extends "talk" | "texts">(
+  pet: string | null | undefined,
+  group: G,
+  kind: keyof Personality[G],
+  line: string,
+  facts?: Record<string, string>,
+): string {
+  const p = personalityOf(pet);
+  const template = p?.[group][kind] as string | undefined;
+  return p && template ? fill(template, p, line, facts) : line;
+}
+
+const texted = (pet: string | null | undefined, kind: keyof TextLines, line: string, facts?: Record<string, string>) =>
+  voiced(pet, "texts", kind, line, facts);
+
 export const t = {
-  hello: (pet: string) =>
-    `Hi! I'm ${pet}, your closet pet. Send me a photo or text "sell" to pass something on, or "help" for the rest.`,
+  /** The pet's own greeting where the neutral voice says "Hi!". */
+  hello: (pet: string) => {
+    const p = personalityOf(pet);
+    return `${p?.hello ?? "Hi!"} I'm ${p?.pet ?? pet}, your closet pet. Send me a photo or text "sell" to pass something on, or "help" for the rest.`;
+  },
   help: () =>
     `Text "sell" (or just send a photo), "bag", "status", "accept", "decline", "pay" or "stop". I never decide or pay for you: a trade needs both of you to accept, and payments happen in the app.`,
   nudge: (item: string, size: string) =>
@@ -45,8 +76,8 @@ export const t = {
     `Listed! The ${item} is up for ${dollars(priceCents)} (${priceRule(originalPriceCents, ownerCount)}). I'll text you when a friend's pet wants it.`,
   cancelled: () => `Okay, I stopped there — nothing was listed.`,
   nothingToCancel: () => `Nothing's in progress. To turn down a trade, reply "decline".`,
-  keep: () => `Keeping it! I'll check again in a couple of weeks.`,
-  later: () => `No rush — I'll ask again later.`,
+  keep: (pet?: string) => texted(pet, "keep", `Keeping it! I'll check again in a couple of weeks.`),
+  later: (pet?: string) => texted(pet, "later", `No rush — I'll ask again later.`),
   proposal: (item: string, priceCents: number, originalPriceCents: number, ownerCount: number, peerPet: string) =>
     `${peerPet} and I found a match: the ${item} for ${dollars(priceCents)} (${priceRule(originalPriceCents, ownerCount)}). Nothing is charged until you both accept — reply "accept" or "decline".`,
   accepted: (other: string) => `You accepted! Waiting on ${other} now.`,
@@ -70,10 +101,11 @@ export const t = {
     `The ${item} is already listed at ${dollars(priceCents)}. I'll tell you when a friend's pet wants it.`,
   listFailed: (item: string) => `I couldn't list the ${item} just now — try again from the bag.`,
   busy: () => `The app is busy right now — give me a minute and try again.`,
-  completed: (item: string, until: string) =>
-    `Say hi to the ${item}! It should fit until ~${until}. I'll check in then.`,
-  sold: (item: string, priceCents: number) => `The ${item} found its next home for ${dollars(priceCents)}. Flowers all round!`,
-  noFit: () => `Nothing fits today — maybe next walk!`,
+  completed: (item: string, until: string, pet?: string) =>
+    texted(pet, "completed", `Say hi to the ${item}! It should fit until ~${until}. I'll check in then.`, { item, until }),
+  sold: (item: string, priceCents: number, pet?: string) =>
+    texted(pet, "sold", `The ${item} found its next home for ${dollars(priceCents)}. Flowers all round!`, { item, price: dollars(priceCents) }),
+  noFit: (pet?: string) => texted(pet, "noFit", `Nothing fits today — maybe next walk!`),
   unknown: () => `Hmm, I didn't catch that. Try "bag" or "help".`,
   finalHome: (item: string) => `The ${item} is on its 3rd owner — that's its final home, so no selling. 💛`,
   nothingDue: () => `Nothing's due to be passed on right now — text "bag" to see the closet.`,
@@ -83,7 +115,7 @@ export const t = {
   status: (parts: string[]) =>
     parts.length ? `Here's where things stand: ${parts.join(" · ")}.` : `All quiet: nothing listed and no open trades. Send a photo to pass something on.`,
   stopped: () => `Okay, I'll stop texting. Text "start" anytime to turn me back on — your closet is still in the app.`,
-  started: (pet: string) => `${pet} is back! Text "help" to see what I can do.`,
+  started: (pet: string) => texted(pet, "started", `${pet} is back! Text "help" to see what I can do.`),
   pausedHelp: () => `I'm paused because you texted "stop". Text "start" to turn me back on.`,
   slowDown: () => `That's a lot of texts at once! Give me a minute and I'll catch up.`,
 };
@@ -99,26 +131,39 @@ export const st = {
 };
 
 /* ---------- agent-to-agent transcript lines (pixel bubbles in the app) ----------
- * Same text as agents/wording.py t_*. The Python agents prefix the pet's name ("Pip: …"); C's local fallback
- * doesn't know the names, so it passes no pet and AgentBubbles labels the line from the parent id instead. */
+ * Same text as agents/wording.py t_*. The Python agents prefix the pet's name ("Pip: …"), and so does a plain pet
+ * name here. C's local fallback passes unlabelled(pet): the pet's voice without the prefix, since AgentBubbles and
+ * the Agent Console label each line from its parentId (no pet at all: the neutral line, unlabelled too).
+ * Never a person's name in a line, only pets' names (the Agent Console's privacy check reads them). */
 
-const said = (pet: string | undefined, text: string) => (pet ? `${pet}: ${text}` : text);
+/** Who says a meeting line: a pet name (its voice, written "Pip: …"), or unlabelled(pet) (its voice, no prefix). */
+export type Speaker = string | { pet?: string | null; label: false } | null | undefined;
+
+/** The pet's own voice without the "Pip: " prefix (C's local fallback). */
+export const unlabelled = (pet?: string | null): Speaker => ({ pet, label: false });
+
+const petOf = (who: Speaker) => (typeof who === "string" ? who : who?.pet) || undefined;
+const said = (who: Speaker, text: string) => (typeof who === "string" && who ? `${who}: ${text}` : text);
+const talk = (who: Speaker, kind: keyof TalkLines, line: string, facts?: Record<string, string>) =>
+  said(who, voiced(petOf(who), "talk", kind, line, facts));
 
 export const tl = {
-  hello: (pet?: string) => said(pet, `Hi! Anything on your list for your little one?`),
+  hello: (pet?: Speaker) => talk(pet, "hello", `Hi! Anything on your list for your little one?`),
   /** Python says "anything" for a need with no categories; C's fallback doesn't know the need (undefined → bare). */
-  lookingFor: (sizes: string[], categories?: string[], pet?: string) =>
-    said(pet, `Looking for ${sizes.join("/")}${categories ? ` ${categories.length ? categories.join(" or ") : "anything"}` : ""}!`),
-  have: (item: string, size: string, pet?: string) => said(pet, `I have a ${item} in ${size}.`),
-  noFit: (pet?: string) => said(pet, `Nothing in my closet fits today.`),
+  lookingFor: (sizes: string[], categories?: string[], pet?: Speaker) => {
+    const what = `${sizes.join("/")}${categories ? ` ${categories.length ? categories.join(" or ") : "anything"}` : ""}`;
+    return talk(pet, "lookingFor", `Looking for ${what}!`, { what });
+  },
+  have: (item: string, size: string, pet?: Speaker) => talk(pet, "have", `I have a ${item} in ${size}.`, { item, size }),
+  noFit: (pet?: Speaker) => talk(pet, "noFit", `Nothing in my closet fits today.`),
   /** Said by the BUYER's pet (it ran B's fit for its own child). */
-  fitCheck: (weeks: number | null | undefined, pet?: string) =>
-    said(pet, weeks == null ? `Size looks right for my little one.` : `My little one fits it for about ${weeks} more weeks.`),
-  propose: (priceCents: number, pet?: string) =>
-    said(pet, `Trade proposal! ${dollars(priceCents)} — nothing is charged until you both accept.`),
-  ack: (pet?: string) => said(pet, `Sounds good — over to the humans!`),
-  notNeeded: (pet?: string) => said(pet, `Thanks, but that won't fit my little one.`),
-  decline: (why: string, pet?: string) => said(pet, `Not this one — ${why}`),
+  fitCheck: (weeks: number | null | undefined, pet?: Speaker) =>
+    talk(pet, "fitCheck", weeks == null ? `Size looks right for my little one.` : `My little one fits it for about ${weeks} more weeks.`),
+  propose: (priceCents: number, pet?: Speaker) =>
+    talk(pet, "propose", `Trade proposal! ${dollars(priceCents)} — nothing is charged until you both accept.`),
+  ack: (pet?: Speaker) => talk(pet, "ack", `Sounds good — over to the humans!`),
+  notNeeded: (pet?: Speaker) => talk(pet, "notNeeded", `Thanks, but that won't fit my little one.`),
+  decline: (why: string, pet?: Speaker) => talk(pet, "decline", `Not this one — ${why}`, { why }),
 };
 
 export function label(condition: string): string {

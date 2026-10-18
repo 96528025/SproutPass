@@ -16,9 +16,10 @@ export const GLYPHS = {
 
 export interface HudButtonProps {
   glyph: keyof typeof GLYPHS;
-  /** Slot from the right edge: 0 is the mute toggle's, so HUD buttons start at 1 (at 0 when B's demo panel holds the toggle). */
+  /** Slot from the right edge, 44px apart: 0 is the mute toggle's, so HUD buttons start at 1 (at 0 when B's demo panel holds the toggle). */
   slot: 0 | 1 | 2 | 3;
   on?: boolean;
+  /** A constant name (it is a toggle: `on` is announced as pressed). */
   label: string;
   onClick: () => void;
 }
@@ -29,7 +30,7 @@ export function HudButton({ glyph, slot, on, label, onClick }: HudButtonProps) {
     <button
       type="button"
       className={`hud${on ? " hud--on" : ""}`}
-      style={{ right: 8 + slot * 40 }}
+      style={{ right: 8 + slot * 44 }}
       onClick={onClick}
       aria-label={label}
       aria-pressed={!!on}

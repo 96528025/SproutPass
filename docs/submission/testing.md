@@ -7,10 +7,10 @@ What we test, how to run it, the counts from the latest run, and every live run 
 | Suite | Command (from the repo root) | Result |
 |---|---|---|
 | TypeScript | `npx tsc -p tsconfig.check.json` | exit 0, no errors |
-| vitest (app + shared logic) | `npx vitest run` | **21 files, 429 tests passed** |
-| Deno (C's iMessage, webhook, parity) | `npx -y deno@2 test --no-lock -A base44/shared/c/` | **59 passed, 0 failed** |
+| vitest (app + shared logic) | `npx vitest run` | **22 files, 441 tests passed** |
+| Deno (C's iMessage, webhook, parity, personalities) | `npx -y deno@2 test --no-lock -A base44/shared/c/` | **71 passed, 0 failed** |
 | Deno type-check of every function | `npx -y deno@2 check --no-lock --node-modules-dir=none base44/functions/*/entry.ts` | all 29 entries pass |
-| pytest (Fetch.ai agents) | `agents/.venv/Scripts/python.exe -m pytest -q agents/tests` | **102 passed** |
+| pytest (Fetch.ai agents) | `agents/.venv/Scripts/python.exe -m pytest -q agents/tests` | **114 passed** |
 | Offline agent story | `agents/.venv/Scripts/python.exe agents/local_demo.py` | **LOCAL DEMO PASS**, 13 of 13 checks |
 
 `--node-modules-dir=none` is needed for the four entries that import `npm:@simplewebauthn/server@13`
@@ -21,35 +21,36 @@ On macOS or Linux, use `agents/.venv/bin/python` instead of `agents/.venv/Script
 
 ---
 
-## vitest: 429 tests in 21 files
+## vitest: 441 tests in 22 files
 
 Business logic is pure TypeScript, so these tests run the same handlers the Deno functions and the browser mock run.
 
 | File | Tests | What it proves |
 |---|---:|---|
 | `base44/shared/logic/snap.test.ts` | 80 | Snap-to-list: size from tag text ("9M" → 6-9M), clamped categories and prices, confidence, PII removed from names and notes, template fallback on any model failure, demo picks never claim to be AI |
-| `base44/shared/logic/trade.test.ts` | 50 | Proposal state machine, both accepts before pay, only the buyer pays, double pay transfers once, decline and expiry charge $0 and relist, the buyer's mandate in `createProposal`, the Face ID approval gate |
-| `src/app/mockWorld.test.ts` | 37 | The mock world: demo walk to 25 m, encounters, the pets' lines, the mock protocol log, pet rules blocking a match, TRIGGER ENCOUNTER through the real path |
+| `base44/shared/logic/trade.test.ts` | 52 | Proposal state machine, both accepts before pay, only the buyer pays, double pay transfers once, decline and expiry charge $0 and relist, the buyer's mandate in `createProposal`, the Face ID approval gate |
+| `src/app/mockWorld.test.ts` | 37 | The mock world: demo walk to 25 m, encounters, the pets' lines in each pet's voice, the mock protocol log, pet rules blocking a match, TRIGGER ENCOUNTER through the real path |
 | `base44/shared/logic/closet.test.ts` | 36 | Closet, listing, needs, nudges; no phone number anywhere in a closet response |
 | `base44/shared/logic/trust.test.ts` | 35 | Mandate defaults and validation, budget counting pending trades, challenges (single use, 5 minutes, bound to trade and price), passkey cap and removal, RESET restores defaults, relying-party pinning |
 | `base44/shared/match.test.ts` | 26 | Eligibility and ranking (weeks of wear left, then condition, then newest), 3rd owner never offered |
 | `base44/shared/agentApi.test.ts` | 23 | Agent API: inbox claim by type, protocol log on `createProposal` and `noMatch`, never relabelling a decided encounter, fallback log shape, log cleaning, retry when the live schema refuses a new field, mandate-blocked encounters |
-| `src/trade/tradeLogic.test.ts` | 22 | Trade window logic: the banner text for every state, receipt lines, mandate fit, "You become / became owner 2 of 3" |
+| `src/trade/tradeLogic.test.ts` | 25 | Trade window logic: the banner text for every state, receipt lines, mandate fit, "You become / became owner 2 of 3" |
 | `base44/shared/logic/demo.test.ts` | 19 | Demo clock nudges exactly the romper on Sep 20, RESET keeps parent ids, seed |
 | `src/trust/trustLogic.test.ts` | 19 | Pet-rules screen helpers, biometric names, the mock's demo passkey shape, cancel detection |
 | `base44/shared/nudges.test.ts` | 15 | Outgrow nudges and their wording |
 | `base44/shared/logic/impact.test.ts` | 15 | Impact totals rounded down, money saved and earned, points and badges, no phone numbers reach the calculation |
-| `src/console/consoleModel.test.ts` | 13 | Agent Console: matching log entries to agents, the outcome card, refusals, the encounter chip after payment |
+| `src/console/consoleModel.test.ts` | 18 | Agent Console: matching log entries to agents, the outcome card, refusals, the encounter chip after payment, the `?enc=` link (pick, follow live, an encounter older than the list) |
 | `base44/shared/cbridge.test.ts` | 9 | C's in-process bridge to B's handlers keeps status codes and argument shapes |
 | `src/trust/imessageLine.test.ts` | 8 | The "Text Pip" panel's number, `sms:` link and status |
 | `src/trust/qr.test.ts` | 7 | Dependency-free QR encoder for the "Text Pip" panel |
 | `src/impact/live.test.ts` | 6 | Live reloader for `/log` and `/impact` (3 s debounce, loads at least 5 s apart, no overlap), friendly durations |
 | `src/pixel/components/FitBar.test.tsx` | 4 | Fit bar copy, the year for far dates, daylight-saving-safe day counts |
 | `base44/shared/contract.test.ts` | 3 | Contract smoke: romper $18.00, outgrow dates, eligibility |
+| `src/api/base44Client.test.ts` | 2 | The SDK client: analytics off in mock mode, the SDK default in real mode |
 | `src/app/api.mock.test.ts` | 1 | The whole story through the mock `Api`: nudge → $18 listing → proposal → pay → Jo owns it |
 | `src/impact/impact.mock.test.ts` | 1 | `getImpact` through the mock `Api` after a full trade |
 
-## Deno: 59 tests in `base44/shared/c/`
+## Deno: 71 tests in `base44/shared/c/`
 
 These run C's real webhook handler, B's real handlers on a seeded fake database, and a stubbed Photon that, like the
 real API, answers 400 to any POST without an `idempotency-key`. No network.
@@ -57,17 +58,19 @@ real API, answers 400 to any POST without an `idempotency-key`. No network.
 | File | Tests | What it proves |
 |---|---:|---|
 | `convo_test.ts` | 29 | Whole iMessage conversations: nudge → photo → quote → "like new" → "yes" lists at $18.00; trade by text with both accepts and the approve-in-app link; "pay" never pays; STOP and its variants; rate limits; "no deal" and "is that a good deal?" never accept; a "yes" answers the newest question; failures still answer; names on labels never reach the listing |
+| `personality_test.ts` | 11 | Each pet's personality: its own voice in the meeting and iMessage lines with the same facts and safety words, no parent or child name, accept / decline / pay / STOP / error lines stay plain, a pet without one keeps the neutral lines, the fallback's voices cost no extra read |
 | `imessage_test.ts` | 14 | Per-parent Photon lines, a parent who hasn't texted gets zero Photon calls, the flowers GIF from the same line, Photon refusals reported as not sent, opt-out, phone masking, the outbound cap |
 | `c_test.ts` | 9 | Geometry and distance bands, the encounter rule, Photon message parsing, intents |
 | `webhook_test.ts` | 5 | Webhook signatures: valid, tampered, stale, missing, rotated, svix aliases, the Standard Webhooks reference vector; redelivery answered once; strangers get nothing |
-| `parity_test.ts` | 2 | Runs `agents/.venv` Python and checks that every iMessage line and every intent is word for word the same in `agents/wording.py` / `agents/intents.py` as in TypeScript |
+| `parity_test.ts` | 3 | Runs `agents/.venv` Python and checks that every iMessage and meeting line (in each pet's voice and the plain one), every field of every personality and every intent is word for word the same in `agents/wording.py` / `agents/personality.py` / `agents/intents.py` as in TypeScript |
 
-## pytest: 102 tests in `agents/tests`
+## pytest: 114 tests in `agents/tests`
 
 | File | Tests | What it proves |
 |---|---:|---|
 | `test_relay.py` | 62 | The closet agents' brain against `mock_base44.py`: intents, ASI:One cards, nudge → list, the relay flow both ways, two-sided accept, decline = $0, 3rd owner can't sell, the pet-rules `Decline`, the ASI:One pay card pointing to the app when Face ID is required. A privacy test asserts that no birth date, parent name, phone, coordinate or parent id crosses the agent wire |
 | `test_live.py` | 30 | `live_bureau.py`: the shared call budget, startup backoff on 429, the inbox type filter, a clean Ctrl+C with a real aiohttp session |
+| `test_personality.py` | 12 | Each closet brain texts and talks in its own pet's voice, facts and safety words unchanged, no parent or child name, deciding / paying / STOP / error lines stay plain |
 | `test_agent_log.py` | 10 | The protocol log: name-free summaries, no duplicates from retried handlers, the 40-entry cap |
 
 ## The offline agent story (`agents/local_demo.py`)
@@ -136,8 +139,20 @@ suggested" → Confirm $18.00 → Oct 18 → Jo's "Walk toward Mina" → encount
 protocol messages labelled Mock, a clean privacy check and PAID; `/impact` showed 5 new homes; `/bag/pet` showed
 "$18.00 spent in October · $82.00 left".
 
+### Since the last deploy (mock and tests only)
+
+- **Pet personalities:** every suite passes with the pets' voices, and `local_demo.py` prints each pet's lines
+  ("Button: I have a Yellow duck romper in 6-9M, neatly folded.", "Pip: Sniff sniff! My little one fits it for
+  about 4 more weeks.").
+- **Agent Console on phones:** checked in mock mode at 375×667 and 360×667 and on a laptop-sized window: no sideways
+  page scroll, no text under 16 px apart from the uppercase tags, every button and link at least 44 px.
+  `/agents?enc=<id>` opens that encounter, and an id that is gone shows a short note and the newest one. AGENTS'
+  CHAT in the pet's dialog opens the parent's latest encounter, or `/agents` when there is none. With "See the
+  agents' chat" in the encounter scene, the trade window still opens about 1.2 s after the TRADE PROPOSAL! banner.
+
 ### Not verified anywhere yet
 
+- On live: the pets' personalities and the Agent Console on phones (not deployed yet).
 - On live: snap-to-list on a real photo (`analyzeItemPhoto`), saving pet rules (`setMandate`), and passkey set-up
   and a passkey-approved payment (`passkey*`, `payProposal`). `getTrust` and `getImpact` ran in the ~04:30 run.
 - Face ID on a real phone against the deployed `payProposal`.
@@ -173,7 +188,8 @@ a person with Photon access and real phones (steps 4 and 5).
    `getImpact`. Changed: `payProposal`, `createProposal`, `demoReset`, `agentApi`, `photonWebhook`, `sendImessage`
    and the location functions (their shared code changed). Confirm on the first deploy that the four passkey
    entries bundle `npm:@simplewebauthn/server@13`. Always build through the CLI; a bare `npm run build` leaves the app
-   id unset.
+   id unset. Since then, the pets' personalities (shared code in `base44/shared/c/`), the Agent Console on phones and
+   whole-page scrolling on phones need one more deploy of the functions and the site.
 3. **Restart `live_bureau.py` only after `agentApi` is deployed.** An old `agentApi` ignores the inbox type filter,
    and the agents would answer iMessage rows the app already answers.
 4. **Secrets:** `APP_HOST=sproutpass-5c025059.base44.app` (pins passkeys and builds links); for iMessage

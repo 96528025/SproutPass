@@ -178,9 +178,9 @@ describe("demo walk → encounter → proposal", () => {
     expect(enc).toMatchObject({ aId: ids.jo, bId: ids.mina, band: "<25m", simulated: true, status: "proposed", proposalId: prop.id });
     expect(enc.transcript.map((t) => t.kind)).toEqual(["looking_for", "have", "fit_check", "propose", "ack"]);
     expect(enc.transcript.map((t) => t.parentId)).toEqual([ids.jo, ids.mina, ids.jo, ids.jo, ids.mina]);
-    expect(enc.transcript[1].text).toBe("I have a Yellow duck romper in 6-9M.");
-    // the buyer's pet speaks about its own child (it ran the fit for Jo's little one)
-    expect(enc.transcript[2].text).toBe("My little one fits it for about 4 more weeks.");
+    expect(enc.transcript[1].text).toBe("I have a Yellow duck romper in 6-9M, neatly folded."); // Button's voice
+    // the buyer's pet speaks about its own child (it ran the fit for Jo's little one), in Pip's voice
+    expect(enc.transcript[2].text).toBe("Sniff sniff! My little one fits it for about 4 more weeks.");
     expect(prop).toMatchObject({
       encounterId: enc.id, buyerId: ids.jo, sellerId: ids.mina, itemId: romper.id, source: "local", status: "open",
       sellerDecision: "pending", buyerDecision: "pending",
@@ -278,9 +278,14 @@ describe("demo walk → encounter → proposal", () => {
     const [enc] = await encounters();
     expect(enc.status).toBe("no_match");
     const opener = ids.sam < ids.mina ? ids.sam : ids.mina;
+    // each pet in its own voice: Moss (Sam's), Button (Mina's)
+    const hello = opener === ids.sam
+      ? "Hey there, friend. Anything on your list for your little one?"
+      : "Hello, hello! My closet's all tidy. Anything on your list for your little one?";
+    const noFit = opener === ids.sam ? "Oh dear. Nothing in my closet fits today." : "Nothing in my closet fits today. Maybe next time, friend.";
     expect(enc.transcript).toMatchObject([
-      { kind: "looking_for", parentId: opener, text: "Hi! Anything on your list for your little one?" },
-      { kind: "no_fit", text: "Nothing in my closet fits today." },
+      { kind: "looking_for", parentId: opener, text: hello },
+      { kind: "no_fit", text: noFit },
     ]);
     expect(await proposals()).toEqual([]);
   });

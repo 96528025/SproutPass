@@ -341,7 +341,7 @@ function FaceIdToggle({ on, hasPasskey, setup }: { on: boolean; hasPasskey: bool
         onChange={(v) => { if (v) void setup.setUp(); }}
         label={`Require ${face} to pay`}
         why={locked
-          ? `Stays on while a passkey is saved: you approve each payment with ${demo ? "your passkey" : face}.`
+          ? `Stays on while a passkey is saved: you approve each payment with ${demo ? "your passkey" : face}. Remove your passkeys below to turn it off.`
           : setup.busy ? `Setting up ${demo ? "a demo passkey" : face}…`
           : setup.mode === "unavailable" ? "This browser can't make a passkey. Open the app on your phone to turn this on."
           : `Turn it on to set up ${demo ? "a demo passkey" : face} on this ${where}.`} />
@@ -350,9 +350,27 @@ function FaceIdToggle({ on, hasPasskey, setup }: { on: boolean; hasPasskey: bool
 }
 
 function PasskeyList({ keys, setup }: { keys: { id: string; createdAt: string; label: string }[]; setup: Setup }) {
+  const toast = useApp((s) => s.toast);
+  const { parentKey, reload } = useTrust();
+  const [removing, setRemoving] = useState<string | null>(null);
   const sorted = useMemo(() => [...keys].sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1)), [keys]);
   const hereIds = new Set(setup.here);
   const thisDeviceSaved = sorted.some((k) => hereIds.has(k.id));
+  /** Forget one passkey on the server. The last one gone turns Face ID approval off (the server's rule). */
+  const remove = async (k: { id: string; label: string }) => {
+    if (removing || setup.busy || !parentKey) return;
+    setRemoving(k.id);
+    try {
+      const view = await api.passkeyRemove({ ...parentRef(), passkeyId: k.id });
+      patchTrust(parentKey, view);
+      await reload();
+      toast(view.passkeys.length ? `${k.label || "Passkey"} removed` : "Passkey removed · a tap on Pay is enough now", "lav");
+    } catch (e) {
+      toast(errorText(e), "red");
+    } finally {
+      setRemoving(null);
+    }
+  };
   return (
     <div className="tr-field">
       <span className="tr-label">Your passkeys</span>
@@ -366,6 +384,10 @@ function PasskeyList({ keys, setup }: { keys: { id: string; createdAt: string; l
               <span className="tr-text">{k.label || "Passkey"}</span>
               {hereIds.has(k.id) && <Chip tone="mint">This device</Chip>}
               <span className="tr-muted tr-text">added {shortDay(k.createdAt)}</span>
+              <button type="button" className="b-link tr-key-remove" aria-label={`Remove ${k.label || "passkey"}`}
+                disabled={!!removing || setup.busy} onClick={() => void remove(k)}>
+                {removing === k.id ? "Removing…" : "Remove"}
+              </button>
             </li>
           ))}
         </ul>

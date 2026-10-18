@@ -241,8 +241,29 @@
   font-size: var(--fs-md, 16px);
   line-height: 22px;
 }
+/* "See the agents' chat": opens this meeting in the Agent Console, next to the tag on one row when it fits */
+.enc__chat {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  margin: 8px 8px 0 0;
+  padding: 4px 12px;
+  vertical-align: middle;
+  background: var(--gold);
+  color: var(--ink);
+  border: 4px solid var(--ink);
+  box-shadow: var(--shadow-hard-sm);
+  font-family: var(--font-ui);
+  font-size: var(--fs-md, 16px);
+  font-weight: 700;
+  line-height: 20px;
+  cursor: pointer;
+}
+.enc__chat:active { transform: translate(2px, 2px); box-shadow: none; }
+.enc__chat:focus-visible { outline: 4px solid var(--sky); outline-offset: 0; }
 .enc__caption-tag {
   display: inline-block;
+  vertical-align: middle;
   margin-top: 8px;
   padding: 2px 6px;
   background: var(--ink);
@@ -280,6 +301,11 @@
   .enc__bubbles .c-bubbles { max-height: 200px; }
   .enc__bubbles .c-bubble:nth-last-child(n + 3) { display: none; }
   .enc__caption-tag { display: none; }
+}
+/* the fit is found on a phone under ~760 px: the title and "See the agents' chat" only, so the taller caption stays
+   clear of the pets' name tags (they sit at 56 % + 132 px) */
+@media (max-height: 760px) {
+  .enc__caption--found .enc__caption-text { display: none; }
 }
 
 @media (prefers-reduced-motion: reduce) {

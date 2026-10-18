@@ -68,7 +68,7 @@ export function KitPage() {
         </Row>
       </Section>
 
-      <Section name="Type" props="Pixelify Sans 16/20/24 · Silkscreen 12/16 · Press Start 2P (wordmark only)">
+      <Section name="Type" props="Atkinson Hyperlegible Next 16/20/24 · Silkscreen 12/16 · Press Start 2P (wordmark only)">
         <PixelPanel>
           <p className="px-ui-24">Does this still fit?</p>
           <p className="px-ui-20">Want to pass it on?</p>
@@ -144,7 +144,7 @@ export function KitPage() {
 
       <Section name="PriceReceipt" props="original · pct · price (all cents, from the backend) · ownerAfter: 2 | 3 · stamp?">
         <PriceReceipt original={3000} pct={60} price={1800} ownerAfter={2} />
-        <PriceReceipt original={3000} pct={40} price={1200} ownerAfter={3} stamp="DEMO PAYMENT · NO REAL CHARGE" />
+        <PriceReceipt original={3000} pct={40} price={1200} ownerAfter={3} stamp="Demo payment · no real charge" />
       </Section>
 
       <Section name="ItemIcon · Sprite (A2)" props="icon · size: 1 | 2 — name · anim · scale · facing">

@@ -305,3 +305,46 @@ export function exchangeMs(log: AgentLogEntry[]): number | null {
   if (!Number.isFinite(first) || !Number.isFinite(last)) return null;
   return Math.max(0, last - first);
 }
+
+// ---------------------------------------------------------------- deep link: /agents?enc=<encounterId>
+
+/**
+ * The encounter a link asks for (/agents?enc=<id>: the pets' meeting scene, the pet's AGENTS' CHAT), or null.
+ * Base44 ids and the mock's ("enc_1x2y") are letters, digits, "_" and "-"; anything else is ignored.
+ */
+export function encParam(search: string): string | null {
+  const v = new URLSearchParams(search).get("enc")?.trim() ?? "";
+  return /^[\w-]{1,64}$/.test(v) ? v : null;
+}
+
+/** `search` with ?enc= set to `id` (null: removed, i.e. follow live), every other param kept (?as=, ?demo=, ?view=). */
+export function withEncParam(search: string, id: string | null): string {
+  const q = new URLSearchParams(search);
+  if (id) q.set("enc", id);
+  else q.delete("enc");
+  const qs = q.toString();
+  return qs ? `?${qs}` : "";
+}
+
+/**
+ * The encounter on screen. No pin (follow live): the newest. A pin: that encounter while it is in the list, else
+ * the newest (a link to an encounter that is gone, or one still being read).
+ */
+export function selectEncounter<T extends { id: string }>(encounters: T[], pinnedId: string | null): T | null {
+  if (!encounters.length) return null;
+  return (pinnedId ? encounters.find((e) => e.id === pinnedId) : undefined) ?? encounters[0];
+}
+
+/** The strip's tabs: the newest `max`, plus the one on screen when it is older (a deep link to an old encounter). */
+export function stripEncounters<T extends { id: string }>(encounters: T[], selectedId: string | null, max = 10): T[] {
+  const head = encounters.slice(0, max);
+  if (!selectedId || head.some((e) => e.id === selectedId)) return head;
+  const sel = encounters.find((e) => e.id === selectedId);
+  return sel ? [...head.slice(0, Math.max(0, max - 1)), sel] : head;
+}
+
+/** The recent list plus a pinned encounter read on its own (older than the list), newest first, no duplicates. */
+export function withPinned<T extends { id: string; startedAt: string }>(encounters: T[], pinned: T | null): T[] {
+  if (!pinned || encounters.some((e) => e.id === pinned.id)) return encounters;
+  return [...encounters, pinned].sort((a, b) => (Date.parse(b.startedAt) || 0) - (Date.parse(a.startedAt) || 0));
+}

@@ -211,14 +211,15 @@ export function WorldScreen() {
   const targetName = seedName(targetKey).toUpperCase();
 
   // Quiet HUD: a chip only when something needs saying. A good real fix shows nothing; SIMULATED GPS is required
-  // by rule 5 whenever positions are simulated.
+  // by rule 5 whenever positions are simulated. Every chip fits the row's 216px on a 360px phone.
+  const noFix = !demo && (gps.status === "denied" || gps.status === "unavailable");
   const gpsChip =
     gps.status === "denied" || gps.status === "unavailable" ? (
       <Chip tone="red">NO GPS</Chip>
     ) : demo ? (
       <Chip tone="lav">SIMULATED GPS</Chip>
     ) : gps.status === "weak" ? (
-      <Chip tone="gold">WEAK GPS — STEP OUTSIDE</Chip>
+      <Chip tone="gold">WEAK GPS</Chip>
     ) : gps.status === "ok" ? null : (
       <Chip tone="paper">FINDING GPS…</Chip>
     );
@@ -231,7 +232,7 @@ export function WorldScreen() {
           zoomedOut={zoomedOut}
           zone={zone}
           avatar={asSprite(meCard?.avatar.sprite, "parent_a")}
-          noFix={!demo && (gps.status === "denied" || gps.status === "unavailable")}
+          noFix={noFix}
         />
         {!zoomedOut && (
           <>
@@ -250,22 +251,22 @@ export function WorldScreen() {
           panel with ?demo=1, so the HUD moves over by one slot). The zone chip lives in zone view only; the stale-GPS
           chip takes the GPS chip's slot. */}
       <div className="ws__chips">
-        {liveTrade ? <Chip tone="lav">TRADE OPEN · RADAR PAUSED</Chip> : gps.paused ? <Chip tone="gold">SCREEN LOCKED? GPS PAUSED</Chip> : gpsChip}
-        {!meId && <Chip tone="paper">LOADING…</Chip>}
+        {liveTrade ? <Chip tone="lav">RADAR PAUSED</Chip> : gps.paused ? <Chip tone="gold">GPS PAUSED</Chip> : gpsChip}
+        {!meId && !gps.paused && !gpsChip && <Chip tone="paper">LOADING…</Chip>}
         {zoomedOut && inside !== null && (inside ? <Chip tone="mint">IN LA</Chip> : <Chip tone="gold">OUTSIDE LA</Chip>)}
       </div>
       <HudButton
         slot={demo ? 0 : 1}
         glyph={discoverable ? "eyeOn" : "eyeOff"}
         on={discoverable}
-        label={discoverable ? "Discoverable. Tap to hide" : "Hidden. Tap to be discoverable"}
+        label="Show me on the radar"
         onClick={() => setDiscoverable(!discoverable)}
       />
       <HudButton
         slot={demo ? 1 : 2}
         glyph={zoomedOut ? "zoneOut" : "zone"}
         on={zoomedOut}
-        label={zoomedOut ? "Back to walking view" : "Show the Los Angeles zone"}
+        label="Los Angeles zone view"
         onClick={() => setZoomedOut((z) => !z)}
       />
 
@@ -288,6 +289,14 @@ export function WorldScreen() {
                   ? `WALK TOWARD ${targetName}`
                   : "WALK AGAIN"}
           </PixelButton>
+        </div>
+      )}
+
+      {/* no location outside demo mode: say so, and offer the same switch the title screen makes */}
+      {noFix && (
+        <div className="ws__walk">
+          <p className="ws__walk-hint">Can't find your location. Turn it on, or take the demo walk.</p>
+          <PixelButton onClick={() => useApp.getState().setDemo(true)}>TAKE THE DEMO WALK</PixelButton>
         </div>
       )}
 
