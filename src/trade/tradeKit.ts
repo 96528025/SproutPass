@@ -1,31 +1,39 @@
 // OWNER: Agent 2 (B3/B5). Small helpers shared by the trade screens.
-import { useEffect, useState } from "react";
-import { api } from "../app/api";
+import { useEffect, useMemo, useState } from "react";
+import { api, ApiError } from "../app/api";
 import { useApp } from "../app/store";
-import type { ClosetView, Condition, Decision, ISODate, MatchProposal } from "../app/types";
+import type { Condition, Decision, ISODate, MatchProposal } from "../app/types";
+import { createPartyLoader, slimParty, type Party } from "./tradeLogic";
 
-export type PublicParent = ClosetView["parent"];
+export type { Party };
 
-const parentCache = new Map<string, Promise<PublicParent | null>>();
+function sessionStore(): Pick<Storage, "getItem" | "setItem"> | null {
+  try { return typeof sessionStorage === "undefined" ? null : sessionStorage; } catch { return null; }
+}
 
-/** A party's public profile (name, avatar, pet). Never includes the phone: it comes from getCloset's publicParent. */
-export function usePublicParent(id: string | undefined): PublicParent | null {
+// The Api has no "public profile by id" call, so the other party's name comes from their getCloset (whose
+// parent is publicParent: no phone). Only {id, name, avatar, pet} is kept, retried with backoff under the
+// rate limit, deduped across windows and cached per tab. NEEDS.md (B3 → Caesar) proposes a lighter call.
+const parties = createPartyLoader({
+  fetch: async (id) => (await api.getCloset({ parentId: id })).parent,
+  isFatal: (e) => e instanceof ApiError && (e.code === "not_found" || e.code === "bad_request"),
+  storage: sessionStore(),
+});
+
+/** A party's public profile, or null while it loads (callers show the role, e.g. "SELLER", meanwhile). */
+export function usePublicParent(id: string | undefined): Party | null {
   const mine = useApp((s) => s.closet?.parent ?? null);
-  const [other, setOther] = useState<PublicParent | null>(null);
+  const [, loaded] = useState(0);
   useEffect(() => {
-    if (!id || mine?.id === id) return;
+    if (!id || mine?.id === id || parties.get(id)) return;
     let live = true;
-    let pending = parentCache.get(id);
-    if (!pending) {
-      pending = api.getCloset({ parentId: id }).then((c) => c.parent).catch(() => { parentCache.delete(id); return null; });
-      parentCache.set(id, pending);
-    }
-    void pending.then((p) => { if (live) setOther(p); });
+    void parties.load(id).then(() => { if (live) loaded((n) => n + 1); });
     return () => { live = false; };
   }, [id, mine?.id]);
+  const me = useMemo(() => (mine ? slimParty(mine) : null), [mine]);
   if (!id) return null;
-  if (mine?.id === id) return mine;
-  return other?.id === id ? other : null;
+  if (me?.id === id) return me;
+  return parties.get(id);
 }
 
 const celebrated = new Set<string>();

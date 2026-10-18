@@ -6,13 +6,14 @@
 import { useCallback, useEffect, useMemo, useSyncExternalStore } from "react";
 import { api } from "../app/api";
 import { useApp } from "../app/store";
-import type { MatchProposal, ProposalStatus } from "../app/types";
+import type { ClosetView, MatchProposal, ProposalStatus } from "../app/types";
+import { confirmedGone, isLive, missingLive } from "./tradeLogic";
 
 const RANK: Record<ProposalStatus, number> = { open: 0, both_accepted: 1, paid: 2, declined: 2, expired: 2, payment_failed: 2 };
 const progress = (p: MatchProposal) =>
   RANK[p.status] * 10 + (p.sellerDecision !== "pending" ? 1 : 0) + (p.buyerDecision !== "pending" ? 1 : 0);
 
-export const isLive = (p: MatchProposal) => p.status === "open" || p.status === "both_accepted";
+export { isLive };
 
 function merge(before: MatchProposal | undefined, incoming: MatchProposal): MatchProposal {
   if (!before) return incoming;
@@ -31,6 +32,7 @@ interface Snapshot { rows: Record<string, MatchProposal>; justPaid: MatchProposa
 let snap: Snapshot = { rows: {}, justPaid: null };
 const seen = new Map<string, number>(); // first-seen order: tiebreak when the demo clock gives equal createdAt
 let seenSeq = 0;
+const seenAt = new Map<string, number>(); // last time a row arrived (event, closet or api reply)
 const listeners = new Set<() => void>();
 let stopRealtime: (() => void) | null = null;
 
@@ -42,6 +44,7 @@ function apply(list: MatchProposal[], removed: string[] = []) {
   for (const id of removed) delete rows[id];
   for (const p of list) {
     if (!seen.has(p.id)) seen.set(p.id, ++seenSeq);
+    seenAt.set(p.id, Date.now());
     const before = prev[p.id];
     const next = merge(before, before ? ({ ...before, ...p } as MatchProposal) : p);
     if (next === before) continue;
@@ -75,6 +78,32 @@ function subscribeStore(listener: () => void) {
 
 const getSnapshot = () => snap;
 
+// RESET on real Base44 wipes rows with deleteMany, which sends no per-row delete events. A closet always lists
+// every live proposal, so a live row it leaves out is either brand new (stale closet) or deleted. Re-fetch once
+// and drop the rows still missing from a closet fetched after we last saw them. One check at a time, and each
+// id at most every 15 s, so a misbehaving backend can't turn this into a request loop under the rate limit.
+const VERIFY_COOLDOWN_MS = 15_000;
+const lastVerified = new Map<string, number>();
+let verifying = false;
+
+async function verifyMissing(closet: ClosetView) {
+  const now = Date.now();
+  const ids = missingLive(snap.rows, closet.parent.id, closet.proposals.map((p) => p.id))
+    .filter((id) => now - (lastVerified.get(id) ?? 0) > VERIFY_COOLDOWN_MS);
+  if (!ids.length || verifying) return;
+  verifying = true;
+  ids.forEach((id) => lastVerified.set(id, now));
+  try {
+    const startedAt = Date.now();
+    const fresh = await useApp.getState().refreshCloset();
+    if (!fresh || fresh.parent.id !== closet.parent.id) return;
+    const gone = confirmedGone(ids, fresh.proposals.map((p) => p.id), seenAt, startedAt);
+    if (gone.length) apply([], gone);
+  } finally {
+    verifying = false;
+  }
+}
+
 // ---------------------------------------------------------------- hook
 
 export interface ProposalsView {
@@ -95,7 +124,11 @@ export function useProposals(): ProposalsView {
   const fromCloset = useApp((s) => s.closet?.proposals);
   const { rows, justPaid } = useSyncExternalStore(subscribeStore, getSnapshot, getSnapshot);
 
-  useEffect(() => { if (fromCloset?.length) apply(fromCloset); }, [fromCloset]);
+  useEffect(() => {
+    if (fromCloset?.length) apply(fromCloset);
+    const closet = useApp.getState().closet;
+    if (closet && closet.proposals === fromCloset) void verifyMissing(closet);
+  }, [fromCloset]);
 
   const upsert = useCallback((p: MatchProposal) => apply([p]), []);
 
