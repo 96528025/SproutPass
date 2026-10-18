@@ -1,0 +1,406 @@
+/* OWNER: B9. /impact and the /log hub. Pixel rules: 4 px grid, ink outlines, hard shadows, no blur, no gradients,
+   no rounded corners, stepped motion. Sentences use the readable UI font at 16 px+; the pixel fonts are only for
+   short labels and numbers. Tokens come from src/pixel/tokens.css. */
+
+.im { display: flex; flex-direction: column; gap: 20px; }
+
+/* ---------------------------------------------------------------- type */
+.im-p { margin: 0; font-family: var(--font-ui); font-size: 16px; line-height: 22px; }
+.im-p b, .im-eq b { font-weight: 700; }
+.im-label {
+  margin: 0;
+  font-family: var(--font-label);
+  font-size: 12px;
+  line-height: 16px;
+  text-transform: uppercase;
+  letter-spacing: 0;
+}
+.im-note { margin: 12px 0 0; font-family: var(--font-ui); font-size: 16px; line-height: 22px; opacity: 0.85; }
+/* Units keep their real casing ("kg CO₂e", not "KG CO₂E"): the readable face, never uppercased. */
+.im-unit {
+  margin-left: 6px;
+  font-family: var(--font-ui);
+  font-size: 16px;
+  line-height: 20px;
+  font-weight: 700;
+  text-transform: none;
+  letter-spacing: 0;
+  vertical-align: baseline;
+}
+.im-center { display: grid; place-items: center; text-align: center; gap: 12px; padding: 24px 0; }
+
+.im-inline-link {
+  display: inline;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: inherit;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+.im-inline-link:focus-visible { outline: 4px solid var(--sky); outline-offset: 2px; }
+
+/* ---------------------------------------------------------------- counters */
+.im-counter { position: relative; display: flex; flex-direction: column; align-items: center; gap: 8px; text-align: center; }
+.im-num {
+  position: relative;
+  font-family: var(--font-wordmark);
+  font-size: 32px;
+  line-height: 40px;
+  font-variant-numeric: tabular-nums;
+}
+.im-bump {
+  position: absolute;
+  top: -20px;
+  right: -36px;
+  padding: 2px 6px;
+  border: 4px solid var(--ink);
+  background: var(--gold);
+  color: var(--ink);
+  font-family: var(--font-label);
+  font-size: 12px;
+  line-height: 16px;
+  white-space: nowrap;
+  animation: im-bump 2.4s steps(12) forwards;
+  pointer-events: none;
+}
+@keyframes im-bump {
+  0% { transform: translateY(8px); opacity: 0; }
+  10% { transform: translateY(0); opacity: 1; }
+  80% { transform: translateY(-4px); opacity: 1; }
+  100% { transform: translateY(-8px); opacity: 0; }
+}
+
+/* ---------------------------------------------------------------- hero */
+.im-hero .pp__body { background: var(--paper); }
+.im-hero-row { display: flex; align-items: center; justify-content: center; gap: 16px; padding: 8px 0 4px; }
+.im-hero-num { font-size: 48px; line-height: 56px; }
+.im-hero-fx { flex: none; }
+.im-hero-text { margin-top: 12px; text-align: center; }
+
+/* Side by side when each button fits its label on one line (the 430 px handheld and up); stacked on a small phone. */
+.im-links { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; margin-top: 16px; }
+/* Tap targets: the readable bold face at 16 px, at least 48 px tall. */
+.im-link {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 48px;
+  margin: 0;
+  padding: 8px 12px;
+  border: 4px solid var(--ink);
+  border-radius: 0;
+  box-shadow: var(--shadow-hard);
+  background: var(--gold);
+  color: var(--ink);
+  font-family: var(--font-ui);
+  font-size: 16px;
+  line-height: 20px;
+  font-weight: 700;
+  text-align: center;
+  text-decoration: none;
+  text-transform: none;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+.im-link--ghost { background: var(--paper); }
+.im-link:active { transform: translate(4px, 4px); box-shadow: none; }
+.im-link:focus-visible { outline: 4px solid var(--sky); outline-offset: 2px; }
+
+/* ---------------------------------------------------------------- planet tiles */
+.im-tiles { display: flex; flex-direction: column; gap: 12px; }
+.im-tile {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px;
+  border: 4px solid var(--ink);
+  box-shadow: var(--shadow-hard-sm);
+}
+.im-tile--mint { background: var(--mint); }
+.im-tile--sky { background: var(--sky); }
+.im-tile--lav { background: var(--lav); }
+.im-tile-num {
+  position: relative;
+  align-self: flex-start;
+  font-family: var(--font-wordmark);
+  font-size: 28px;
+  line-height: 36px;
+  font-variant-numeric: tabular-nums;
+}
+.im-tile-num .im-bump { right: -44px; }
+.im-eq { margin: 0; font-family: var(--font-ui); font-size: 16px; line-height: 22px; }
+
+/* ---------------------------------------------------------------- money */
+.im-money { display: grid; grid-template-columns: 1fr; gap: 16px; }
+.im-money-cell { display: flex; flex-direction: column; gap: 6px; }
+.im-money-cell + .im-money-cell { padding-top: 16px; border-top: 4px dashed var(--ink); }
+.im-money-num {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  align-self: flex-start;
+  gap: 8px;
+  font-family: var(--font-wordmark);
+  font-size: 28px;
+  line-height: 36px;
+  font-variant-numeric: tabular-nums;
+}
+.im-coin { flex: none; }
+
+/* ---------------------------------------------------------------- you */
+.im-me { display: flex; align-items: center; justify-content: center; gap: 20px; padding-bottom: 12px; }
+.im-me-num { font-size: 40px; line-height: 48px; }
+.im-me-points { display: flex; }
+.im-next {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 12px 0;
+  padding: 12px;
+  border: 4px dashed var(--ink);
+  background: var(--paper);
+}
+
+/* ---------------------------------------------------------------- badges */
+.im-badges { display: flex; flex-wrap: wrap; gap: 8px; }
+.im-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 28px;
+  padding: 2px 8px 2px 6px;
+  border: 4px dashed var(--ink);
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--font-label);
+  font-size: 12px;
+  line-height: 16px;
+  white-space: nowrap;
+  opacity: 0.75;
+}
+.im-badge--earned { border-style: solid; background: var(--gold); opacity: 1; box-shadow: var(--shadow-hard-sm); }
+/* a 12 px pixel rosette: square body + ribbon tails drawn with box-shadow */
+.im-badge-medal {
+  position: relative;
+  flex: none;
+  width: 8px;
+  height: 8px;
+  margin: 0 2px 4px 2px;
+  background: var(--paper);
+  box-shadow:
+    0 -2px 0 var(--ink), 0 2px 0 var(--ink), -2px 0 0 var(--ink), 2px 0 0 var(--ink),
+    -2px 6px 0 var(--red), 2px 6px 0 var(--red);
+}
+.im-badge--earned .im-badge-medal { background: var(--peach); }
+
+.im-badge-guide { display: flex; flex-direction: column; gap: 12px; margin-top: 16px; padding-top: 16px; border-top: 4px dotted var(--ink); }
+.im-badge-row { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; }
+
+/* ---------------------------------------------------------------- leaderboard */
+.im-board { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.im-board-row {
+  display: grid;
+  grid-template-columns: 32px 40px 1fr auto;
+  align-items: center;
+  gap: 8px;
+  padding: 8px;
+  border: 4px solid var(--ink);
+  background: var(--paper);
+}
+.im-board-me { background: var(--gold); box-shadow: var(--shadow-hard-sm); }
+.im-rank {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  background: var(--ink);
+  color: var(--paper);
+  font-family: var(--font-wordmark);
+  font-size: 14px;
+  line-height: 16px;
+}
+.im-board-row:first-child .im-rank { background: var(--gold); color: var(--ink); outline: 4px solid var(--ink); outline-offset: -4px; }
+.im-board-me:first-child .im-rank { background: var(--paper); }
+.im-avatar { display: grid; place-items: center; width: 40px; height: 32px; overflow: hidden; }
+.im-board-name { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.im-name { font-family: var(--font-ui); font-size: 18px; line-height: 22px; font-weight: 700; }
+.im-board-badges { font-family: var(--font-ui); font-size: 16px; line-height: 20px; opacity: 0.85; overflow-wrap: anywhere; }
+.im-board-points {
+  position: relative;
+  font-family: var(--font-wordmark);
+  font-size: 18px;
+  line-height: 24px;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.im-board-points .im-bump { top: -26px; right: -4px; }
+
+/* ---------------------------------------------------------------- rules */
+.im-rules { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+.im-rule { display: grid; grid-template-columns: 56px 1fr; align-items: start; gap: 10px; }
+.im-rule-pts {
+  display: grid;
+  place-items: center;
+  height: 28px;
+  border: 4px solid var(--ink);
+  background: var(--mint);
+  font-family: var(--font-label);
+  font-size: 12px;
+  line-height: 16px;
+}
+
+/* ---------------------------------------------------------------- how we count */
+.im-how {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px;
+  border: 4px solid var(--ink);
+  background: var(--paper);
+  scroll-margin-top: 16px;
+}
+.im-assumptions, .im-sources {
+  margin: 0;
+  padding-left: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-family: var(--font-ui);
+  font-size: 16px;
+  line-height: 22px;
+}
+.im-sources a { color: var(--ink); text-decoration: underline; text-underline-offset: 3px; overflow-wrap: anywhere; }
+.im-sources a:focus-visible { outline: 4px solid var(--sky); outline-offset: 2px; }
+.im-source-use { opacity: 0.85; }
+
+/* ---------------------------------------------------------------- /log hub (RelayLog) */
+.im-hub { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.im-hub-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-height: 120px;
+  padding: 12px;
+  border: 4px solid var(--ink);
+  box-shadow: var(--shadow-hard);
+  color: var(--ink);
+  text-decoration: none;
+}
+.im-hub-card:active { transform: translate(4px, 4px); box-shadow: none; }
+.im-hub-card:focus-visible { outline: 4px solid var(--sky); outline-offset: 2px; }
+.im-hub-card--impact { background: var(--mint); }
+.im-hub-card--agents { background: var(--lav); }
+.im-hub-title { font-family: var(--font-label); font-size: 16px; line-height: 20px; text-transform: uppercase; }
+.im-hub-big { display: flex; flex-wrap: wrap; align-items: baseline; column-gap: 8px; font-family: var(--font-wordmark); font-size: 18px; line-height: 24px; }
+.im-hub-big .im-unit { margin-left: 0; white-space: nowrap; }
+.im-hub-text { margin: 0; font-family: var(--font-ui); font-size: 16px; line-height: 20px; }
+.im-hub-go { margin-top: auto; padding-top: 4px; font-family: var(--font-ui); font-size: 16px; line-height: 22px; font-weight: 700; }
+.im-hub-card .spr { position: absolute; top: 8px; right: 8px; }
+
+.im-live { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+.im-live-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-right: 6px;
+  background: var(--red);
+  box-shadow: 0 0 0 2px var(--ink);
+  animation: im-blink 1.2s steps(2) infinite;
+}
+@keyframes im-blink { 50% { background: var(--paper); } }
+.im-sub { margin: 4px 0 0; font-family: var(--font-ui); font-size: 16px; line-height: 22px; text-align: center; }
+.im-summary {
+  display: block;
+  padding: 4px 0;
+  font-family: var(--font-ui);
+  font-size: 16px;
+  line-height: 22px;
+  cursor: pointer;
+}
+
+/* ---------------------------------------------------------------- big screen (≥ 1024 px, like /agents) */
+/* A full-window layer over the handheld frame (portal to <body>): the projector sees the board, not a phone. */
+.im-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  overflow: auto;
+  overscroll-behavior: contain;
+  background: var(--grass-dark);
+}
+.im-stub { display: flex; flex-direction: column; align-items: center; gap: 12px; padding: 40px 16px; text-align: center; }
+.im--big {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-areas:
+    "hero hero"
+    "planet planet"
+    "families leaders"
+    "mine earn"
+    "how how";
+  gap: 28px 32px;
+  max-width: 1440px;
+  margin: 0 auto;
+  padding: 40px 40px 64px;
+}
+.im--big.im--nome {
+  grid-template-areas:
+    "hero hero"
+    "planet planet"
+    "families leaders"
+    "earn earn"
+    "how how";
+}
+.im--big.im--loading { display: block; max-width: 720px; }
+.im--big > .im-hero { grid-area: hero; }
+.im--big > .im-planet { grid-area: planet; }
+.im--big > .im-families { grid-area: families; }
+.im--big > .im-leaders { grid-area: leaders; }
+.im--big > .im-mine { grid-area: mine; }
+.im--big > .im-earn { grid-area: earn; }
+.im--big > .im-how { grid-area: how; }
+/* panels in a row share its height */
+.im--big > .pp { display: flex; flex-direction: column; }
+.im--big > .pp > .pp__body { flex: 1; }
+
+.im--big .im-p, .im--big .im-eq, .im--big .im-note, .im--big .im-assumptions, .im--big .im-sources {
+  font-size: 20px;
+  line-height: 28px;
+}
+.im--big .im-label { font-size: 16px; line-height: 20px; }
+.im--big .im-unit { font-size: 20px; line-height: 24px; }
+.im--big .im-hero-row { gap: 40px; padding: 16px 0 8px; }
+.im--big .im-hero-num { font-size: 80px; line-height: 88px; }
+.im--big .im-hero-text { max-width: 860px; margin-left: auto; margin-right: auto; }
+.im--big .im-links { grid-template-columns: repeat(auto-fit, minmax(200px, 260px)); justify-content: center; }
+.im--big .im-link { font-size: 18px; line-height: 24px; min-height: 52px; }
+.im--big .im-tiles { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 20px; }
+.im--big .im-tile { padding: 16px; gap: 10px; }
+.im--big .im-tile-num, .im--big .im-money-num { font-size: 40px; line-height: 48px; }
+.im--big .im-money { grid-template-columns: 1fr 1fr; gap: 24px; }
+.im--big .im-money-cell + .im-money-cell { padding-top: 0; padding-left: 24px; border-top: 0; border-left: 4px dashed var(--ink); }
+.im--big .im-me-num { font-size: 56px; line-height: 64px; }
+.im--big .im-name { font-size: 22px; line-height: 28px; }
+.im--big .im-board-badges { font-size: 18px; line-height: 24px; }
+.im--big .im-board-points { font-size: 24px; line-height: 32px; }
+.im--big .im-rules { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 12px 24px; }
+.im--big .im-badge-guide { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 16px 24px; }
+.im--big .im-how { padding: 24px; }
+
+@media (max-width: 360px) {
+  .im-hub, .im-links { grid-template-columns: 1fr; }
+  .im-hero-num { font-size: 40px; line-height: 48px; }
+  .im-tile-num, .im-money-num { font-size: 22px; line-height: 28px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .im-bump { animation: none; }
+  .im-live-dot { animation: none; }
+  .im-link:active, .im-hub-card:active { transform: none; }
+}
