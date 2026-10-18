@@ -86,7 +86,8 @@ class ClosetBrain:
         return s
 
     def pay_link(self, proposal_id: str) -> str:
-        return f"{self.app_url or 'https://app'}/trade/{proposal_id}?as={self.parent_id}"
+        # The app picks the family by its seed key (?as=mina), not by the Parent id.
+        return f"{self.app_url or 'https://app'}/trade/{proposal_id}?as={self.parent_name}"
 
     @staticmethod
     def _open_nudge(state: Dict[str, Any]) -> Optional[Dict[str, Any]]:
@@ -419,6 +420,29 @@ def attach(agent: Agent, brain: ClosetBrain) -> None:
             await brain.client.api("registerAgent", parentId=brain.parent_id, agentAddress=agent.address)
         except Base44Error as e:
             ctx.logger.warning(f"registerAgent: {e} (B's seed can copy the address instead)")
+
+    # ---- parent id check -----------------------------------------------------
+    # B's RESET keeps Parent ids stable now, but if the row is ever re-created (or the agent started against an
+    # older seed) the cached id goes stale and claimInbox silently returns nothing. Re-check by name once a minute.
+    @agent.on_interval(period=60.0)
+    async def _recheck_parent(ctx: Context):
+        if os.environ.get(f"PARENT_ID_{brain.parent_name.upper()}"):
+            return  # pinned by env: trust it
+        try:
+            r = await brain.client.api("lookupParent", name=brain.parent_name)
+        except Base44Error as e:
+            ctx.logger.warning(f"lookupParent: {e}")
+            return
+        fresh = (r or {}).get("id")
+        if not fresh or fresh == brain.parent_id:
+            return
+        ctx.logger.info(f"parent id changed {brain.parent_id} → {fresh} (demo reset); re-registering")
+        brain.parent_id = fresh
+        brain.convo = {"step": "idle"}
+        try:
+            await brain.client.api("registerAgent", parentId=fresh, agentAddress=agent.address)
+        except Base44Error as e:
+            ctx.logger.warning(f"registerAgent: {e}")
 
     # ---- inbox loop (Part C §4) --------------------------------------------
     @agent.on_interval(period=1.0)

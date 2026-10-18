@@ -10,7 +10,7 @@
 //              B's NudgeDialog owns the real flow; we just forward the choice.
 //   onOpenTrade optional: tapped "SEE TRADE" when a proposal is open
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { DialogBox, Sprite } from "../app/ui"; // B's shim today; re-exports A's kit once it lands
 import { type AgentNudge, countOpenProposals, listOpenNudges, listPetLines, subscribe } from "./cApi";
 import "./agent.css";
@@ -21,6 +21,10 @@ export interface AgentPetProps {
   onChoice?: (choice: "sell" | "keep" | "later", nudge: AgentNudge) => void;
   onOpenTrade?: () => void;
 }
+
+// Realtime does the work; the poll is only a backstop (Base44's rate limit is shared by every tab and function).
+const POLL_MS = 30_000;
+const visible = () => typeof document === "undefined" || document.visibilityState !== "hidden";
 
 function templateFor(pet: string, nudge: AgentNudge | null, proposals: number): string {
   if (proposals > 0) return "Our pets found a match! Open the trade to decide — nothing is charged until you both accept.";
@@ -36,15 +40,24 @@ export function AgentPet({ parentId, pet, onChoice, onOpenTrade }: AgentPetProps
   const [proposals, setProposals] = useState(0);
   const [line, setLine] = useState<string | null>(null);
 
-  const refresh = useCallback(async () => {
-    try {
-      const [nudges, n, lines] = await Promise.all([listOpenNudges(parentId), countOpenProposals(parentId), listPetLines(parentId, 1)]);
-      setNudge(nudges[0] ?? null);
-      setProposals(n);
-      setLine(lines[0]?.text ?? null);
-    } catch {
-      /* offline */
-    }
+  // At most one refresh in flight plus one queued: a burst of realtime events costs two reads, not twenty.
+  const busy = useRef<Promise<void> | null>(null);
+  const again = useRef(false);
+  const refresh = useCallback(async (): Promise<void> => {
+    if (busy.current) { again.current = true; return busy.current; }
+    busy.current = (async () => {
+      try {
+        const [nudges, n, lines] = await Promise.all([listOpenNudges(parentId), countOpenProposals(parentId), listPetLines(parentId, 1)]);
+        setNudge(nudges[0] ?? null);
+        setProposals(n);
+        setLine(lines[0]?.text ?? null);
+      } catch {
+        /* offline / rate limited: the next event or poll retries */
+      }
+    })();
+    await busy.current;
+    busy.current = null;
+    if (again.current) { again.current = false; await refresh(); }
   }, [parentId]);
 
   // The shell's PET tab asks "pet:open"; preventDefault tells it we handled it.
@@ -56,17 +69,22 @@ export function AgentPet({ parentId, pet, onChoice, onOpenTrade }: AgentPetProps
 
   useEffect(() => {
     void refresh();
-    const u1 = subscribe("AgentNudge", () => void refresh());
-    const u2 = subscribe("MatchProposal", () => void refresh());
-    const u3 = subscribe("PetLine", () => void refresh());
-    const t = setInterval(refresh, 5_000);
+    // Only this family's rows matter (the subscription sees every family's changes).
+    const mine = (d: any) => !d || d.parentId === parentId || d.buyerId === parentId || d.sellerId === parentId;
+    const u1 = subscribe<any>("AgentNudge", (e) => { if (mine(e?.data)) void refresh(); });
+    const u2 = subscribe<any>("MatchProposal", (e) => { if (mine(e?.data)) void refresh(); });
+    const u3 = subscribe<any>("PetLine", (e) => { if (mine(e?.data)) void refresh(); });
+    const t = setInterval(() => { if (visible()) void refresh(); }, POLL_MS);
+    const onVisible = () => { if (visible()) void refresh(); };   // phone screen back on: catch up at once
+    document.addEventListener("visibilitychange", onVisible);
     return () => {
       u1();
       u2();
       u3();
       clearInterval(t);
+      document.removeEventListener("visibilitychange", onVisible);
     };
-  }, [refresh]);
+  }, [refresh, parentId]);
 
   const attention = Boolean(nudge) || proposals > 0;
   const text = line ?? templateFor(pet.name, nudge, proposals);
