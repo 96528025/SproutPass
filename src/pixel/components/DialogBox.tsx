@@ -13,6 +13,8 @@ export interface DialogBoxProps {
   lines: string[];
   /** Fires after the last line is dismissed, or with the chosen value. */
   onDone?: (value?: string) => void;
+  /** Fires with the chosen value only (C's AgentPet uses this); onDone still fires too. */
+  onChoice?: (value: string) => void;
   choices?: DialogChoice[];
   /** Portrait node (A2's <Sprite>, C's pet). Falls back to a lettered box. */
   portrait?: ReactNode;
@@ -31,6 +33,7 @@ export function DialogBox({
   speaker,
   lines,
   onDone,
+  onChoice,
   choices,
   portrait,
   inline,
@@ -98,9 +101,10 @@ export function DialogBox({
   const pick = useCallback(
     (value: string) => {
       sfx.play("select");
+      onChoice?.(value);
       onDone?.(value);
     },
-    [onDone],
+    [onChoice, onDone],
   );
 
   // keyboard: space/enter advance; arrows move the cursor
