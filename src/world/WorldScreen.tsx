@@ -1,5 +1,7 @@
-// A4: /world. Lawn + radar + my avatar + other parents sliding between rings, real GPS feeding C's updatePresence,
+// A4: /world. A's pixelated real map (Leaflet, follows me at zoom 17; ZONE shows the Los Angeles zone) + radar
+// rings at real metres + my avatar + other parents sliding between rings, real GPS feeding C's updatePresence,
 // the ?demo=1 walk (C's demoWalk), and A5's EncounterScene with C's <AgentBubbles> when C's useEncounter fires.
+// Only my own position is a lat/lng on the map; other parents are placed by bearing + band and never get coordinates.
 // Wired to the real backend (W2): "me" is B's closet.parent (real Base44 id; ?as= is the seed key in B's store),
 // the peer card comes from getParties (Agent 2's usePublicParent), the proposal from closet.proposals.
 // Not mounted here (B's Shell owns them, once for every screen): BottomBar, MuteToggle, the Trade window
@@ -7,7 +9,7 @@
 // Rate budget (Base44's Free plan is shared by the whole team): radar every 6 s, presence keepalive every 10 s,
 // a demo walk of ~6 calls; and while I have a trade open (or its Celebration is up) every loop here pauses: no radar,
 // no presence, no hold ticks, no encounter poll (realtime still listens).
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { AgentBubbles } from "@/agent/AgentBubbles";
 import { useEncounter } from "@/agent/useEncounter";
 import type { Encounter } from "@/agent/cApi";
@@ -20,20 +22,22 @@ import { PixelButton } from "@/pixel/components/PixelButton";
 import { Sprite } from "@/pixel/components/Sprite";
 import { Toast } from "@/pixel/components/Toast";
 import { sfx } from "@/pixel/sfx";
-import { Lawn } from "@/world/Lawn";
+import { HudButton } from "@/world/HudButton";
+import { FOLLOW_ZOOM, MapLayer, metersPerPixel } from "@/world/MapLayer";
 import { NearbySprites } from "@/world/NearbySprites";
 import { Radar } from "@/world/Radar";
 import { asSprite, demoFix, demoTargetKey, seedName, seedParent, type ScenePerson } from "@/world/people";
-import { band as bandOf } from "../../base44/shared/c/geo.ts";
+import { band as bandOf, destination } from "../../base44/shared/c/geo.ts";
 import { useCelebrationOpen } from "@/world/celebrationOpen";
 import { useDemo, useQueryParent } from "@/world/query";
 import { useDemoWalk } from "@/world/useDemoWalk";
 import { useGps } from "@/world/useGps";
 import { BAND_LABEL, useNearby, type NearbyPin } from "@/world/useNearby";
+import { useZone } from "@/world/useZone";
 import "./world.css";
 
-const CHIP_ROW = 40;
 const HINT_KEY = "relay.worldHint";
+const GLIDE_MS = 2500; // = useDemoWalk's step interval: the map pans through a 20 m step instead of hopping
 
 function useFirstEntryHint(): [boolean, () => void] {
   const [show, setShow] = useState(() => {
@@ -50,7 +54,31 @@ function useFirstEntryHint(): [boolean, () => void] {
       /* ignore */
     }
   }, []);
-  return [show, () => setShow(false)];
+  const hide = useCallback(() => setShow(false), []); // stable, or Toast's timer restarts on every render
+  return [show, hide];
+}
+
+/** `value` eased toward each new target over `ms` (linear, ~8 updates a second); null passes straight through. */
+function useGlide(value: number | null, ms: number): number | null {
+  const [shown, setShown] = useState(value);
+  const from = useRef(value);
+  useEffect(() => {
+    const start = from.current;
+    if (value === null || start === null || start === value) {
+      from.current = value;
+      setShown(value);
+      return;
+    }
+    const t0 = Date.now();
+    const id = window.setInterval(() => {
+      const k = Math.min(1, (Date.now() - t0) / ms);
+      from.current = start + (value - start) * k;
+      setShown(from.current);
+      if (k >= 1) window.clearInterval(id);
+    }, 120);
+    return () => window.clearInterval(id);
+  }, [value, ms]);
+  return shown;
 }
 
 /** "trade:paid" (B's PayButton / TradeWindow) → true for a few seconds, until the Celebration is up. */
@@ -100,6 +128,20 @@ export function WorldScreen() {
   const [discoverableSet, setDiscoverable] = useState<boolean | null>(null);
   const discoverable = discoverableSet ?? me?.discoverable ?? true;
   const [hint, hideHint] = useFirstEntryHint();
+  const [zoomedOut, setZoomedOut] = useState(false);
+
+  // Radar centre in stage coordinates, whole pixels so sprites never land on half-pixels.
+  const stageRef = useRef<HTMLDivElement>(null);
+  const [centre, setCentre] = useState({ cx: 195, cy: 370 });
+  useLayoutEffect(() => {
+    const el = stageRef.current;
+    if (!el) return;
+    const measure = () => setCentre({ cx: Math.round(el.clientWidth / 2), cy: Math.round(el.clientHeight / 2) });
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
 
   // A trade of mine is open (the Trade window is up, or one tap away) or was just paid: /world goes quiet.
   const liveTrade =
@@ -139,24 +181,24 @@ export function WorldScreen() {
       ...(seed ? { name: seed.name, sprite: seed.avatar.sprite, pet: seed.pet.sprite } : {}),
     };
   }, [walk.active, walk.targetId, walk.distanceM, targetKey]);
-  const { raw, items } = useNearby(meId, { poll: !paused && !walk.active, pin });
-  nearbyRef.current = raw;
   const simFix = useMemo(() => demoFix(meKey), [meKey]);
   const gps = useGps({ parentId: meId, simulated: demo, simFix, discoverable, heartbeat: !walk.owns && !paused });
-  const peer = usePeer(peerId, raw);
 
-  // Radar centre in stage coordinates, whole pixels so sprites never land on half-pixels.
-  const stageRef = useRef<HTMLDivElement>(null);
-  const [centre, setCentre] = useState({ cx: 195, cy: 370 });
-  useLayoutEffect(() => {
-    const el = stageRef.current;
-    if (!el) return;
-    const measure = () => setCentre({ cx: Math.round(el.clientWidth / 2), cy: Math.round(el.clientHeight / 2) });
-    measure();
-    const ro = new ResizeObserver(measure);
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, []);
+  // My position on the map: the real fix, or in ?demo=1 the simulated one. C's demoWalk starts the walker due north
+  // of the target's demo spot and steps straight toward it, so "distanceM north of the target" is where C has me
+  // (and where C keeps me after the walk); before any walk it is my family's demo spot.
+  const glideM = useGlide(demo ? walk.distanceM : null, GLIDE_MS);
+  const here = useMemo(() => {
+    if (demo) return glideM !== null ? destination(demoFix(targetKey), 0, glideM) : simFix;
+    return gps.lat !== null && gps.lng !== null ? { lat: gps.lat, lng: gps.lng } : null;
+  }, [demo, glideM, targetKey, simFix, gps.lat, gps.lng]);
+  const mpp = metersPerPixel(here?.lat ?? 34.07, FOLLOW_ZOOM);
+  const { zone, inside } = useZone(here);
+
+  const layout = useMemo(() => ({ mpp, halfW: centre.cx - 48, halfH: centre.cy - 56 }), [mpp, centre.cx, centre.cy]);
+  const { raw, items } = useNearby(meId, { poll: !paused && !walk.active, pin, layout });
+  nearbyRef.current = raw;
+  const peer = usePeer(peerId, raw);
 
   // Facing = last movement direction; the demo walk makes the avatar stride too.
   const [facing, setFacing] = useState<"left" | "right">("right");
@@ -168,6 +210,8 @@ export function WorldScreen() {
   const distLabel = distM !== undefined && distM !== null ? `${distM} M` : target ? BAND_LABEL[target.band] : "…";
   const targetName = seedName(targetKey).toUpperCase();
 
+  // Quiet HUD: a chip only when something needs saying. A good real fix shows nothing; SIMULATED GPS is required
+  // by rule 5 whenever positions are simulated.
   const gpsChip =
     gps.status === "denied" || gps.status === "unavailable" ? (
       <Chip tone="red">NO GPS</Chip>
@@ -175,36 +219,55 @@ export function WorldScreen() {
       <Chip tone="lav">SIMULATED GPS</Chip>
     ) : gps.status === "weak" ? (
       <Chip tone="gold">WEAK GPS — STEP OUTSIDE</Chip>
-    ) : gps.status === "ok" && gps.accuracyM !== null ? (
-      <Chip tone="mint">GPS ±{Math.round(gps.accuracyM)}M</Chip>
-    ) : (
+    ) : gps.status === "ok" ? null : (
       <Chip tone="paper">FINDING GPS…</Chip>
     );
 
   return (
     <div className="ws" style={{ "--cx": `${centre.cx}px`, "--cy": `${centre.cy}px` } as React.CSSProperties}>
       <div className="ws__stage" ref={stageRef} style={{ "--cx": `${centre.cx}px`, "--cy": `${centre.cy}px` } as React.CSSProperties}>
-        <Lawn cx={centre.cx} cy={centre.cy + CHIP_ROW} />
-        <Radar />
-        <NearbySprites items={items} />
-        {meCard && (
-          <div className={`ws__me ${discoverable ? "" : "ws__me--hidden"}`} data-me={meId ?? meKey}>
-            <Sprite name={asSprite(meCard.avatar.sprite, "parent_a")} anim={moving ? "walk" : "idle"} scale={4} facing={facing} />
-            <span className="name">{meCard.name}</span>
-          </div>
+        <MapLayer
+          me={here}
+          zoomedOut={zoomedOut}
+          zone={zone}
+          avatar={asSprite(meCard?.avatar.sprite, "parent_a")}
+          noFix={!demo && (gps.status === "denied" || gps.status === "unavailable")}
+        />
+        {!zoomedOut && (
+          <>
+            <Radar mpp={mpp} />
+            <NearbySprites items={items} />
+            {meCard && (
+              <div className={`ws__me ${discoverable ? "" : "ws__me--hidden"}`} data-me={meId ?? meKey}>
+                <Sprite name={asSprite(meCard.avatar.sprite, "parent_a")} anim={moving ? "walk" : "idle"} scale={5} facing={facing} />
+              </div>
+            )}
+          </>
         )}
       </div>
 
-      {/* row 1 is exactly 40px and its right 52px belong to A3's MuteToggle; the stale-GPS chip takes the GPS chip's slot */}
+      {/* row 1 is exactly 40px; its right 132px belong to the HUD buttons and B's MuteToggle (which sits up in the demo
+          panel with ?demo=1, so the HUD moves over by one slot). The zone chip lives in zone view only; the stale-GPS
+          chip takes the GPS chip's slot. */}
       <div className="ws__chips">
         {liveTrade ? <Chip tone="lav">TRADE OPEN · RADAR PAUSED</Chip> : gps.paused ? <Chip tone="gold">SCREEN LOCKED? GPS PAUSED</Chip> : gpsChip}
         {!meId && <Chip tone="paper">LOADING…</Chip>}
+        {zoomedOut && inside !== null && (inside ? <Chip tone="mint">IN LA</Chip> : <Chip tone="gold">OUTSIDE LA</Chip>)}
       </div>
-      <div className="ws__disc">
-        <PixelButton small variant={discoverable ? "primary" : "ghost"} aria-pressed={discoverable} onClick={() => setDiscoverable(!discoverable)}>
-          DISCOVERABLE
-        </PixelButton>
-      </div>
+      <HudButton
+        slot={demo ? 0 : 1}
+        glyph={discoverable ? "eyeOn" : "eyeOff"}
+        on={discoverable}
+        label={discoverable ? "Discoverable. Tap to hide" : "Hidden. Tap to be discoverable"}
+        onClick={() => setDiscoverable(!discoverable)}
+      />
+      <HudButton
+        slot={demo ? 1 : 2}
+        glyph={zoomedOut ? "zoneOut" : "zone"}
+        on={zoomedOut}
+        label={zoomedOut ? "Back to walking view" : "Show the Los Angeles zone"}
+        onClick={() => setZoomedOut((z) => !z)}
+      />
 
       {demo && (
         <div className="ws__walk">
@@ -225,7 +288,7 @@ export function WorldScreen() {
         </div>
       )}
 
-      {hint && <Toast text="KEEP THIS SCREEN OPEN WHILE YOU WALK" duration={4000} onHide={hideHint} />}
+      {hint && !demo && <Toast text="KEEP THIS SCREEN OPEN WHILE YOU WALK" duration={4000} onHide={hideHint} />}
 
       {encounter && !settled && me && peer && (
         <EncounterLayer key={encounter.id} encounter={encounter} proposalId={proposalId} me={me} peer={peer} onDone={dismiss} />
