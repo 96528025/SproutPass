@@ -1,99 +1,50 @@
 /* OWNER: B4. App shell + closet styles. Pixel rules (Part D): 4 px grid, hard ink shadows,
-   no blur, no gradients, no rounded corners. Palette mirrors A's tokens.css until it lands. */
+   no blur, no gradients, no rounded corners.
+   A's src/pixel/tokens.css is the design source of truth (palette --ink … --mint, grid, z-layers, fonts, resets;
+   main.tsx loads it first). B adds only two aliases for its own rules below. */
 :root {
-  --ink: #2B2140;
-  --paper: #FFF4D6;
-  --cream: #FFE8B8;
-  --grass: #7BC96F; --grass-dark: #4E9A57;
-  --path: #E9C38A;
-  --sky: #8FD3FF;
-  --peach: #FFB38A;
-  --pink: #FF8FAB;
-  --gold: #FFC83D;
-  --lav: #B9A3FF;
-  --red: #E85D5D;
-  --mint: #8EE3C8;
-  --label: Silkscreen, monospace;
-  --body: "Pixelify Sans", monospace;
+  --label: var(--font-label);
+  --body: var(--font-ui);
 }
 
-* { box-sizing: border-box; }
-html, body, #root { margin: 0; height: 100%; }
-body {
-  background: var(--grass);
-  color: var(--ink);
-  font-family: var(--body);
-  font-size: 16px;
-  -webkit-font-smoothing: none;
-  image-rendering: pixelated;
-}
 button, input, textarea, select { font: inherit; color: inherit; }
 button { border-radius: 0; }
 
-/* ---------------------------------------------------------------- frame */
-.b-frame { height: 100%; display: flex; justify-content: center; }
-.b-handheld {
-  position: relative;
-  width: 100%;
-  height: 100%;
+/* ---------------------------------------------------------------- frame
+   Inside A's HandheldFrame (src/world/shell.css): .b-app is exactly one screen tall (var(--screen-h), minus the
+   status-bar inset on phones): demo panel on top, the routed screen below it. A's BottomBar, MuteToggle, dialogs
+   and overlays are position:fixed to the handheld screen (.b-overlays is only a DOM group). */
+.b-app {
   display: flex;
   flex-direction: column;
+  height: calc(var(--screen-h, 100dvh) - var(--safe-top, 0px));
   background: var(--sky);
-  overflow: hidden;
 }
-@media (min-width: 601px) {
-  body {
-    /* 2-colour dither, drawn with an 8 px tile (no gradients) */
-    background: var(--grass-dark) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='8' shape-rendering='crispEdges'%3E%3Crect width='4' height='4' fill='%237BC96F'/%3E%3Crect x='4' y='4' width='4' height='4' fill='%237BC96F'/%3E%3C/svg%3E");
-  }
-  .b-frame { align-items: center; padding: 24px 0; }
-  .b-handheld {
-    width: 430px;
-    height: min(100%, 932px);
-    border: 8px solid var(--ink);
-    box-shadow: 8px 8px 0 var(--ink);
-  }
-}
-
 .b-main {
   flex: 1;
+  min-height: 0;
   overflow-y: auto;
-  padding: 16px 16px calc(24px + var(--dock-h, 0px));
+  overscroll-behavior: contain;
+  padding: 16px 16px calc(var(--bottom-bar) + 80px + var(--dock-h, 0px)); /* scrolls clear of C's corner pet */
   display: flex;
   flex-direction: column;
   gap: 16px;
+  scrollbar-width: none; /* like A's .hf__scroll */
 }
-
-/* ---------------------------------------------------------------- tab bar */
-.b-tabbar {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  border-top: 4px solid var(--ink);
-  background: var(--paper);
+.b-main::-webkit-scrollbar, .b-main--bleed::-webkit-scrollbar { display: none; }
+/* no demo panel above: the top-right 48 px belong to A's MuteToggle */
+.b-app--no-demo > .b-main:not(.b-main--bleed) { padding-top: 48px; }
+/* A's title and world fill the screen. They size themselves with var(--screen-h) / --safe-top, so those become
+   "the space under the demo panel" here (the column above already took the status-bar inset). */
+.b-main--bleed {
+  display: block;
+  padding: 0;
+  --screen-h: 100%;
+  --safe-top: 0px;
 }
-.b-tab {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 4px;
-  min-height: 64px;
-  padding: 8px 4px;
-  border: 0;
-  border-right: 4px solid var(--ink);
-  background: var(--paper);
-  color: var(--ink);
-  font-family: var(--label);
-  font-size: 12px;
-  text-transform: uppercase;
-  text-decoration: none;
-  cursor: pointer;
-}
-.b-tab:last-child { border-right: 0; }
-.b-tab.active { background: var(--gold); }
-.b-tab:focus-visible { outline: 4px solid var(--lav); outline-offset: -8px; }
-.b-tab-glyph { font-size: 20px; line-height: 20px; }
-.b-tab-pet { background: var(--lav); }
+.b-overlays { display: contents; }
+/* A's Celebration (fixed, --z-overlay) plays over the trade window that just got paid (--z-modal). */
+.b-overlays > .cel { z-index: calc(var(--z-modal) + 1); }
 
 /* ---------------------------------------------------------------- shared bits */
 .b-label { font-family: var(--label); text-transform: uppercase; font-size: 12px; letter-spacing: 0; }
@@ -135,6 +86,23 @@ button { border-radius: 0; }
 .b-parent-card:hover, .b-parent-card:focus-visible { background: var(--gold); outline: none; }
 .b-parent-card:active { transform: translateY(4px); box-shadow: 0 0 0 var(--ink); }
 .b-parent-name { font-family: var(--label); font-size: 20px; text-transform: uppercase; }
+/* compact row (A's TitleScreen "WHO ARE YOU?" panel) */
+.b-picker-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.b-parent-mini {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  padding: 8px 4px;
+  background: var(--paper);
+  border: 4px solid var(--ink);
+  box-shadow: 4px 4px 0 var(--ink);
+  cursor: pointer;
+}
+.b-parent-mini:hover, .b-parent-mini:focus-visible { background: var(--gold); outline: none; }
+.b-parent-mini:active { transform: translate(4px, 4px); box-shadow: none; }
+.b-parent-mini-name { font-family: var(--label); font-size: 16px; line-height: 20px; text-transform: uppercase; }
 
 /* ---------------------------------------------------------------- demo panel */
 .b-demo {
@@ -143,7 +111,7 @@ button { border-radius: 0; }
   padding: 8px 12px;
   border-bottom: 4px solid var(--ink);
 }
-.b-demo-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.b-demo-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding-right: 44px; /* A's MuteToggle */ }
 .b-demo-toggle {
   background: none; border: 0; color: var(--paper); cursor: pointer; padding: 4px 0;
   font-family: var(--label); font-size: 12px; text-transform: uppercase;
@@ -202,7 +170,7 @@ button { border-radius: 0; }
   pointer-events: none;
 }
 .b-slot-icon { position: relative; display: grid; place-items: center; }
-.b-slot-icon img { border: 0 !important; background: transparent !important; }
+.b-slot-icon .item-icon { border: 0; background: transparent; }
 .b-badge {
   position: absolute;
   left: 0;
@@ -249,7 +217,7 @@ button { border-radius: 0; }
   background: var(--cream);
   border: 4px solid var(--ink);
 }
-.b-card-icon img { border: 0 !important; background: transparent !important; }
+.b-card-icon .item-icon { border: 0; background: transparent; }
 .b-facts { display: grid; grid-template-columns: auto 1fr; gap: 4px 12px; margin: 0; }
 .b-facts dt { font-family: var(--label); font-size: 12px; text-transform: uppercase; padding-top: 2px; }
 .b-facts dd { margin: 0; }
@@ -262,15 +230,9 @@ button { border-radius: 0; }
   text-transform: uppercase;
 }
 
-/* ---------------------------------------------------------------- nudge dialog dock */
-.b-dock {
-  position: absolute;
-  left: 12px;
-  right: 12px;
-  bottom: 76px;
-  z-index: 40;
-}
-.b-dock-scrim { position: absolute; inset: 0; z-index: 39; background: rgba(43, 33, 64, 0.35); }
+/* ---------------------------------------------------------------- nudge dialog
+   A's DialogBox is position:fixed above the bottom bar; the wrapper is only there to measure it (--dock-h). */
+.b-nudge { display: contents; }
 
 /* ---------------------------------------------------------------- listing flow */
 .b-steps { display: flex; justify-content: center; gap: 12px; }
@@ -366,5 +328,5 @@ button { border-radius: 0; }
 
 @media (prefers-reduced-motion: reduce) {
   .b-spin { animation: none; }
-  .b-parent-card:active, .b-option:active { transform: none; }
+  .b-parent-card:active, .b-parent-mini:active, .b-option:active { transform: none; }
 }

@@ -2,20 +2,24 @@
 // Timeline (steps()-timed, see encounter.css): 0.0 s flash + "alert" + "!" pops, 0.4 s parents walk to the centre
 // 96 px apart, 1.4 s pets hop out 48 px apart, then talk/idle under C's `bubbles` slot. status "proposed" slams the
 // banner and hands over to B after 1.2 s; "no_match" shrugs and asks to close. A ghost × always dismisses.
+// me / peer are the real parents (closet.parent, getParties' PublicParty): see world/people.ts.
 import { useCallback, useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { Sprite } from "@/pixel/components/Sprite";
 import { DialogBox } from "@/pixel/components/DialogBox";
 import { sfx } from "@/pixel/sfx";
-import type { Encounter, Parent } from "@/mocks/a5";
+import { asSprite, type SceneEncounter, type ScenePerson } from "@/world/people";
 import "./encounter.css";
 
 export interface EncounterSceneProps {
-  encounter: Encounter;
-  me: Parent;
-  peer: Parent;
+  encounter: SceneEncounter;
+  me: ScenePerson;
+  peer: ScenePerson;
   /** Slot for C's <AgentBubbles>; rendered centred above the pets. */
   bubbles?: ReactNode;
-  /** True while a bubble is typing (pets "talk"). Defaults to encounter.status === "talking". */
+  /**
+   * True while a bubble is typing (pets "talk"). Defaults to encounter.status === "talking". While it is true the
+   * "proposed" hand-off waits, so the pets finish their lines before the TRADE PROPOSAL! banner.
+   */
   talking?: boolean;
   onProposed: (proposalId: string) => void;
   onClosed: () => void;
@@ -81,16 +85,18 @@ export function EncounterScene({ encounter, me, peer, bubbles, talking, onPropos
     };
   }, [encounter.id, later]);
 
-  // status transitions (not renders): "proposed" waits for the pets to be out
+  const isTalking = talking ?? status === "talking";
+
+  // status transitions (not renders): "proposed" waits for the pets to be out and done talking
   useEffect(() => {
-    if (status !== "proposed" || phase < 3 || fired.current.proposed) return;
+    if (status !== "proposed" || phase < 3 || isTalking || fired.current.proposed) return;
     fired.current.proposed = true;
     setBanner(true);
     setCelebrate(true);
     sfx.play("accept");
     later(() => setCelebrate(false), 1000);
     later(() => onProposedRef.current(proposalIdRef.current ?? ""), 1200);
-  }, [status, phase, later]);
+  }, [status, phase, isTalking, later]);
 
   // Esc dismisses too, so a stuck demo can always recover
   useEffect(() => {
@@ -100,7 +106,6 @@ export function EncounterScene({ encounter, me, peer, bubbles, talking, onPropos
     return () => window.removeEventListener("keydown", onKey);
   }, [status]);
 
-  const isTalking = talking ?? status === "talking";
   const petAnim = phase === 2 || celebrate ? "hop" : isTalking && status !== "no_match" && !banner ? "talk" : "idle";
   const walking = phase === 1;
   const out = phase >= 1;
@@ -168,10 +173,10 @@ export function EncounterScene({ encounter, me, peer, bubbles, talking, onPropos
 
       {noMatch && (
         <DialogBox
-          speaker={{ name: me.pet.name, sprite: me.pet.sprite }}
+          speaker={{ name: me.pet.name, sprite: asSprite(me.pet.sprite, "pet_a") }}
           lines={["Nothing fits today — maybe next walk!"]}
           choices={[{ label: "OK", value: "ok" }]}
-          portrait={<Sprite name={me.pet.sprite} anim="idle" scale={3} />}
+          portrait={<Sprite name={asSprite(me.pet.sprite, "pet_a")} anim="idle" scale={3} />}
           onDone={() => onClosedRef.current()}
         />
       )}
@@ -187,7 +192,7 @@ function ParentSprite({
   facing,
   alert,
 }: {
-  who: Parent;
+  who: ScenePerson;
   side: "me" | "peer";
   out: boolean;
   anim: "walk" | "idle";
@@ -201,7 +206,7 @@ function ParentSprite({
           <Sprite name="alert_bubble" scale={1} />
         </div>
       )}
-      <Sprite name={who.avatar.sprite} anim={anim} scale={PARENT_SCALE} facing={facing} />
+      <Sprite name={asSprite(who.avatar.sprite, side === "me" ? "parent_a" : "parent_b")} anim={anim} scale={PARENT_SCALE} facing={facing} />
       <div className="enc__name px-label-12">{who.name}</div>
     </div>
   );
@@ -214,7 +219,7 @@ function PetSprite({
   anim,
   shrug,
 }: {
-  who: Parent;
+  who: ScenePerson;
   side: "me" | "peer";
   out: boolean;
   anim: "hop" | "talk" | "idle";
@@ -223,7 +228,7 @@ function PetSprite({
   return (
     <div className={`enc__pet enc__pet--${side} ${out ? "is-out" : ""}`}>
       <div className={shrug ? "enc__shrug" : undefined}>
-        <Sprite name={who.pet.sprite} anim={anim} scale={PET_SCALE} facing={side === "me" ? "right" : "left"} />
+        <Sprite name={asSprite(who.pet.sprite, side === "me" ? "pet_a" : "pet_b")} anim={anim} scale={PET_SCALE} facing={side === "me" ? "right" : "left"} />
       </div>
       <div className="enc__name enc__name--pet px-label-12">{who.pet.name}</div>
     </div>

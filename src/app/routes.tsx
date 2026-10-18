@@ -1,9 +1,10 @@
-// OWNER: B4. Every route in the app. A owns / and /world, Agent 2 owns /trade/:id and /log
-// (mounted from their files as soon as they exist; placeholders until then).
+// OWNER: B4. Every route in the app. A owns / and /world (+ the dev pages /kit, /dev/art, /dev/encounter),
+// Agent 2 owns /trade/:id and /log (mounted from their files, lazily; placeholders if a file crashes).
 import { Route, Routes, useNavigate, useParams } from "react-router-dom";
 import { optional } from "./optional";
 import {
-  RelayLogPlaceholder, TitlePlaceholder, TradeWatcherPlaceholder, TradeWindowPlaceholder, WorldPlaceholder,
+  DevPagePlaceholder, RelayLogPlaceholder, TitlePlaceholder, TradeWatcherPlaceholder, TradeWindowPlaceholder,
+  WorldPlaceholder,
 } from "./placeholders";
 import { Chip } from "./ui";
 import { Bag } from "../closet/Bag";
@@ -14,6 +15,10 @@ const loading = <div className="b-center"><Chip tone="cream">LOADING…</Chip></
 
 export const TitleScreen = optional("../world/TitleScreen.tsx", "TitleScreen", TitlePlaceholder, loading);
 export const WorldScreen = optional("../world/WorldScreen.tsx", "WorldScreen", WorldPlaceholder, loading);
+// A's dev pages (A's NEEDS: B mounts them): the pixel kit, the art sheet, the encounter rehearsal.
+const KitPage = optional("../world/KitPage.tsx", "KitPage", DevPagePlaceholder, loading);
+const ArtPage = optional("../world/ArtPage.tsx", "ArtPage", DevPagePlaceholder, loading);
+const EncounterDev = optional("../world/EncounterDev.tsx", "EncounterDev", DevPagePlaceholder, loading);
 export const TradeWindow = optional<{ proposalId: string; onClose: () => void }>(
   "../trade/TradeWindow.tsx", "TradeWindow", TradeWindowPlaceholder);
 export const RelayLog = optional("../trade/RelayLog.tsx", "RelayLog", RelayLogPlaceholder, loading);
@@ -44,10 +49,16 @@ export function AppRoutes() {
       <Route path="/bag/list/:itemId" element={<ListingFlow />} />
       <Route path="/trade/:proposalId" element={<TradeRoute />} />
       <Route path="/log" element={<RelayLog />} />
+      <Route path="/kit" element={<KitPage />} />
+      <Route path="/dev/art" element={<ArtPage />} />
+      <Route path="/dev/encounter" element={<EncounterDev />} />
       <Route path="*" element={<Bag />} />
     </Routes>
   );
 }
 
-/** Routes that render without a parent picked (the projector end card). */
-export const PUBLIC_PATHS = ["/log"];
+/**
+ * Routes that render without a parent picked: the projector end card, A's title screen (it has its own
+ * "WHO ARE YOU?" step with B's ParentPicker) and A's dev pages.
+ */
+export const PUBLIC_PATHS = ["/", "/log", "/kit", "/dev/art", "/dev/encounter"];

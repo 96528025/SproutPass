@@ -2,7 +2,7 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { api } from "../app/api";
-import { Chip, FitBar, Hearts, ItemIcon, PixelButton, PixelPanel } from "../app/ui";
+import { Chip, FitBar, Hearts, ItemIcon, PixelButton, PixelPanel, isItemIconName } from "../app/ui";
 import { errorText, parentRef, useApp } from "../app/store";
 import { ownedSince, shortDate } from "../app/format";
 import { formatCents, priceFor, priceRuleText } from "../app/types";
@@ -47,8 +47,9 @@ export function ItemCard(p: { item: ClothingItem; closet: ClosetView; onClose?: 
       <div className="b-stack">
         <div className="b-card-head">
           <span className="b-card-icon">
-            <span className="b-slot-name">{item.name.split(" ").slice(-1)[0]}</span>
-            <span className="b-slot-icon"><ItemIcon icon={item.icon} size={2} /></span>
+            {isItemIconName(item.icon)
+              ? <span className="b-slot-icon"><ItemIcon icon={item.icon} size={2} /></span>
+              : <span className="b-slot-name">{item.name.split(" ").slice(-1)[0]}</span>}
           </span>
           <div className="b-stack" style={{ gap: 8 }}>
             <div className="b-row-between">
@@ -64,7 +65,8 @@ export function ItemCard(p: { item: ClothingItem; closet: ClosetView; onClose?: 
         </div>
 
         {!passed && item.predictedOutgrowDate && (
-          <FitBar until={item.predictedOutgrowDate} now={closet.now} from={since} />
+          // Calendar days (A's FitBar reads YYYY-MM-DD as a local day), so it agrees with the UTC dates B prints.
+          <FitBar until={item.predictedOutgrowDate.slice(0, 10)} now={closet.now.slice(0, 10)} from={since.slice(0, 10)} />
         )}
 
         <dl className="b-facts">

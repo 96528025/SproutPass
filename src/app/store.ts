@@ -3,8 +3,10 @@ import { create } from "zustand";
 import { api, ApiError } from "./api";
 import type { EntityEvent } from "./api";
 import type { ClosetView, EntityName, ParentRef } from "./types";
+import type { ToastTone as KitToastTone } from "../pixel/components";
 
-export type ToastTone = "mint" | "gold" | "pink" | "red" | "lav" | "cream" | "paper";
+/** A's Toast tones, plus B's older "pink" / "cream" (the Shell draws them as "lav" / "paper"). */
+export type ToastTone = KitToastTone | "pink" | "cream";
 export interface ToastMsg { id: number; text: string; tone: ToastTone }
 
 interface AppState {
@@ -17,6 +19,8 @@ interface AppState {
   closetError: string | null;
   toastMsg: ToastMsg | null;
   setParent(key: string | null): void;
+  /** Turn ?demo=1 on for this tab (a link or the title screen carried it). */
+  setDemo(on: boolean): void;
   refreshCloset(): Promise<ClosetView | null>;
   toast(text: string, tone?: ToastTone): void;
 }
@@ -80,6 +84,11 @@ export const useApp = create<AppState>()((set, get) => ({
   setParent(key) {
     writeSession(SS_AS, key);
     set({ parentKey: key, closet: null, closetStatus: "idle", closetError: null }); // Shell refreshes on parentKey change
+  },
+
+  setDemo(on) {
+    writeSession(SS_DEMO, on ? "1" : null);
+    set({ demo: on });
   },
 
   // At most one getCloset in flight plus one queued (Base44 rate-limits; event bursts must not fan out).

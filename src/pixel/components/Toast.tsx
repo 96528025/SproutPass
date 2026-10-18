@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import "./kit.css";
 
 export type ToastTone = "paper" | "ink" | "gold" | "red" | "mint" | "lav" | "sky";
@@ -14,6 +14,9 @@ export interface ToastProps {
 /** Slides down from the top in 4px steps, auto-hides after 2.4s. */
 export function Toast({ text, tone = "paper", duration = 2400, onHide }: ToastProps) {
   const [phase, setPhase] = useState<"in" | "out" | "gone">("in");
+  // Callers often pass a fresh onHide each render; it must not restart the timer (or the toast never hides).
+  const onHideRef = useRef(onHide);
+  onHideRef.current = onHide;
 
   useEffect(() => {
     setPhase("in");
@@ -21,13 +24,13 @@ export function Toast({ text, tone = "paper", duration = 2400, onHide }: ToastPr
     const t1 = window.setTimeout(() => setPhase("out"), duration);
     const t2 = window.setTimeout(() => {
       setPhase("gone");
-      onHide?.();
+      onHideRef.current?.();
     }, duration + 200);
     return () => {
       window.clearTimeout(t1);
       window.clearTimeout(t2);
     };
-  }, [text, duration, onHide]);
+  }, [text, duration]);
 
   if (phase === "gone") return null;
   return (

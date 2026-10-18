@@ -1,109 +1,66 @@
-// OWNER: B4. Temporary pixel-kit shim with the SAME names and props as A's kit (Part D).
-// B4/B5 import UI only from "src/app/ui". When A's kit merges (~10:30 PM), replace this file's body with:
-//   export * from "../pixel/components";
-import type { CSSProperties, ReactNode } from "react";
+// OWNER: B4. B's one UI import: Person A's real pixel kit (src/pixel/components), plus a thin B layer.
+// B / C screens import UI only from "src/app/ui".
+//
+// The B layer exists because backend data is plain strings: Parent.avatar.sprite, Parent.pet.sprite and
+// ClothingItem.icon are `string` in the contract, while A's <Sprite name> / <ItemIcon icon> take the typed
+// SpriteName / ItemIconName and index a table with them (an unknown name would throw). So:
+//   - Sprite / ItemIcon here are A's components that accept any string and fall back to a known sprite;
+//   - asSprite / asItemIcon narrow a string for code that needs the typed name (e.g. A's Celebration props);
+//   - Chip also takes B's older tone "cream" (A's kit draws it as "paper", which is what A's Chip does anyway).
+// Everything else is A's kit unchanged (DialogBox uses onChoice(value); pass `inline` inside a Modal).
+import {
+  Chip as KitChip, ItemIcon as KitItemIcon, Sprite as KitSprite,
+  type ChipProps, type ChipTone, type ItemIconProps, type SpriteProps,
+} from "../pixel/components";
+import { ITEM_ICONS, SPRITES, type ItemIconName, type SpriteName } from "../pixel/sprites";
 
-const ink = "var(--ink, #2B2140)";
-const box = (bg: string): CSSProperties => ({
-  background: bg, border: `4px solid ${ink}`, boxShadow: `4px 4px 0 ${ink}`, padding: 12,
-  fontFamily: "'Pixelify Sans', monospace", color: ink, imageRendering: "pixelated",
-});
-const TONES: Record<string, string> = {
-  paper: "var(--paper, #FFF4D6)", cream: "var(--cream, #FFE8B8)", lav: "var(--lav, #B9A3FF)",
-  gold: "var(--gold, #FFC83D)", pink: "var(--pink, #FF8FAB)", mint: "var(--mint, #8EE3C8)", red: "var(--red, #E85D5D)",
-};
+export * from "../pixel/components";
+export type { AnimName, ItemIconName, SpriteName } from "../pixel/sprites";
 
-export function PixelPanel(p: { title?: string; tone?: "paper" | "cream" | "lav"; children?: ReactNode }) {
-  return (
-    <section style={box(TONES[p.tone ?? "paper"])}>
-      {p.title && <h3 style={{ margin: "0 0 8px", fontFamily: "Silkscreen, monospace", fontSize: 16 }}>{p.title}</h3>}
-      {p.children}
-    </section>
-  );
+const has = (table: object, key: unknown): boolean =>
+  typeof key === "string" && Object.prototype.hasOwnProperty.call(table, key);
+
+export function isSpriteName(v: unknown): v is SpriteName {
+  return has(SPRITES, v);
 }
 
-export function PixelButton(p: { variant?: "primary" | "ghost" | "danger"; icon?: ReactNode; onClick?: () => void; disabled?: boolean; children?: ReactNode }) {
-  const bg = p.variant === "danger" ? TONES.red : p.variant === "ghost" ? TONES.paper : TONES.gold;
-  return (
-    <button onClick={p.onClick} disabled={p.disabled}
-      style={{ ...box(bg), cursor: "pointer", fontFamily: "Silkscreen, monospace", textTransform: "uppercase", opacity: p.disabled ? 0.5 : 1 }}>
-      {p.icon} {p.children}
-    </button>
-  );
+export function isItemIconName(v: unknown): v is ItemIconName {
+  return has(ITEM_ICONS, v);
 }
 
-export function DialogBox(p: { speaker: { name: string; sprite: string }; lines: string[]; onDone?: () => void;
-  choices?: { label: string; value: string }[]; onChoose?: (value: string) => void }) {
-  return (
-    <div style={box(TONES.paper)}>
-      <strong style={{ fontFamily: "Silkscreen, monospace" }}>{p.speaker.name}</strong>
-      {p.lines.map((l, i) => <p key={i} style={{ margin: "6px 0" }}>{l}</p>)}
-      {p.choices && (
-        <div style={{ display: "flex", gap: 8 }}>
-          {p.choices.map((c) => <PixelButton key={c.value} variant="ghost" onClick={() => p.onChoose?.(c.value)}>{c.label}</PixelButton>)}
-        </div>
-      )}
-      {!p.choices && p.onDone && <PixelButton variant="ghost" onClick={p.onDone}>▼</PixelButton>}
-    </div>
-  );
+/** Pets fall back to pet_a, everything else to parent_a. */
+function defaultSprite(name: unknown): SpriteName {
+  return typeof name === "string" && name.startsWith("pet") ? "pet_a" : "parent_a";
 }
 
-export function Chip(p: { tone?: keyof typeof TONES; children?: ReactNode }) {
-  return <span style={{ ...box(TONES[p.tone ?? "cream"]), padding: "2px 8px", fontFamily: "Silkscreen, monospace", fontSize: 12, textTransform: "uppercase" }}>{p.children}</span>;
+/** A backend sprite string as A's SpriteName; unknown or missing names become `fallback`. */
+export function asSprite(name: unknown, fallback: SpriteName = defaultSprite(name)): SpriteName {
+  return isSpriteName(name) ? name : fallback;
 }
 
-export function Hearts(p: { filled: 1 | 2 | 3 }) {
-  return <span aria-label={`${p.filled} of 3 owners`}>{"♥".repeat(p.filled)}{"♡".repeat(3 - p.filled)}</span>;
+/** A backend item icon string as A's ItemIconName; unknown or missing icons become `fallback`. */
+export function asItemIcon(icon: unknown, fallback: ItemIconName = "item_tee"): ItemIconName {
+  return isItemIconName(icon) ? icon : fallback;
 }
 
-export function FitBar(p: { until: string; now: string; from?: string }) {
-  const start = new Date(p.from ?? p.now).getTime(), end = new Date(p.until).getTime(), now = new Date(p.now).getTime();
-  const left = Math.max(0, Math.min(1, (end - now) / Math.max(1, end - start || 1)));
-  const label = new Date(p.until).toLocaleDateString("en-US", { month: "short", day: "numeric" });
-  return (
-    <div>
-      <div style={{ border: `4px solid ${ink}`, height: 12, background: TONES.cream }}>
-        <div style={{ width: `${Math.round(left * 100)}%`, height: "100%", background: "var(--grass, #7BC96F)" }} />
-      </div>
-      <small style={{ fontFamily: "Silkscreen, monospace" }}>FITS UNTIL ~{label.toUpperCase()}</small>
-    </div>
-  );
+export type UiSpriteProps = Omit<SpriteProps, "name"> & { name: string; fallback?: SpriteName };
+
+/** A's Sprite for data strings (pet.sprite, avatar.sprite). */
+export function Sprite({ name, fallback, ...rest }: UiSpriteProps) {
+  return <KitSprite {...rest} name={asSprite(name, fallback)} />;
 }
 
-export function ItemIcon(p: { icon: string; size?: 1 | 2 }) {
-  const px = (p.size ?? 1) * 48;
-  return <img src={`/sprites/${p.icon}.png`} alt={p.icon} width={px} height={px}
-    style={{ imageRendering: "pixelated", background: TONES.cream, border: `4px solid ${ink}` }}
-    onError={(e) => { (e.currentTarget as HTMLImageElement).style.visibility = "hidden"; }} />;
+export type UiItemIconProps = Omit<ItemIconProps, "icon"> & { icon: string; fallback?: ItemIconName };
+
+/** A's ItemIcon for data strings (item.icon, snapshot.icon). */
+export function ItemIcon({ icon, fallback, ...rest }: UiItemIconProps) {
+  return <KitItemIcon {...rest} icon={asItemIcon(icon, fallback)} />;
 }
 
-export function Sprite(p: { name: string; anim?: "idle" | "walk" | "cheer"; scale?: 3 | 4; facing?: "left" | "right" }) {
-  return <div title={p.name} style={{ width: 32 * (p.scale ?? 3), height: 32 * (p.scale ?? 3), background: TONES.lav, border: `4px solid ${ink}` }} />;
-}
+export type UiChipTone = ChipTone | "cream";
+export type UiChipProps = Omit<ChipProps, "tone"> & { tone?: UiChipTone };
 
-/** Render conditionally from the caller: {open && <Modal …/>} (A's kit has no `open` prop). */
-export function Modal(p: { title: string; onClose?: () => void; children?: ReactNode }) {
-  return (
-    <div style={{ position: "fixed", inset: 0, background: "rgba(43,33,64,.6)", display: "grid", placeItems: "center", zIndex: 50 }} onClick={p.onClose}>
-      <div onClick={(e) => e.stopPropagation()} style={{ width: "min(92vw, 400px)" }}>
-        <PixelPanel title={p.title}>{p.children}</PixelPanel>
-      </div>
-    </div>
-  );
-}
-
-export function Toast(p: { text: string; tone?: keyof typeof TONES }) {
-  return <div style={{ position: "fixed", top: 12, left: "50%", transform: "translateX(-50%)", zIndex: 60 }}><Chip tone={p.tone ?? "mint"}>{p.text}</Chip></div>;
-}
-
-/** Part D names: original / price are cents. */
-export function PriceReceipt(p: { original: number; pct: number; price: number; ownerAfter: 2 | 3 }) {
-  const f = (c: number) => `$${(c / 100).toFixed(2)}`;
-  return (
-    <div style={{ ...box("#fff"), fontFamily: "Silkscreen, monospace", fontSize: 14 }}>
-      <div>ORIGINAL {f(p.original)}</div>
-      <div>{p.ownerAfter === 2 ? "2ND" : "3RD"} OWNER PAYS {Math.round(p.pct * 100)}%</div>
-      <div style={{ borderTop: `4px dashed ${ink}`, marginTop: 6, paddingTop: 6 }}>= {f(p.price)}</div>
-    </div>
-  );
+/** A's Chip; B's "cream" tone is A's "paper". */
+export function Chip({ tone, ...rest }: UiChipProps) {
+  return <KitChip {...rest} tone={tone === "cream" ? "paper" : tone} />;
 }

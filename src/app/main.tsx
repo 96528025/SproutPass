@@ -1,4 +1,7 @@
-// OWNER: B4. App entry: router + shell. index.html loads this and the Pixelify Sans / Silkscreen fonts.
+// OWNER: B4. App entry: router + shell. A's fonts.css (Google Fonts) and tokens.css (palette, grid, z-layers,
+// resets) load once here, first, so every component's CSS (A's kit, B's b.css) cascades on top of them.
+import "@/pixel/fonts.css";
+import "@/pixel/tokens.css";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { BrowserRouter } from "react-router-dom";

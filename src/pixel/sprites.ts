@@ -34,6 +34,7 @@ const pet = (n: string): SpriteDef => ({
     idle: { start: 0, len: 2, fps: 2 },
     talk: { start: 2, len: 2, fps: 6 },
     hop: { start: 4, len: 3, fps: 6 },
+    cheer: { start: 4, len: 3, fps: 6 }, // contract name for "wants attention" (C's AgentPet): the hop frames
   },
 });
 const still = (n: string, frame: 16 | 32 = 16): SpriteDef => ({ src: `/sprites/${n}.png`, frame, anims: {} });
