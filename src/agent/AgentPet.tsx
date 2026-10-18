@@ -1,0 +1,100 @@
+// C: AgentPet — the pet sprite in the corner of World and Bag.
+// It bobs; a pink dot appears when there's an open nudge or proposal; tapping opens
+// A's DialogBox with the pet's latest line (mirrors the iMessage thread via PetLine,
+// with a template fallback when that entity isn't there yet).
+//
+// Props:
+//   parentId   the viewing parent
+//   pet        { name, sprite } from Parent.pet
+//   onChoice   optional: ("sell"|"keep"|"later") when the open nudge gets an answer here —
+//              B's NudgeDialog owns the real flow; we just forward the choice.
+//   onOpenTrade optional: tapped "SEE TRADE" when a proposal is open
+
+import { useCallback, useEffect, useState } from "react";
+import { DialogBox, Sprite } from "../pixel/components";
+import { type AgentNudge, countOpenProposals, listOpenNudges, listPetLines, subscribe } from "./cApi";
+import "./agent.css";
+
+export interface AgentPetProps {
+  parentId: string;
+  pet: { name: string; sprite: "pet_a" | "pet_b" | "pet_c" };
+  onChoice?: (choice: "sell" | "keep" | "later", nudge: AgentNudge) => void;
+  onOpenTrade?: () => void;
+}
+
+function templateFor(pet: string, nudge: AgentNudge | null, proposals: number): string {
+  if (proposals > 0) return "Our pets found a match! Open the trade to decide — nothing is charged until you both accept.";
+  if (nudge?.kind === "new_owner_welcome") return nudge.message || "Say hi to your new item! I'll check in when it gets snug.";
+  if (nudge?.kind === "outgrow_check") return nudge.message || "Something's probably getting snug — still fit? Want to pass it on?";
+  if (nudge?.kind === "listing_reminder") return nudge.message || "That listing's been up a while — keep it shared?";
+  return `Hi! I'm ${pet}. I'll ping you when something stops fitting, or when I meet another pet on a walk.`;
+}
+
+export function AgentPet({ parentId, pet, onChoice, onOpenTrade }: AgentPetProps) {
+  const [open, setOpen] = useState(false);
+  const [nudge, setNudge] = useState<AgentNudge | null>(null);
+  const [proposals, setProposals] = useState(0);
+  const [line, setLine] = useState<string | null>(null);
+
+  const refresh = useCallback(async () => {
+    try {
+      const [nudges, n, lines] = await Promise.all([listOpenNudges(parentId), countOpenProposals(parentId), listPetLines(parentId, 1)]);
+      setNudge(nudges[0] ?? null);
+      setProposals(n);
+      setLine(lines[0]?.text ?? null);
+    } catch {
+      /* offline */
+    }
+  }, [parentId]);
+
+  useEffect(() => {
+    void refresh();
+    const u1 = subscribe("AgentNudge", () => void refresh());
+    const u2 = subscribe("MatchProposal", () => void refresh());
+    const u3 = subscribe("PetLine", () => void refresh());
+    const t = setInterval(refresh, 5_000);
+    return () => {
+      u1();
+      u2();
+      u3();
+      clearInterval(t);
+    };
+  }, [refresh]);
+
+  const attention = Boolean(nudge) || proposals > 0;
+  const text = line ?? templateFor(pet.name, nudge, proposals);
+
+  const choices =
+    proposals > 0
+      ? [{ label: "SEE TRADE", value: "trade" }, { label: "LATER", value: "close" }]
+      : nudge?.kind === "outgrow_check"
+        ? [{ label: "SELL", value: "sell" }, { label: "KEEP", value: "keep" }, { label: "LATER", value: "later" }]
+        : [{ label: "OK", value: "close" }];
+
+  const onPick = (value: string) => {
+    setOpen(false);
+    if (value === "trade") onOpenTrade?.();
+    else if ((value === "sell" || value === "keep" || value === "later") && nudge) onChoice?.(value, nudge);
+  };
+
+  return (
+    <>
+      <button className="c-pet" aria-label={`${pet.name}, your closet pet`} onClick={() => setOpen(true)}>
+        <Sprite name={pet.sprite} anim={attention ? "cheer" : "idle"} scale={4} />
+        {attention && <span className="c-pet__dot" aria-hidden />}
+        {attention && !open && <span className="c-pet__hint">{proposals > 0 ? "TRADE!" : "PSST"}</span>}
+      </button>
+      {open && (
+        <DialogBox
+          speaker={{ name: pet.name, sprite: pet.sprite }}
+          lines={[text, "(I said the same thing in iMessage.)"]}
+          choices={choices}
+          onDone={() => undefined}
+          onChoice={onPick}
+        />
+      )}
+    </>
+  );
+}
+
+export default AgentPet;

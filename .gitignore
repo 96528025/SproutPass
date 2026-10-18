@@ -5,8 +5,12 @@ dist/
 *.local
 *.log
 .DS_Store
+__pycache__/
+.pytest_cache/
+.venv/
 
 # Base44: .app.jsonc links this folder to the app; .types/ is generated
 .app.json*
 .types/
 !.env.mock
+!.env.example
