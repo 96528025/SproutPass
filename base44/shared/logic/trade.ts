@@ -13,6 +13,7 @@ import { checkEligibility, reasonLine } from "../match.ts";
 import { canResell } from "../pricing.ts";
 import { predictOutgrow } from "../sizes.ts";
 import { nudgeMessage } from "../nudges.ts";
+import { enforceMandate, passkeyRequired } from "./trust.ts";
 
 export const PROPOSAL_TTL_MS = 30 * 60_000;
 const LIVE: ProposalStatus[] = ["open", "both_accepted"];
@@ -114,6 +115,9 @@ export async function createProposal(db: Db, body: CreateProposalReq): Promise<M
     firstReason ||= e.reason;
   }
   if (!match) throw new HttpError("not_eligible", firstReason, 409);
+  // The buyer's own rules for their pet (trusted checkout), checked here on the server for every proposal:
+  // may the pet propose at all, price limit, kinds of clothes, monthly budget (paid + pending). not_eligible otherwise.
+  await enforceMandate(db, buyer, { priceCents: listing.priceCents, category: item.category }, now);
 
   let transcript = Array.isArray(body.transcript) ? body.transcript : [];
   if (body.encounterId) {
@@ -212,8 +216,15 @@ async function current(db: Db, p: MatchProposal): Promise<PayProposalRes> {
   return { proposal: p, item: await mustGet(db.ClothingItem, p.itemId, "item") };
 }
 
-/** opts.delayMs: 1000 in production, 0 in tests/selfTest. */
-export async function payProposal(db: Db, body: PayProposalReq, opts: { delayMs?: number } = {}): Promise<PayProposalRes> {
+/**
+ * opts.delayMs: 1000 in production, 0 in tests/selfTest.
+ * opts.passkeyApprovedFor: the proposal id a verified passkey (Face ID) assertion approved. Only payProposal's entry
+ * (after @simplewebauthn verifies body.passkey, see trust.ts approvePayment) and the localhost mock set it; it never
+ * comes from the request body. Required when the buyer's mandate needs Face ID approval.
+ */
+export async function payProposal(
+  db: Db, body: PayProposalReq, opts: { delayMs?: number; passkeyApprovedFor?: ID } = {},
+): Promise<PayProposalRes> {
   const delayMs = Math.max(0, opts.delayMs ?? 1000);
   const parent = await resolveParent(db, body);
   let p = await mustGet(db.MatchProposal, body.proposalId, "proposal");
@@ -222,6 +233,8 @@ export async function payProposal(db: Db, body: PayProposalReq, opts: { delayMs?
   if (p.status !== "both_accepted") {
     throw invalid(p.status === "open" ? "Both of you need to accept before paying." : `this trade is ${p.status.replace("_", " ")}`);
   }
+  // A person approves every payment their mandate guards: a passkey assertion bound to THIS trade and price.
+  if (passkeyRequired(parent) && opts.passkeyApprovedFor !== p.id) throw new HttpError("forbidden", "Approve with Face ID first", 403);
 
   // Claim the payment before waiting, so a double tap transfers once: the last claim wins and the
   // other request just waits for the result.

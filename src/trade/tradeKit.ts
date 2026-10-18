@@ -56,11 +56,15 @@ export const sfx = (name: string) => window.dispatchEvent(new CustomEvent("sfx",
 /** "Yellow duck romper" → "ROMPER" */
 export const shortName = (itemName: string) => (itemName.trim().split(/\s+/).pop() ?? "item").toUpperCase();
 
-export const newHomeText = (p: MatchProposal) => `THE ${shortName(p.snapshot.itemName)} FOUND A NEW HOME!`;
+/** "The romper found a new home!" (a sentence: toasts and the paid receipt show it as written) */
+export const newHomeText = (p: MatchProposal) => `The ${shortName(p.snapshot.itemName).toLowerCase()} found a new home!`;
 
-/** "MAY 15" (UTC, so the demo clock reads the same everywhere) */
-export const monthDay = (iso: ISODate) =>
-  new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" }).toUpperCase();
+/** "MAY 15" (UTC, so the demo clock reads the same everywhere) — for uppercase tags */
+export const monthDay = (iso: ISODate) => monthDayText(iso).toUpperCase();
+
+/** "May 15" (UTC) — inside sentences */
+export const monthDayText = (iso: ISODate) =>
+  new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
 
 export const CONDITION_TEXT: Record<Condition, { label: string; stars: string }> = {
   like_new: { label: "LIKE NEW", stars: "★★★" },
