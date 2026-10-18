@@ -37,6 +37,12 @@ Requests between owners. Write under your own name; the owner ticks it off.
 
 ### A5 (Encounter)
 
+- **A4:** mount `<EncounterScene encounter me peer bubbles onProposed onClosed />` and `<Celebration proposal me peer onDone />` straight from `@/world/EncounterScene` / `@/world/Celebration`; both are `position: fixed; inset: 0; z-index: var(--z-overlay)` and cover the bottom bar. Types `Encounter`, `MatchProposal`, `Parent` are temporarily exported from `src/mocks/a5.tsx`; swap them for C's/B's real ones when they land (shape used: `encounter {id, status: "meeting"|"talking"|"proposed"|"no_match", proposalId?}`).
+- **A4:** `EncounterScene` has one optional extra prop beyond the contract, `talking?: boolean` (pets switch to "talk" while a bubble types; defaults to `encounter.status === "talking"`). Peers enter from the right edge; no world positions are passed.
+- **C:** drop `<AgentBubbles>` into the `bubbles` prop (any ReactNode; slot is 358 px wide, centred above the parents, bottom-anchored). Pass `talking` while a bubble types if you want the pets to move their mouths.
+- **C/B:** the scene calls `onProposed(encounter.proposalId)` 1.2 s after status becomes "proposed" (the pets must already be out, so ≥ 2.2 s after mount at worst); `Celebration` plays once per `proposal.id` and its button calls `onDone`.
+- **Files beyond the contract list:** `src/world/encounter.css` and `src/world/celebration.css` (styles for A5's components). `/dev/encounter?as=jo` flips the point of view (Jo as buyer).
+
 ## B
 
 ## C

@@ -22,7 +22,7 @@ interface Kind {
 }
 const KINDS: Record<BurstKind, Kind> = {
   flowers: { sprite: "fx_flower", scale: 3 },
-  petals: { sprite: "fx_petal", scale: 2 },
+  petals: { sprite: "fx_petal", scale: 3 },
   sparkle: { sprite: "fx_sparkle", scale: 2 },
 };
 
@@ -93,16 +93,12 @@ class Engine {
       p.age = 0;
       p.phase = rnd(0, 3);
       if (o.kind === "flowers") {
-        // fan outwards (biased upwards), slow down by drag, then hold and blink out
-        const sp = rnd(3, 6);
-        const dir = rnd(0, 15); // 16 headings, integer maths below
-        const dx = [4, 4, 3, 2, 0, -2, -3, -4, -4, -4, -3, -2, 0, 2, 3, 4][dir];
-        const dy = [0, -2, -3, -4, -4, -4, -3, -2, 0, 2, 3, 4, 4, 4, 3, 2][dir];
+        // fountain: shoot up and outwards, sideways drag, gravity pulls them back down past the head
         p.x = o.x;
         p.y = o.y;
-        p.vx = Math.round((dx * sp) / 2);
-        p.vy = Math.round((dy * sp) / 2) - 2;
-        p.life = rnd(30, 44);
+        p.vx = rnd(-10, 10);
+        p.vy = rnd(-22, -10);
+        p.life = rnd(24, 34);
       } else if (o.kind === "petals") {
         p.x = o.x + rnd(-w / 2, w / 2);
         p.y = o.y - rnd(0, 200);
@@ -128,12 +124,8 @@ class Engine {
       if (p.kind === "flowers") {
         p.x += p.vx;
         p.y += p.vy;
-        // drag: halve every 3 ticks, then a lazy drift down
-        if (p.age % 3 === 0) {
-          p.vx = Math.trunc(p.vx / 2);
-          p.vy = Math.trunc(p.vy / 2);
-        }
-        if (p.vx === 0 && p.vy === 0 && p.age % 6 === 0) p.y += 4;
+        if (p.age % 4 === 0) p.vx = Math.trunc(p.vx / 2); // sideways drag
+        p.vy = Math.min(p.vy + 2, 8); // gravity, capped so they float down
       } else if (p.kind === "petals") {
         p.y += p.vy;
         p.x += FLUTTER[(p.age + p.phase) & 3];

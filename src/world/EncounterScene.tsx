@@ -38,6 +38,7 @@ export function EncounterScene({ encounter, me, peer, bubbles, talking, onPropos
   const [phase, setPhase] = useState<Phase>(0);
   const [banner, setBanner] = useState(false);
   const [celebrate, setCelebrate] = useState(false);
+  const [flash, setFlash] = useState(false);
   const status = encounter.status;
 
   // latest props in refs so timers survive the Encounter row updating on every push
@@ -59,9 +60,14 @@ export function EncounterScene({ encounter, me, peer, bubbles, talking, onPropos
     setPhase(0);
     setBanner(false);
     setCelebrate(false);
+    setFlash(false);
     fired.current = { proposed: false };
     const quick = reduced();
     later(() => sfx.play("alert"), 0);
+    if (!quick) {
+      later(() => setFlash(true), 0);
+      later(() => setFlash(false), 300); // unmounted afterwards so it can never linger
+    }
     if (quick) {
       later(() => setPhase(3), 0);
     } else {
@@ -120,7 +126,7 @@ export function EncounterScene({ encounter, me, peer, bubbles, talking, onPropos
 
   return (
     <div className="enc" style={style} role="dialog" aria-label={`${me.name} meets ${peer.name}`}>
-      <div className="enc__flash" aria-hidden />
+      {flash && <div className="enc__flash" aria-hidden />}
 
       <div className="enc__stage">
         <div className="enc__path" aria-hidden />
