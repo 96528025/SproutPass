@@ -46,7 +46,7 @@ function boundsOf(polygons: PolygonCoords[]): ZoneData["bounds"] {
 }
 
 export function loadZone(): Promise<ZoneData> {
-  cache ??= fetch(`${import.meta.env.BASE_URL}map/ucla-10min.json`)
+  cache ??= fetch("/map/ucla-10min.json")
     .then((r) => {
       if (!r.ok) throw new Error(`zone json ${r.status}`);
       return r.json() as Promise<GeoJSON.FeatureCollection>;

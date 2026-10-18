@@ -14,6 +14,8 @@ export const FOLLOW_ZOOM = 17;
 const ZONE_MAX_ZOOM = 13;
 const STEP_PX = 4;
 const TICK_MS = 60;
+// smoothFactor 0 = no simplification of the routed boundary (a Polyline option that setStyle forwards)
+const ZONE_STYLE = { className: "map__zone", smoothFactor: 0, lineCap: "butt", lineJoin: "miter", dashArray: "8 8", weight: 4 } as L.PathOptions;
 const FALLBACK_CENTRE: [number, number] = [34.0689, -118.4452];
 
 /** Metres per screen pixel at a latitude and zoom (Web Mercator, 256-px world tiles). */
@@ -136,7 +138,7 @@ export function MapLayer({ me, zoomedOut, zone, avatar, noFix }: MapLayerProps) 
         >
           {/* z-1 tiles at tileSize 512: each 256-px source pixel is a 2×2 block, same ground scale as normal z17 */}
           <TileLayer url="https://tile.openstreetmap.org/{z}/{x}/{y}.png" tileSize={512} zoomOffset={-1} maxNativeZoom={17} keepBuffer={2} />
-          {zone && <GeoJSON key={zone.boundaryMode} data={zone.geojson} style={{ className: "map__zone", smoothFactor: 0, lineCap: "butt", lineJoin: "miter", dashArray: "8 8", weight: 4 }} />}
+          {zone && <GeoJSON key={zone.boundaryMode} data={zone.geojson} style={ZONE_STYLE} />}
           <Controller me={me} zoomedOut={zoomedOut} zone={zone} />
           {zoomedOut && <ZoneMarker me={me} avatar={avatar} />}
         </MapContainer>

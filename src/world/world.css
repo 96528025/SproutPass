@@ -30,10 +30,10 @@
 /* ---- radar ---- */
 .radar {
   position: absolute;
-  left: calc(var(--cx) - 176px);
-  top: calc(var(--cy) - 176px);
-  width: 352px;
-  height: 352px;
+  left: calc(var(--cx) - var(--rh));
+  top: calc(var(--cy) - var(--rh));
+  width: calc(2 * var(--rh));
+  height: calc(2 * var(--rh));
   pointer-events: none;
 }
 .radar__rings {
@@ -42,7 +42,7 @@
 }
 .radar__label {
   position: absolute;
-  left: 176px;
+  left: var(--rh);
   width: 48px;
   margin-left: -24px;
   height: 16px;
@@ -54,23 +54,23 @@
   text-align: center;
   white-space: nowrap;
 }
-/* the 25 M ring is hidden behind my avatar's head, so its label sits on the ring's east side instead of the top */
-.radar__label--side { left: 176px; margin-left: 52px; }
+/* the 25 M ring is hidden behind my avatar, so its label sits just east of the avatar instead of on top of the ring */
+.radar__label--side { margin-left: 60px; }
 /* the sweep: arm rotates in 16 steps, the sprite counter-rotates in lockstep so it stays upright */
 .radar__sweep {
   position: absolute;
-  left: 176px;
-  top: 176px;
+  left: var(--rh);
+  top: var(--rh);
   width: 0;
   height: 0;
 }
 .radar__sweep-arm {
   position: absolute;
   left: -16px;
-  top: -184px; /* centre of the 32px dot sits on the 168px ring */
+  top: calc(-16px - var(--sweep-r)); /* centre of the 32px dot sits on the 100 M ring */
   width: 32px;
   height: 32px;
-  transform-origin: 16px 184px;
+  transform-origin: 16px calc(16px + var(--sweep-r));
   animation: radar-turn 4s steps(16, end) infinite;
 }
 .radar__sweep-arm > .spr {
@@ -149,6 +149,8 @@
   position: absolute;
   left: 12px;
   top: calc(var(--chip-row) + 4px);
+  display: flex;
+  gap: 8px;
   z-index: 4; /* below --z-overlay so A5's scenes cover the HUD */
 }
 

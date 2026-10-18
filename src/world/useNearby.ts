@@ -6,8 +6,25 @@ import { listNearby, type Band, type NearbyParent } from "@/mocks/a4"; // C: swa
 import type { SpriteName } from "@/pixel/sprites";
 import type { ParentId } from "@/world/query";
 
-/** Ring radii on a 390-px screen (px): 25 m / 100 m / 300 m. A parent in a band sits on that band's outer ring. */
-export const RING_PX = { "<25m": 48, "25-100m": 112, "100-300m": 168 } as const satisfies Record<Band, number>;
+/** Outer edge of each band in metres. A parent in a band sits on that band's outer ring. */
+export const RING_M = { "<25m": 25, "25-100m": 100, "100-300m": 300 } as const satisfies Record<Band, number>;
+
+/** Ring radius in screen px for a band, given the map's metres-per-pixel (see metersPerPixel in MapLayer). */
+export function ringPxFor(band: Band, mpp: number): number {
+  return Math.round(RING_M[band] / mpp);
+}
+
+/** A sprite is 96 px wide, so even a parent <25 m away is drawn at least this far from my centre. */
+const MIN_SPRITE_R = 48;
+
+export interface NearbyOptions {
+  /** Metres per pixel of the follow map (about 0.99 at zoom 17 near lat 34). */
+  mpp: number;
+  /** How far from the centre a sprite may go (px); the 300-m ring overflows a phone, so sprites slide in along their bearing. */
+  halfW: number;
+  halfH: number;
+}
+const DEFAULT_OPTS: NearbyOptions = { mpp: 0.99, halfW: 147, halfH: 300 };
 
 export const BAND_LABEL: Record<Band, string> = { "<25m": "<25 M", "25-100m": "25-100 M", "100-300m": "100-300 M" };
 
@@ -41,16 +58,28 @@ const norm = (d: number) => ((d % 360) + 360) % 360;
 const shortest = (from: number, to: number) => ((((to - from) % 360) + 540) % 360) - 180;
 const snap4 = (n: number) => Math.round(n / 4) * 4;
 
+/** Where a band's sprite sits along a bearing: on its ring, pulled in along the same bearing if it would leave the screen. */
+function spriteRadius(band: Band, bearing: number, o: NearbyOptions): number {
+  const r = Math.max(MIN_SPRITE_R, ringPxFor(band, o.mpp));
+  const a = (bearing * Math.PI) / 180;
+  const sx = Math.abs(Math.sin(a));
+  const cy = Math.abs(Math.cos(a));
+  const limit = Math.min(sx > 1e-6 ? o.halfW / sx : Infinity, cy > 1e-6 ? o.halfH / cy : Infinity);
+  return Math.min(r, Math.floor(limit / STEP_PX) * STEP_PX);
+}
+
 function project(bearing: number, radius: number) {
   const r = (bearing * Math.PI) / 180;
   return { x: snap4(Math.sin(r) * radius), y: snap4(-Math.cos(r) * radius) };
 }
 
-export function useNearby(parentId: ParentId, enabled = true): { raw: NearbyParent[]; items: SmoothParent[] } {
+export function useNearby(parentId: ParentId, enabled = true, opts: NearbyOptions = DEFAULT_OPTS): { raw: NearbyParent[]; items: SmoothParent[] } {
   const [raw, setRaw] = useState<NearbyParent[]>([]);
   const [items, setItems] = useState<SmoothParent[]>([]);
   const tracks = useRef(new Map<ParentId, Track>());
   const dirty = useRef(false);
+  const optsRef = useRef(opts);
+  optsRef.current = opts;
   const [visible, setVisible] = useState(() => document.visibilityState === "visible");
 
   useEffect(() => {
@@ -77,7 +106,7 @@ export function useNearby(parentId: ParentId, enabled = true): { raw: NearbyPare
             t.goneAt = null;
             t.fadingAt = null;
           } else {
-            tracks.current.set(p.parentId, { info: p, bearing: norm(p.bearingDeg), radius: RING_PX[p.band], goneAt: null, fadingAt: null });
+            tracks.current.set(p.parentId, { info: p, bearing: norm(p.bearingDeg), radius: spriteRadius(p.band, p.bearingDeg, optsRef.current), goneAt: null, fadingAt: null });
           }
         }
         for (const [id, t] of tracks.current) if (!seen.has(id) && t.goneAt === null) t.goneAt = now;
@@ -113,7 +142,7 @@ export function useNearby(parentId: ParentId, enabled = true): { raw: NearbyPare
           continue;
         }
         if (t.goneAt !== null) continue;
-        const targetR = RING_PX[t.info.band];
+        const targetR = spriteRadius(t.info.band, t.bearing, optsRef.current);
         const dr = targetR - t.radius;
         if (dr !== 0) {
           t.radius += Math.sign(dr) * Math.min(STEP_PX, Math.abs(dr));
