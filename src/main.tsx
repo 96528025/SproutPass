@@ -4,12 +4,21 @@ import { createRoot } from "react-dom/client";
 import { createBrowserRouter, RouterProvider } from "react-router";
 import "@/pixel/fonts.css";
 import "@/pixel/tokens.css";
-import { KitPage } from "@/world/KitPage";
+import { FrameLayout, KitWithChrome, TabPlaceholder } from "@/mocks/a3";
+import { TitleScreen } from "@/world/TitleScreen";
 
 const router = createBrowserRouter([
-  // A:
-  { path: "/kit", element: <KitPage /> },
-  { path: "/", element: <KitPage /> },
+  {
+    element: <FrameLayout />, // A3: HandheldFrame around every route
+    children: [
+      // A:
+      { path: "/", element: <TitleScreen /> },
+      { path: "/kit", element: <KitWithChrome /> },
+      { path: "/world", element: <TabPlaceholder label="WORLD (A4)" /> }, // A4 replaces
+      { path: "/bag", element: <TabPlaceholder label="BAG (B)" /> }, // B owns
+      { path: "/log", element: <TabPlaceholder label="LOG (B)" /> }, // B owns
+    ],
+  },
 ]);
 
 createRoot(document.getElementById("root")!).render(
