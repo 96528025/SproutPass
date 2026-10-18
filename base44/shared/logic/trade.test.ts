@@ -4,7 +4,7 @@ import { createFakeDb, type FakeDb } from "../testing/fakeDb.ts";
 import { applySeed, seedPlan, DEMO_DATES } from "../seed.ts";
 import { priceFor } from "../pricing.ts";
 import type { AgentInbox, ClothingItem, Encounter, InboxEvent, Listing } from "../types.ts";
-import { createProposal, decideProposal, payProposal, PROPOSAL_TTL_MS } from "./trade.ts";
+import { createProposal, decideProposal, getParties, payProposal, PROPOSAL_TTL_MS } from "./trade.ts";
 
 let db: FakeDb;
 let ids: { mina: string; jo: string; sam: string };
@@ -357,5 +357,52 @@ describe("inbox", () => {
     expect(await events(ids.mina)).toContainEqual(expect.objectContaining({ type: "proposal:updated", role: "seller", status: "declined", buyerDecision: "declined" }));
     expect(await events(ids.jo)).toContainEqual(expect.objectContaining({ type: "proposal:updated", role: "buyer", status: "declined" }));
     expect((await events(ids.jo)).some((e) => e.type === "trade:completed")).toBe(false);
+  });
+});
+
+describe("getParties", () => {
+  const PRIVATE = ["phone", "photonUserId", "photonSpaceId", "convo", "asiAddress", "key", "agentAddress", "discoverable"];
+
+  it("returns each party's public card, in the order asked", async () => {
+    const res = await getParties(db, { parentIds: [ids.jo, ids.mina] });
+    expect(res).toEqual([
+      { id: ids.jo, name: "Jo", avatar: { sprite: "parent_b", palette: "mint" }, pet: { sprite: "pet_b", name: "Pip" } },
+      { id: ids.mina, name: "Mina", avatar: { sprite: "parent_a", palette: "peach" }, pet: { sprite: "pet_a", name: "Button" } },
+    ]);
+  });
+
+  it("never includes phone, Photon ids, convo or ASI address", async () => {
+    await db.Parent.update(ids.mina, {
+      phone: "+15551234567", photonUserId: "pu_1", photonSpaceId: "ps_1",
+      convo: { step: "claim" }, asiAddress: "asi1qmina", agentAddress: "agent1qmina",
+    });
+    const [mina] = await getParties(db, { parentIds: [ids.mina] });
+    expect(Object.keys(mina).sort()).toEqual(["avatar", "id", "name", "pet"]);
+    for (const k of PRIVATE) expect(mina).not.toHaveProperty(k);
+    expect(JSON.stringify(mina)).not.toMatch(/\+1555|pu_1|ps_1|claim|asi1q|agent1q/);
+  });
+
+  it("skips unknown ids and dedupes", async () => {
+    const res = await getParties(db, { parentIds: ["nope", ids.sam, ids.sam, "former_ana"] });
+    expect(res.map((p) => p.name)).toEqual(["Sam"]);
+    expect(await getParties(db, { parentIds: ["nope"] })).toEqual([]);
+  });
+
+  it("reads Parent once, whatever the count", async () => {
+    let reads = 0;
+    const counting = { ...db, Parent: { ...db.Parent, list: (...a: Parameters<typeof db.Parent.list>) => { reads++; return db.Parent.list(...a); },
+      get: () => { throw new Error("no per-id gets"); }, filter: (...a: Parameters<typeof db.Parent.filter>) => { reads++; return db.Parent.filter(...a); } } };
+    await getParties(counting as typeof db, { parentIds: [ids.mina, ids.jo, ids.sam] });
+    expect(reads).toBe(1);
+  });
+
+  it("rejects an empty list, more than 10 ids, and non-id input", async () => {
+    await expect(getParties(db, { parentIds: [] })).rejects.toMatchObject({ code: "bad_request", status: 400 });
+    const eleven = Array.from({ length: 11 }, (_, i) => `p${i}`);
+    await expect(getParties(db, { parentIds: eleven })).rejects.toMatchObject({ code: "bad_request" });
+    expect(await getParties(db, { parentIds: [...Array(12).fill(ids.jo)] })).toHaveLength(1);   // 12 entries, 1 after dedupe
+    await expect(getParties(db, {} as never)).rejects.toMatchObject({ code: "bad_request" });
+    await expect(getParties(db, { parentIds: "jo" } as never)).rejects.toMatchObject({ code: "bad_request" });
+    await expect(getParties(db, { parentIds: [ids.jo, 7] } as never)).rejects.toMatchObject({ code: "bad_request" });
   });
 });
