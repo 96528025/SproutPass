@@ -10,4 +10,7 @@ export const base44 = createClient({
   functionsVersion,
   serverUrl: "",
   appBaseUrl,
+  // src/agent/client.ts imports this statically, so it loads in mock mode too, where there is no Base44 backend:
+  // the SDK's analytics batches would 404 on /api/apps/undefined/analytics. Real mode keeps the SDK default.
+  ...(import.meta.env.VITE_USE_MOCK === "1" ? { analytics: { enabled: false } } : {}),
 });

@@ -99,6 +99,28 @@ export function confirmedGone(ids: string[], listed: Iterable<string>, seenAt: M
   return ids.filter((id) => !inCloset.has(id) && (seenAt.get(id) ?? 0) < fetchStartedAt);
 }
 
+// ---------------------------------------------------------------- the window over any screen (TradeWatcher)
+
+export interface WatcherState {
+  /** The trade whose window is up, if any. */
+  openId: string | null;
+  /** Trades this tab is done with: they never pop by themselves again (the pill can still reopen a live one). */
+  dismissed: ReadonlySet<string>;
+}
+
+/** The trade the watcher pops now: the newest live one, unless a window is up, /trade/:id shows it, or it was dismissed. */
+export function tradeToPop(s: WatcherState, activeId: string | null, onTradeRoute: boolean): string | null {
+  return !activeId || s.openId || onTradeRoute || s.dismissed.has(activeId) ? null : activeId;
+}
+
+/**
+ * This tab is done with trade `id` (DONE / ✕ in its window, or the celebration's SEE IT IN MY BAG): it is dismissed and
+ * its window closes. A window that already moved on to a newer trade stays up.
+ */
+export function doneWithTrade(s: WatcherState, id: string): WatcherState {
+  return { openId: s.openId === id ? null : s.openId, dismissed: new Set(s.dismissed).add(id) };
+}
+
 // ---------------------------------------------------------------- the promise banner
 
 export type TradeRole = "buyer" | "seller" | null;
