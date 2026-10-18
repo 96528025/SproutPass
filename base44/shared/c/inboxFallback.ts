@@ -569,7 +569,10 @@ function blockedLine(c: any, item: any): string | null {
   return null;
 }
 
-/** A photo: the AI names the item (from the parent's bag) and guesses its condition, then the pet quotes it. */
+/**
+ * A photo: the AI looks first (what it shows, whether a child outgrows it), then names the item from the parent's bag
+ * and guesses its condition, then the pet quotes it. A photo of something else is said back, never quoted.
+ */
 async function onPhoto(ctx: Ctx, url: string, text: string) {
   const c = await closet(ctx);
   const items = owned(c);
@@ -579,10 +582,15 @@ async function onPhoto(ctx: Ctx, url: string, text: string) {
     itemName: item?.name,
     candidates: item ? [] : items.filter((i) => i.status !== "transferred_out").map((i) => String(i.name ?? "")),
   });
+  // Not something a child outgrows (a water bottle): say what the AI saw. Any selling flow stays where it was.
+  if (!guess.kidsItem) return void await ctx.say(t.notKidsItem(guess.seen ?? ""));
+  // The parent named the item, but the photo clearly shows something else.
+  if (item && !guess.isThatItem) return void await ctx.say(t.notThatItem(guess.seen ?? "", String(item.name ?? "item")));
   if (!item && guess.match) item = items.find((i) => i.name === guess.match) ?? null;
   if (!item && guess.name) item = namedItem(items, guess.name);
+  // Without the AI (template guess) a photo answers the item the pet just asked about; with it, the photo must show it.
   const nudge = openNudge(c);
-  if (!item && nudge) item = items.find((i) => i.id === nudge.itemId) ?? null;
+  if (!item && nudge && guess.via === "template") item = items.find((i) => i.id === nudge.itemId) ?? null;
   if (!item) {
     await setFlow(ctx, { step: "await_item", photoUrl: url, condition: guess.condition, note: guess.note });
     return void await ctx.say(t.photoWhich());
